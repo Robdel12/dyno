@@ -85,6 +85,6 @@ export async function launchBrowser(url, { resolved, onExit, signal, ...options 
     await browser.ready;
     signal?.throwIfAborted();
     if (browser.failure) throw browser.failure;
-    return Object.freeze({ name: plan.name, isolated: true, stop });
+    return Object.freeze({ name: plan.name, isolated: true, stop, get logs() { return browser.logs; } });
   } catch (error) { await stop(); throw error; }
 }

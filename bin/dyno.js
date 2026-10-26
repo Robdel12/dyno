@@ -97,12 +97,17 @@ async function main() {
         if (!entry.internal && entry.family === 'IPv4') console.log(`Device: ${gateway.url.replace(/127\.0\.0\.1|\[::1\]/, entry.address)}`);
       }
     }
+    let browser;
     let deadline = persistent ? null : AbortSignal.timeout(config.runTimeout);
-    let expired = () => failed(new Error(`No complete browser result within ${config.runTimeout} ms. The browser may be disconnected, blocked, or stuck.`));
+    let expired = () => {
+      let message = `No complete browser result within ${config.runTimeout} ms. The browser may be disconnected, blocked, or stuck.`;
+      let output = browser?.logs?.trim();
+      failed(new Error(output ? `${message}\nBrowser output:\n${output}` : message));
+    };
     deadline?.addEventListener('abort', expired, { once: true });
     try {
       if (browserPlan) {
-        let browser = await launchBrowser(captureURL.href, { resolved: browserPlan, onExit: failed, signal: controller.signal });
+        browser = await launchBrowser(captureURL.href, { resolved: browserPlan, onExit: failed, signal: controller.signal });
         cleanups.add(browser.stop);
       }
       let summary = await finished;

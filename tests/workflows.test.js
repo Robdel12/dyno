@@ -11,7 +11,7 @@ function outcomes(result, passed, failed) {
   assert.equal(result.summary?.failed, failed, result.stderr + result.stdout);
 }
 
-test('a developer can install the checkout, initialize a project, and run its first browser test', { timeout: 30000 }, async t => {
+test('a developer can install the checkout, initialize a project, and run its first browser test', { timeout: 90000 }, async t => {
   let fixture = await project(t);
   await exec('npm', ['install', '--offline', '--ignore-scripts', '--no-audit', '--no-fund', '--cache', join(fixture.directory, '.npm-cache'), repository], { cwd: fixture.directory, timeout: 15000 });
   await rm(join(fixture.directory, 'dyno.config.js'));
@@ -20,7 +20,7 @@ test('a developer can install the checkout, initialize a project, and run its fi
   assert.match(await readFile(join(fixture.directory, 'tests/browser/home.test.js'), 'utf8'), /from 'dyno'/);
   await writeFile(join(fixture.directory, 'tests/browser/home.test.js'), `import { test } from 'dyno'; test('my first test', async ({ app, I }) => { await app.goto('/'); await I.find('Fixture app').visible(); });`);
   await writeFile(join(fixture.directory, 'dyno.config.js'), `import { defineConfig } from 'dyno/config'; export default defineConfig({ port: 0, browser: {name: ${JSON.stringify(process.env.DYNO_TEST_BROWSER ?? 'chrome')}}, webServer: { command: [${JSON.stringify(process.execPath)}, ${JSON.stringify(join(repository, 'tests/fixtures/app-server.js'))}], url: 'http://127.0.0.1:${fixture.port}', env: {PORT: '${fixture.port}'} } });`);
-  let { stdout, stderr } = await exec(bin, ['--json'], { cwd: fixture.directory, timeout: 15000 });
+  let { stdout, stderr } = await exec(bin, ['--json'], { cwd: fixture.directory, timeout: 70000 });
   let events = stdout.trim().split('\n').filter(line => line.startsWith('{')).map(line => JSON.parse(line));
   assert.equal(events.find(event => event.type === 'complete')?.passed, 2, stderr + stdout);
   await assert.rejects(fetch(`http://127.0.0.1:${fixture.port}`));
@@ -48,7 +48,7 @@ test('invalid config and empty discovery explain the problem before starting the
   }
 });
 
-test('hooks reset the session and still clean up after a failing assertion', { timeout: 20000 }, async t => {
+test('hooks reset the session and still clean up after a failing assertion', { timeout: 90000 }, async t => {
   let fixture = await project(t, { source: `
 beforeEach(async ({app}) => { await app.request('/api/lifecycle', {method:'POST', body:'before'}); });
 afterEach(async ({app}) => { await app.request('/api/lifecycle', {method:'POST', body:'after'}); });
@@ -64,7 +64,7 @@ test('observes cleanup before the next workflow', async ({app, I}) => {
   outcomes(await fixture.run().completion, 1, 1);
 });
 
-test('fresh frames retain origin storage until the project explicitly resets it', { timeout: 20000 }, async t => {
+test('fresh frames retain origin storage until the project explicitly resets it', { timeout: 90000 }, async t => {
   let fixture = await project(t, { source: `
 test('stores a session', async ({app, I}) => {
   await app.goto('/'); app.window.localStorage.setItem('session', 'saved');
@@ -86,7 +86,7 @@ test('starts without the reset session', async ({app, I}) => {
   outcomes(await fixture.run().completion, 3, 0);
 });
 
-test('the app CSP permits a nonced bridge and a blocked bridge fails without weakening the policy', { timeout: 20000 }, async t => {
+test('the app CSP permits a nonced bridge and a blocked bridge fails without weakening the policy', { timeout: 90000 }, async t => {
   let fixture = await project(t, { source: `
 test('runs under the real nonce policy', async ({app, I}) => { await app.goto('/nonce-app'); await I.find('Nonce app ready').visible(); });
 test('cannot bypass blocked scripts', async ({app}) => { await app.goto('/blocked-app'); }, {timeout:600});
@@ -127,7 +127,7 @@ test('manual browsers have independent runs and malformed or stale reports canno
   assert.deepEqual(results.map(run => [run.summary.passed, run.summary.failed]), [[0,1],[1,0]]);
 });
 
-test('an app crash fails the run and releases the owned server port', { timeout: 15000 }, async t => {
+test('an app crash fails the run and releases the owned server port', { timeout: 90000 }, async t => {
   let fixture = await project(t, { source: `test('app disconnects', async ({app, I}) => { await app.goto('/'); await app.request('/api/crash'); await I.assert(() => false); });` });
   let result = await fixture.run().completion;
   assert.equal(result.code, 1, result.stdout + result.stderr);

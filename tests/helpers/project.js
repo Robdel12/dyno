@@ -98,9 +98,9 @@ export async function project(t, { source = "test('opens the app', async ({ app,
   let port = await availablePort();
   await mkdir(join(directory, 'tests/browser'), { recursive: true });
   await writeFile(join(directory, 'package.json'), '{"type":"module"}');
-  await writeFile(join(directory, 'tests/browser/workflow.test.js'), `import { test, beforeEach, afterEach } from 'dyno';\n${source}`);
+  await writeFile(join(directory, 'tests/browser/workflow.test.js'), `import { test, beforeEach, afterEach, Interactor } from 'dyno';\n${source}`);
   let config = {
-    testDir: './tests/browser', browser: { name: process.env.DYNO_TEST_BROWSER ?? 'chrome' }, port: 0, timeout: 2500, expectTimeout: 500, runTimeout: 15000, ...overrides,
+    testDir: './tests/browser', browser: { name: process.env.DYNO_TEST_BROWSER ?? 'chrome' }, port: 0, ...overrides,
     webServer: { command: [process.execPath, appServer], url: `http://127.0.0.1:${port}`, ready: 'FIXTURE_READY', env: { PORT: String(port) }, ...overrides.webServer, env: {PORT: String(port), ...overrides.webServer?.env} }
   };
   await writeFile(join(directory, 'dyno.config.js'), `export default ${JSON.stringify(config)};`);

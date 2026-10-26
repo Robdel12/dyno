@@ -40,6 +40,8 @@ let html = `<!doctype html><html><head><meta charset="utf-8"><title>Fixture app<
 <button id="dismiss">Dismiss notice</button><label>Review mode <select><option>Choose mode</option><option>Compare</option></select></label><output>No review mode</output>
 <script>${script}</script></body></html>`;
 let lifecycle = [];
+let navigationRequested = Promise.withResolvers();
+let releaseNavigation = Promise.withResolvers();
 let descendantPort;
 let listening = false;
 let announced = false;
@@ -55,6 +57,20 @@ if (process.env.SPAWN_DESCENDANT) {
 }
 let server = http.createServer(async (request, response) => {
   response.setHeader('Cache-Control', 'no-store');
+  if (request.url === '/held-app') {
+    navigationRequested.resolve();
+    await releaseNavigation.promise;
+  }
+  if (request.url === '/api/navigation-requested') {
+    await navigationRequested.promise;
+    response.end('navigation requested');
+    return;
+  }
+  if (request.url === '/api/release-navigation' && request.method === 'POST') {
+    releaseNavigation.resolve();
+    response.end('navigation released');
+    return;
+  }
   if (['/gzip-app', '/brotli-app'].includes(request.url)) {
     let gzip = request.url === '/gzip-app';
     let bytes = (gzip ? gzipSync : brotliCompressSync)(Buffer.from(html));

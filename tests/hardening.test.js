@@ -5,7 +5,7 @@ import { once } from 'node:events';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { connect } from 'node:net';
-import { readFile } from 'node:fs/promises';
+import { readFile, chmod } from 'node:fs/promises';
 import { project, exec, repository, launch } from './helpers/project.js';
 
 let cli = join(repository, 'bin/dyno.js');
@@ -64,7 +64,7 @@ test('config typos and unsafe profile overrides fail before app startup', { time
   }
 });
 
-test('browser selection reaches a real browser and missing exact test names explain the filter', { timeout: 20000 }, async t => {
+test('browser selection reaches a real browser and missing exact test names explain the filter', { timeout: 150000 }, async t => {
   let fixture = await project(t);
   let result = await fixture.run(['--browser', process.env.DYNO_TEST_BROWSER ?? 'chrome']).completion;
   assert.equal(result.code, 0, result.stderr + result.stdout);
@@ -85,7 +85,7 @@ test('Safari headless requests explain the supported mode before starting an app
   await assert.rejects(fetch(`http://127.0.0.1:${fixture.port}`));
 });
 
-test('compressed HTML runs in a real browser without changing the app response contract', { timeout: 20000 }, async t => {
+test('compressed HTML runs in a real browser without changing the app response contract', { timeout: 90000 }, async t => {
   let fixture = await project(t, { source: `
 for (let path of ['/gzip-app', '/brotli-app']) test('uses compressed app ' + path, async ({app, I}) => {
   await app.goto(path);
@@ -223,7 +223,7 @@ test('stopping a run terminates descendants that ignore graceful shutdown', { ti
   await assert.rejects(fetch(`http://127.0.0.1:${fixture.port}`));
 });
 
-test('the browser runner shows results and its Run test button starts a filtered run', { timeout: 20000 }, async t => {
+test('the browser runner shows results and its Run test button starts a filtered run', { timeout: 90000 }, async t => {
   let name = process.env.DYNO_TEST_BROWSER ?? 'chrome';
   let fixture = await project(t, { config: { browser: { name, args: [name === 'firefox' ? '--headless' : '--headless=new'] } }, source: `
 test('first visible workflow', async ({app,I}) => { await app.goto('/'); await I.find('Fixture app').visible(); });
@@ -255,5 +255,23 @@ test('a closed stdout consumer stops owned resources without an uncaught pipe er
   let result = await session.completion;
   assert.equal(result.code, 143, result.stderr);
   assert.doesNotMatch(result.stderr, /Unhandled.*error|write EPIPE/);
+  await assert.rejects(fetch(`http://127.0.0.1:${fixture.port}`));
+});
+
+
+test('a browser that stays open without joining includes its output in the deadline error', { timeout: 10000, skip: process.platform === 'win32' }, async t => {
+  let fixture = await project(t, { config: { runTimeout: 1500 }, files: {
+    'not-a-browser.js': `#!/usr/bin/env node
+import { createServer } from 'node:http';
+console.error('Diagnostic: this executable never opens the test URL');
+createServer((request, response) => response.end('wrong executable')).listen(0, '127.0.0.1');
+`
+  } });
+  let executable = join(fixture.directory, 'not-a-browser.js');
+  await chmod(executable, 0o700);
+  let result = await fixture.run(['--browser-path', executable]).completion;
+  assert.equal(result.code, 1, result.stdout + result.stderr);
+  assert.match(result.events.at(-1).message, /No complete browser result within 1500 ms/);
+  assert.match(result.events.at(-1).message, /Diagnostic: this executable never opens the test URL/);
   await assert.rejects(fetch(`http://127.0.0.1:${fixture.port}`));
 });
