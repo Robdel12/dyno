@@ -1,8 +1,10 @@
-import { suite, createApp } from './index.js';
+import { getSuite } from './registry.js';
+import { createApp } from './app.js';
 import { createInteractor } from './interactor.js';
 
 let serialize = error => ({ message: error?.message ?? String(error), stack: error?.stack });
 export async function boot() {
+  let suite = getSuite();
   let parameters = new URLSearchParams(location.search);
   let runId = parameters.get('run');
   let send = (kind, data = {}) => parent.postMessage({ channel: 'dyno', runId, kind, ...data }, location.origin);
@@ -19,7 +21,7 @@ export async function boot() {
     let frame = document.createElement('iframe');
     frame.title = 'App under test';
     document.body.append(frame);
-    let state = { readyDocument: null, readyId: null, expectedName: null };
+    let state = Object.freeze({ readyDocument: null, readyId: null, expectedName: null });
     let waiters = new Set();
     let fail = error => { if (!controller.signal.aborted) controller.abort(error); };
     let checkpoint = () => new Promise(resolve => {
@@ -38,7 +40,7 @@ export async function boot() {
       if (event.origin !== location.origin || event.source !== frame.contentWindow || message?.channel !== 'dyno') return;
       if (message.name !== state.expectedName) return;
       if (message.kind === 'app-unloading') {
-        if (message.id === state.readyId) state.readyDocument = null;
+        if (message.id === state.readyId) state = Object.freeze({ ...state, readyDocument: null });
         return;
       }
       if (frame.contentWindow.__browserTestBridge?.id !== message.id) return;
@@ -48,8 +50,7 @@ export async function boot() {
         fail(error);
       }
       if (message.kind === 'app-ready' && frame.contentWindow.__browserTestBridge?.id === message.id) {
-        state.readyDocument = frame.contentDocument;
-        state.readyId = message.id;
+        state = Object.freeze({ ...state, readyDocument: frame.contentDocument, readyId: message.id });
         frame.contentWindow.addEventListener('error', event => fail(event.error ?? new Error(event.message)));
         frame.contentWindow.addEventListener('unhandledrejection', event => fail(event.reason ?? new Error('Unhandled app rejection')));
         for (let resolve of waiters) resolve();
@@ -68,18 +69,16 @@ export async function boot() {
       let target = new URL(path, location.origin);
       if (target.origin !== location.origin || target.pathname.startsWith('/__dyno__/')) throw new Error('app.goto requires an app path on the gateway origin.');
       controller.signal.throwIfAborted();
-      state.readyDocument = null;
-      state.readyId = null;
-      state.expectedName = `dyno-${runId}-${index}-${[...crypto.getRandomValues(new Uint32Array(2))].join('-')}`;
+      state = Object.freeze({ readyDocument: null, readyId: null, expectedName: `dyno-${runId}-${index}-${[...crypto.getRandomValues(new Uint32Array(2))].join('-')}` });
       frame.name = state.expectedName;
       frame.contentWindow.name = state.expectedName;
       let ready = new Promise(resolve => waiters.add(resolve));
       frame.src = target.href;
       try { await abortable(ready); } finally { waiters.clear(); }
     };
-    let app = createApp(frame, state, controller.signal, navigate);
+    let app = createApp(frame, () => state, controller.signal, navigate);
     let I = createInteractor(app, controller.signal, settings.expectTimeout);
-    let context = { app, I, signal: controller.signal, fixtures: settings.fixtures };
+    let context = Object.freeze({ app, I, signal: controller.signal, fixtures: settings.fixtures });
     let started = performance.now();
     let outcome;
     try {

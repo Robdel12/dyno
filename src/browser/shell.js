@@ -67,7 +67,7 @@ try {
     let { status: resultStatus, error, duration, name } = outcome;
     let index = events.length;
     let event = { type: 'test', index, name, status: resultStatus, duration, error };
-    events.push(event);
+    events = [...events, event];
     node.dataset.status = resultStatus;
     node.textContent = `${resultStatus === 'passed' ? '✓' : '✗'} ${name}${duration === undefined ? '' : ` (${Math.round(duration)} ms)`}`;
     let detail;

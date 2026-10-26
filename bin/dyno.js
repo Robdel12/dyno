@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 import { parseArgs } from 'node:util';
-import { writeFile, mkdir } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 import { networkInterfaces } from 'node:os';
 import { loadConfig } from '../src/config.js';
@@ -8,6 +7,8 @@ import { buildSuite } from '../src/build.js';
 import { startWebServer } from '../src/process.js';
 import { createGateway } from '../src/server.js';
 import { launchBrowser } from '../src/launcher.js';
+import { createCleanup } from '../src/cleanup.js';
+import { initializeProject } from '../src/init.js';
 
 let usage = `dyno [run] [--config path] [--ui | --manual] [--test "test name"] [--port number] [--host address] [--json]
 dyno init
@@ -28,18 +29,13 @@ async function main() {
   }, allowPositionals: true });
   if (values.help) { console.log(usage); return; }
   if (positionals[0] === 'init') {
-    let config = `export default {\n  testDir: 'tests/browser',\n  webServer: {\n    command: 'npm run dev',\n    url: 'http://127.0.0.1:3000',\n    reuseExistingServer: !process.env.CI\n  }\n};\n`;
-    await writeFile('dyno.config.js', config, { flag: 'wx' });
-    await mkdir('tests/browser', { recursive: true });
-    await writeFile('tests/browser/home.test.js', `import { test } from 'dyno';\n\ntest('opens the application', async ({ app, I }) => {\n  await app.goto('/');\n  await I.find('Welcome').visible();\n});\n`, { flag: 'wx' });
+    await initializeProject(process.cwd());
     console.log('Created dyno.config.js and tests/browser/home.test.js. Set your app command/URL and update the example assertion, then run dyno.');
     return;
   }
   if (positionals.length > 1 || (positionals[0] && positionals[0] !== 'run')) throw new Error(usage);
   if (values.ui && values.manual) throw new Error('Choose --ui or --manual.');
-  let config = await loadConfig(values.config);
-  if (values.port !== undefined) { config.port = Number(values.port); if (!Number.isInteger(config.port) || config.port < 0 || config.port > 65535) throw new Error('--port must be between 0 and 65535.'); }
-  if (values.host) config.host = values.host;
+  let config = await loadConfig(values.config, { port: values.port === undefined ? undefined : Number(values.port), host: values.host });
   let bundle = await buildSuite(config);
   let controller = new AbortController();
   let stop = signal => controller.abort(new Error(`Stopped by ${signal}`));
@@ -52,9 +48,7 @@ async function main() {
   let browser;
   let setup;
   let activeRun;
-  let complete;
-  let failed;
-  let finished = new Promise((resolve, reject) => { complete = resolve; failed = reject; });
+  let { promise: finished, resolve: complete, reject: failed } = Promise.withResolvers();
   // Install the rejection handler immediately, including during startup.
   finished.catch(() => {});
   let persistent = values.ui || values.manual;
@@ -73,24 +67,24 @@ async function main() {
   };
   let aborted = () => failed(controller.signal.reason);
   controller.signal.addEventListener('abort', aborted, { once: true });
-  let cleanups = [];
+  let cleanups = createCleanup();
   try {
     if (config.setup) {
       let module = await import(pathToFileURL(config.setup).href);
       setup = await module.default({ config, signal: controller.signal });
-      if (setup?.teardown) cleanups.push(setup.teardown);
+      if (setup?.teardown) cleanups.add(setup.teardown);
     }
     controller.signal.throwIfAborted();
     gateway = await createGateway(config, bundle, { fixtures: setup?.fixtures, onEvent: report, rebuild: persistent ? () => buildSuite(config) : null });
-    cleanups.push(() => gateway.close());
+    cleanups.add(() => gateway.close());
     appServer = await startWebServer({ ...config.webServer, env: { ...config.webServer.env, ...setup?.env, DYNO_URL: gateway.origin } }, {
       signal: controller.signal,
       output: message => { if (!values.json) process.stderr.write(`[app] ${message}`); }
     });
-    cleanups.push(() => appServer.stop());
+    cleanups.add(() => appServer.stop());
     let appExited = () => failed(appServer.failure ?? new Error('App server stopped.'));
     appServer.child?.once('exit', appExited);
-    cleanups.push(async () => appServer.child?.removeListener('exit', appExited));
+    cleanups.add(async () => appServer.child?.removeListener('exit', appExited));
     let captureURL = new URL(gateway.url);
     if (values.test) captureURL.searchParams.set('test', values.test);
     console.log(values.json ? JSON.stringify({ type: 'ready', url: captureURL.href, appURL: config.webServer.url, files: bundle.files }) : `\nDyno: ${captureURL.href}\nApp: ${config.webServer.url}\n${bundle.files.length} test file(s) bundled`);
@@ -101,7 +95,7 @@ async function main() {
     }
     if (!values.manual) {
       browser = await launchBrowser(captureURL.href, { ...config.browser, headless: !values.ui, onExit: failed });
-      cleanups.push(() => browser.stop());
+      cleanups.add(() => browser.stop());
     }
     let deadline = persistent ? null : AbortSignal.timeout(config.runTimeout);
     let expired = () => failed(new Error(`No complete browser result within ${config.runTimeout} ms. The browser may be disconnected, blocked, or stuck.`));
@@ -112,8 +106,9 @@ async function main() {
     if (controller.signal.aborted) { process.exitCode = 130; }
     else throw error;
   } finally {
-    for (let cleanup of cleanups.reverse()) {
-      try { await cleanup(); } catch (error) { console.error(`Cleanup failed: ${error.message}`); process.exitCode = 1; }
+    for (let error of await cleanups.run()) {
+      console.error(`Cleanup failed: ${error.message}`);
+      process.exitCode = 1;
     }
     process.removeListener('SIGINT', interrupt);
     process.removeListener('SIGTERM', terminate);

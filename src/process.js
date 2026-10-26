@@ -15,7 +15,8 @@ export function startProcess(command, { cwd, env, output = () => {}, shell = tru
     output(message);
     events.emit('change');
   });
-  let stop = async () => {
+  let stopping;
+  let stop = () => stopping ??= (async () => {
     if (!child.pid) return;
     let send = signal => {
       try { process.platform === 'win32' ? child.kill(signal) : process.kill(-child.pid, signal); }
@@ -28,7 +29,7 @@ export function startProcess(command, { cwd, env, output = () => {}, shell = tru
     }
     // Descendants may outlive a shell; stop the complete owned process group.
     send('SIGKILL');
-  };
+  })();
   return { child, events, stop, get logs() { return logs; }, get failure() { return failed; } };
 }
 
@@ -72,7 +73,7 @@ export async function startWebServer(config, { output = () => {}, signal } = {})
         checking = true;
         changedDuringCheck = false;
         try {
-          let ready = !config.ready || (config.ready instanceof RegExp ? config.ready.test(owned.logs) : owned.logs.includes(config.ready));
+          let ready = !config.ready || (config.ready instanceof RegExp ? new RegExp(config.ready.source, config.ready.flags).test(owned.logs) : owned.logs.includes(config.ready));
           if (ready && await reachable(config.url)) finish();
         } catch (error) { finish(error); }
         finally {

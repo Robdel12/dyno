@@ -13,7 +13,9 @@
   "files": [
     "bin",
     "src",
-    "README.md"
+    "README.md",
+    "vision.md",
+    "docs/guide.md"
   ],
   "scripts": {
     "test": "node --test --test-concurrency=1 tests/*.test.js",

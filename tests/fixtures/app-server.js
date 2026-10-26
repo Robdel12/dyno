@@ -37,8 +37,31 @@ let html = `<!doctype html><html><head><meta charset="utf-8"><title>Fixture app<
 <p role="status">Ready</p><button id="property">Change property</button><button id="reject">Reject</button><a href="/other">Other page</a>
 <button id="dismiss">Dismiss notice</button><label>Review mode <select><option>Choose mode</option><option>Compare</option></select></label><output>No review mode</output>
 <script>${script}</script></body></html>`;
+let lifecycle = [];
 let server = http.createServer(async (request, response) => {
   response.setHeader('Cache-Control', 'no-store');
+  if (request.url === '/api/lifecycle') {
+    if (request.method === 'POST') {
+      let body = '';
+      for await (let chunk of request) body += chunk;
+      lifecycle = [...lifecycle, body];
+    }
+    response.writeHead(200, { 'Content-Type': 'application/json' });
+    response.end(JSON.stringify(lifecycle));
+    return;
+  }
+  if (request.url === '/api/logout') { response.writeHead(200, { 'Set-Cookie': 'saved=; Max-Age=0; HttpOnly; Path=/' }); response.end('signed out'); return; }
+  if (request.url === '/api/crash') { response.end('stopping'); queueMicrotask(() => process.exit(9)); return; }
+  if (request.url === '/nonce-app') {
+    response.writeHead(200, { 'Content-Type': 'text/html', 'Content-Security-Policy': "default-src 'none'; script-src 'nonce-fixture'; frame-ancestors 'self'" });
+    response.end('<!doctype html><html><head><title>Nonce app</title></head><body><h1>Booting</h1><script nonce="fixture">document.querySelector("h1").textContent = "Nonce app ready"</script></body></html>');
+    return;
+  }
+  if (request.url === '/blocked-app') {
+    response.writeHead(200, { 'Content-Type': 'text/html', 'Content-Security-Policy': "default-src 'none'; script-src 'none'; frame-ancestors 'self'" });
+    response.end('<!doctype html><html><head><title>Blocked app</title></head><body><h1>Scripts blocked</h1></body></html>');
+    return;
+  }
   if (request.url === '/api/save') {
     let body = '';
     for await (let chunk of request) body += chunk;

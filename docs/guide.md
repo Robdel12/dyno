@@ -40,7 +40,7 @@ npm install --save-dev /Users/robertdeluca/Developer/Dyno
 npx dyno init
 ```
 
-`init` writes a config and one example test without overwriting existing files. Update them for your application, then add `"test:browser": "dyno"` to your package scripts.
+`init` writes a config and one example test without overwriting existing files. It checks both paths before writing, so a conflict leaves the project alone. Update them for your application, then add `"test:browser": "dyno"` to your package scripts.
 
 `dyno.config.js`:
 
@@ -197,12 +197,14 @@ Both pass in real Chrome using native Interactor.js typing, click, and assertion
 
 ## Verification and current limits
 
-`npm test` runs Node checks for pure HTML/header transformations and integration checks through the actual CLI, HTTP gateway, app process, WebSocket connection, and Chrome. Checks cover pass/fail reporting, error attribution, source maps, cookies/origins, navigation, property-only changes, fresh realms, unresolved tests, server ownership, edited-test rebuilds, immutable run bundles, duplicate reports, and signal cleanup. No internal framework modules are mocked.
+`npm test` runs Node checks for pure HTML/header transformations and integration checks through the actual CLI, HTTP gateway, app process, WebSocket connection, and Chrome. Checks cover installation and init, configuration errors, hooks, sessions and explicit resets, CSP, error attribution, source maps, navigation, fresh realms, timeouts, server ownership and crashes, rebuilds, concurrent captures, rejected reports, and signal cleanup. Small pure-function checks verify that configuration, suite definitions, and run transitions preserve earlier snapshots. No internal framework modules are mocked.
 
 The first release targets modern browser APIs and ES2022 syntax. Automated launching and process-group cleanup are implemented for macOS/Linux Chrome/Chromium; other capable browsers can capture manually but have not been validated. A historical WebOS browser is not yet a supported compatibility target.
 
 Interactions use browser DOM methods and synthetic events. They do not prove physical pointer hit-testing or support every API requiring trusted input/user activation. Closed shadow roots, native dialogs, downloads, screenshots/video, parallel scheduling, automatic file watching, and HTTPS gateway serving are outside this first version. Secure cookies and secure-context-only app features require an appropriate origin and may not work through this HTTP gateway.
 
 Same-origin frames are trusted code sharing an origin, not a security sandbox. A synchronous infinite loop may freeze all three frames; the Node run deadline can report failure and terminate a launched browser, but cannot recover a manually captured browser's event loop.
+
+Suite definitions, normalized configuration, and run results are immutable snapshots. Process handles, sockets, and DOM nodes stay at the boundaries; cleanup runs once, in reverse order, and continues after a failure.
 
 The framework lives in `bin/` and `src/`. Original spike artifacts are kept separately from this repo.

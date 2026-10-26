@@ -4,6 +4,7 @@ import { once } from 'node:events';
 import { randomUUID } from 'node:crypto';
 import { proxyRequest, proxyUpgrade } from './proxy.js';
 import { mapStack } from './stack.js';
+import { createRun, acceptEvent } from './run.js';
 
 let prefix = '/__dyno__/';
 let page = (title, body, script) => `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>${title}</title><link rel="stylesheet" href="${prefix}style.css"></head><body>${body}<script type="module" src="${prefix}${script}"></script></body></html>`;
@@ -43,30 +44,21 @@ export async function createGateway(config, bundle, { fixtures = {}, onEvent = (
           let snapshot = rebuild ? await rebuild() : bundle;
           if (runs.size >= 20) { let oldest = runs.keys().next().value; runs.delete(oldest); bundles.delete(oldest); }
           let runId = randomUUID();
-          runs.set(runId, { runId, status: 'captured', tests: [], outcomes: [] });
+          runs.set(runId, createRun(runId));
           bundles.set(runId, snapshot);
           onEvent({ type: 'capture', runId });
           return send('application/json', JSON.stringify({ runId }));
         }
         let body = '';
         for await (let chunk of request) { body += chunk; if (body.length > 1_000_000) throw new Error('Reporter event exceeds 1 MB.'); }
-        let event = JSON.parse(body);
-        let run = runs.get(event.runId);
-        if (!run || ['completed', 'failed'].includes(run.status)) throw new Error('Unknown or finished run.');
-        if (event.error?.stack) event.error.stack = mapStack(event.error.stack, bundles.get(event.runId)?.map, config.root);
-        if (event.type === 'start') {
-          if (run.status !== 'captured' || !Array.isArray(event.tests) || !event.tests.length || event.tests.some(name => typeof name !== 'string')) throw new Error('Invalid run start.');
-          run.status = 'running'; run.tests = event.tests;
-        } else if (event.type === 'test') {
-          if (run.status !== 'running' || event.index !== run.outcomes.length || event.name !== run.tests[event.index] || !['passed', 'failed'].includes(event.status)) throw new Error('Unexpected or duplicate test result.');
-          run.outcomes.push(event);
-        } else if (event.type === 'complete') {
-          if (run.status !== 'running' || run.outcomes.length !== run.tests.length) throw new Error('Run completed before all tests reported.');
-          event.failed = run.outcomes.filter(item => item.status === 'failed').length;
-          event.passed = run.outcomes.length - event.failed;
-          run.status = 'completed'; run.summary = event;
-        } else if (event.type === 'fatal') { run.status = 'failed'; }
-        else throw new Error('Unknown reporter event.');
+        let input = JSON.parse(body);
+        if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('Reporter event must be an object.');
+        let eventInput = typeof input.error?.stack === 'string' ? {
+          ...input,
+          error: { ...input.error, stack: mapStack(input.error.stack, bundles.get(input.runId)?.map, config.root) }
+        } : input;
+        let { run, event } = acceptEvent(runs.get(input.runId), eventInput);
+        runs.set(run.runId, run);
         send('application/json', JSON.stringify({ error: event.error }));
         onEvent(event);
         return;
