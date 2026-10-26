@@ -44,4 +44,4 @@ npm run test:vizzly
 
 The Vizzly example needs a sibling Vizzly checkout, its built frontend, and Docker. It creates and removes its own test services.
 
-Start with [the vision](vision.md). The [guide](docs/guide.md) covers configuration and current limits. Screenshots are still research; interactions use synthetic DOM events.
+Start with [the vision](vision.md). The [guide](docs/guide.md) covers configuration and current limits. [Screenshot research](docs/research/screenshots.md) is separate from the runtime; interactions use synthetic DOM events.
