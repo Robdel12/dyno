@@ -86,16 +86,16 @@ export async function boot() {
       await abortable(test.run(context));
       controller.signal.throwIfAborted();
       outcome = { status: 'passed' };
-    } catch (error) { outcome = { status: 'failed', error: serialize(error) }; }
+    } catch (error) { outcome = { status: 'failed', error: { ...serialize(error), declaration: test.declaration } }; }
     finally {
       for (let hook of suite.afterEach) {
         try { await abortable(hook(context)); }
-        catch (error) { outcome = { status: 'failed', error: serialize(error) }; }
+        catch (error) { outcome = { status: 'failed', error: { ...serialize(error), declaration: test.declaration } }; }
       }
       try {
         await abortable(checkpoint());
         controller.signal.throwIfAborted();
-      } catch (error) { if (outcome.status === 'passed') outcome = { status: 'failed', error: serialize(error) }; }
+      } catch (error) { if (outcome.status === 'passed') outcome = { status: 'failed', error: { ...serialize(error), declaration: test.declaration } }; }
       controller.abort(new Error('Test finished'));
       waiters.clear();
     }

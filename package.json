@@ -15,11 +15,14 @@
     "src",
     "README.md",
     "vision.md",
-    "docs/guide.md"
+    "docs/guide.md",
+    "docs/browsers.md",
+    "docs/research/screenshots.md"
   ],
   "scripts": {
     "test": "node --test --test-concurrency=1 tests/*.test.js",
-    "test:vizzly": "node bin/dyno.js --config examples/vizzly/dyno.config.js"
+    "test:vizzly": "node bin/dyno.js --config examples/vizzly/dyno.config.js",
+    "test:firefox": "node scripts/test.js firefox"
   },
   "engines": {
     "node": ">=24"
@@ -29,5 +32,6 @@
     "esbuild": "0.28.2",
     "interactor.js": "3.6.2",
     "parse5": "8.0.0"
-  }
+  },
+  "private": true
 }

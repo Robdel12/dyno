@@ -6,14 +6,14 @@ This is a working first version with project configuration, managed app processe
 
 ## Try it
 
-Requires Node 24+ and Chrome/Chromium for the default launcher.
+Requires Node 24+ and an installed browser. Chrome is the default; see [browser setup](browsers.md) for Firefox, Edge, Chromium, and Safari.
 
 ```sh
 npm install
 node bin/dyno.js --config examples/demo/dyno.config.js
 ```
 
-That command starts the demo app, builds its tests, launches a disposable headless Chrome instance, prints results, and stops the processes it owns. Exit status is 0 for passing tests and 1 for failures.
+That command starts the demo app, builds its tests, launches a disposable headless browser, prints results, and stops the processes it owns. Exit status is 0 for passing tests, 1 for failures, 130 for SIGINT, and 143 for SIGTERM.
 
 Use a visible browser while writing tests:
 
@@ -154,11 +154,11 @@ Origin storage and backend state are intentionally explicit: frames do not reset
 | `expectTimeout` | `2000`, capped at half the test timeout | Interactor assertion timeout |
 | `runTimeout` | `60000` | Headless completion deadline for missing/stuck browsers |
 | `host`, `port` | `127.0.0.1`, `7357` | Gateway address; port 0 chooses an available port |
-| `browser.path`, `browser.args` | Installed Chrome | Explicit launcher executable and extra arguments |
+| `browser.name`, `browser.path`, `browser.args` | `chrome` | Browser family, executable, and extra arguments |
 | `webServer.url` | Required | App HTTP(S) origin, without a path |
 | `webServer.command` | None | Command to start when the URL is unavailable |
 | `webServer.cwd`, `env` | Config directory, inherited env | App process settings |
-| `webServer.ready` | Any process output | Ready-message string or RegExp, followed by HTTP verification |
+| `webServer.ready` | Any process output | Ready-message string or RegExp after listening, followed by an HTTP HEAD response check |
 | `webServer.timeout` | `30000` | App startup deadline |
 | `webServer.reuseExistingServer` | false | Explicit permission to reuse a responding server |
 | `setup` | None | Path to a Node setup module |
@@ -174,7 +174,7 @@ dyno --config path/to/config.js
 dyno --json                       # structured lifecycle events
 ```
 
-`CHROME_PATH` can select the launcher executable. `--manual` works without Chrome installed. The launcher only starts a browser process at the capture URL; test execution uses no browser automation protocol.
+`CHROME_PATH` can select the launcher executable. `--manual` works without a local browser installed. `dyno browsers` lists available launchers; `--browser` overrides the configured name. The launcher only starts a browser process at the capture URL; test execution uses no browser automation protocol.
 
 ## Real Vizzly integration
 
@@ -199,7 +199,7 @@ Both pass in real Chrome using native Interactor.js typing, click, and assertion
 
 `npm test` runs Node checks for pure HTML/header transformations and integration checks through the actual CLI, HTTP gateway, app process, WebSocket connection, and Chrome. Checks cover installation and init, configuration errors, hooks, sessions and explicit resets, CSP, error attribution, source maps, navigation, fresh realms, timeouts, server ownership and crashes, rebuilds, concurrent captures, rejected reports, and signal cleanup. Small pure-function checks verify that configuration, suite definitions, and run transitions preserve earlier snapshots. No internal framework modules are mocked.
 
-The first release targets modern browser APIs and ES2022 syntax. Automated launching and process-group cleanup are implemented for macOS/Linux Chrome/Chromium; other capable browsers can capture manually but have not been validated. A historical WebOS browser is not yet a supported compatibility target.
+The first release targets modern browser APIs and ES2022 syntax. Managed launchers cover Chrome, Chromium, Edge, and Firefox, with a headed Safari URL handoff on macOS. See [browser setup](browsers.md) for verified builds and platform limits. A historical WebOS browser is not yet a supported compatibility target.
 
 Interactions use browser DOM methods and synthetic events. They do not prove physical pointer hit-testing or support every API requiring trusted input/user activation. Closed shadow roots, native dialogs, downloads, screenshots/video, parallel scheduling, automatic file watching, and HTTPS gateway serving are outside this first version. Secure cookies and secure-context-only app features require an appropriate origin and may not work through this HTTP gateway.
 
@@ -208,3 +208,13 @@ Same-origin frames are trusted code sharing an origin, not a security sandbox. A
 Suite definitions, normalized configuration, and run results are immutable snapshots. Process handles, sockets, and DOM nodes stay at the boundaries; cleanup runs once, in reverse order, and continues after a failure.
 
 The framework lives in `bin/` and `src/`. Original spike artifacts are kept separately from this repo.
+
+## CLI and server behavior
+
+`--json` writes one JSON event per line on stdout, including startup errors and stop events. App logs go to stderr. Setup modules should also log to stderr to preserve that contract. `dyno --help`, `dyno --version`, and `dyno browsers` work without a config. Unknown options, conflicting modes, config typos, and invalid deadlines fail before project setup.
+
+A server that returns an HTTP response already owns its port, including when its root returns 404 or 401. Dyno only reuses it with `reuseExistingServer: true`. Owned servers must log after listening; use `webServer.ready` to match that message. A quiet server or a message printed before listening needs a ready log from its startup wrapper. Startup failures include the URL, deadline, and recent output. No fixed readiness sleeps are used.
+
+The gateway accepts only paths on the configured app origin, rejects unknown Host headers and foreign websocket origins, and supports gzip, deflate, and Brotli HTML within a 10 MB decoded limit. It preserves app CSP. Reporter requests have a 1 MB limit and bounded request time. Up to 20 active browser runs can coexist; new captures fail clearly at capacity, and only finished runs are removed. Browser page departure reports an interrupted run when the browser can still send it.
+
+When a browser omits async assertion frames, errors include the test's source-mapped declaration location. Process cleanup runs once and stops owned descendants as well as the initial command. Reused app servers and Safari's existing session remain user-owned.

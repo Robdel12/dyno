@@ -4,9 +4,13 @@ let list = document.querySelector('#results');
 let area = document.querySelector('#frame');
 let serialized = error => ({ message: error?.message ?? String(error), stack: error?.stack });
 let runId;
+let completed = false;
+window.addEventListener('pagehide', () => {
+  if (runId && !completed) navigator.sendBeacon(root + 'events', JSON.stringify({ runId, type: 'fatal', error: { message: 'Browser left the test run before completion.' } }));
+});
 let events = [];
 let post = async event => {
-  let response = await fetch(root + 'events', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ runId, ...event }) });
+  let response = await fetch(root + 'events', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ runId, ...event }), ...(typeof globalThis.AbortSignal?.timeout === 'function' ? { signal: AbortSignal.timeout(15000) } : {}) });
   if (!response.ok) throw new Error(`Reporter failed: ${response.status} ${await response.text()}`);
   return response.json();
 };
@@ -40,17 +44,17 @@ function runtime(mode, timeout, index) {
   return { result, remove: () => frame.remove() };
 }
 try {
-  if (typeof AbortSignal.timeout !== 'function' || typeof crypto?.getRandomValues !== 'function') throw new Error('This browser needs AbortSignal.timeout and crypto.getRandomValues to run this framework.');
-  let settings = await fetch(root + 'settings').then(response => response.json());
-  let capture = await fetch(root + 'capture', { method: 'POST' });
+  let capture = await fetch(root + 'capture', { method: 'POST', ...(typeof globalThis.AbortSignal?.timeout === 'function' ? { signal: AbortSignal.timeout(15000) } : {}) });
   if (!capture.ok) throw new Error(await capture.text());
   ({ runId } = await capture.json());
+  if (typeof globalThis.AbortSignal?.timeout !== 'function' || typeof globalThis.crypto?.getRandomValues !== 'function') throw new Error('This browser needs AbortSignal.timeout and crypto.getRandomValues. Update the browser before running Dyno.');
+  let settings = await fetch(root + 'settings').then(response => response.json());
   let discovery = runtime('discover', settings.timeout);
   let tests;
   try { tests = await discovery.result; } finally { discovery.remove(); }
   let selected = new URLSearchParams(location.search).get('test');
   if (selected) tests = tests.filter(test => test.name === selected);
-  if (!tests.length) throw new Error('No tests registered. Use test(name, async ({ app }) => …).');
+  if (!tests.length) throw new Error(selected ? `No test named "${selected}". --test uses an exact name.` : 'No tests registered. Use test(name, async ({ app }) => …).');
   await post({ type: 'start', tests: tests.map(test => test.name), userAgent: navigator.userAgent });
   let started = performance.now();
   for (let test of tests) {
@@ -89,6 +93,7 @@ try {
   status.textContent = `${summary.passed} passed, ${failed} failed (${Math.round(summary.duration)} ms)`;
   document.title = `${failed ? 'FAIL' : 'PASS'} — Dyno`;
   await post(summary);
+  completed = true;
 } catch (error) {
   status.textContent = `Run failed: ${error.message}`;
   if (runId) await post({ type: 'fatal', error: serialized(error) }).catch(() => {});

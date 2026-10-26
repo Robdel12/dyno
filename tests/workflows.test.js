@@ -19,7 +19,7 @@ test('a developer can install the checkout, initialize a project, and run its fi
   await exec(bin, ['init'], { cwd: fixture.directory, timeout: 5000 });
   assert.match(await readFile(join(fixture.directory, 'tests/browser/home.test.js'), 'utf8'), /from 'dyno'/);
   await writeFile(join(fixture.directory, 'tests/browser/home.test.js'), `import { test } from 'dyno'; test('my first test', async ({ app, I }) => { await app.goto('/'); await I.find('Fixture app').visible(); });`);
-  await writeFile(join(fixture.directory, 'dyno.config.js'), `import { defineConfig } from 'dyno/config'; export default defineConfig({ port: 0, webServer: { command: [${JSON.stringify(process.execPath)}, ${JSON.stringify(join(repository, 'tests/fixtures/app-server.js'))}], url: 'http://127.0.0.1:${fixture.port}', env: {PORT: '${fixture.port}'} } });`);
+  await writeFile(join(fixture.directory, 'dyno.config.js'), `import { defineConfig } from 'dyno/config'; export default defineConfig({ port: 0, browser: {name: ${JSON.stringify(process.env.DYNO_TEST_BROWSER ?? 'chrome')}}, webServer: { command: [${JSON.stringify(process.execPath)}, ${JSON.stringify(join(repository, 'tests/fixtures/app-server.js'))}], url: 'http://127.0.0.1:${fixture.port}', env: {PORT: '${fixture.port}'} } });`);
   let { stdout, stderr } = await exec(bin, ['--json'], { cwd: fixture.directory, timeout: 15000 });
   let events = stdout.trim().split('\n').filter(line => line.startsWith('{')).map(line => JSON.parse(line));
   assert.equal(events.find(event => event.type === 'complete')?.passed, 2, stderr + stdout);

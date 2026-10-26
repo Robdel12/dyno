@@ -1,6 +1,8 @@
 import http from 'node:http';
 import https from 'node:https';
 import { parse } from 'parse5';
+import { pipeline } from 'node:stream';
+import { gunzipSync, inflateSync, brotliDecompressSync } from 'node:zlib';
 
 export function injectBridge(html) {
   let tree = parse(html, { sourceCodeLocationInfo: true });
@@ -26,7 +28,8 @@ export function injectBridge(html) {
 
 function requestHeaders(request, upstream, gatewayOrigin) {
   let headers = { ...request.headers, host: upstream.host, 'accept-encoding': 'identity' };
-  delete headers.connection;
+  for (let name of String(headers.connection ?? '').split(',')) delete headers[name.trim().toLowerCase()];
+  for (let name of ['connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization', 'te', 'trailer', 'transfer-encoding', 'upgrade']) delete headers[name];
   // Preserve same-origin app semantics at the explicitly configured upstream.
   // Never turn a foreign caller's Origin into a trusted app Origin.
   if (headers.origin === gatewayOrigin) headers.origin = upstream.origin;
@@ -39,7 +42,8 @@ function requestHeaders(request, upstream, gatewayOrigin) {
 
 export function responseHeaders(input, upstream, gatewayOrigin) {
   let headers = { ...input };
-  delete headers.connection;
+  for (let name of String(headers.connection ?? '').split(',')) delete headers[name.trim().toLowerCase()];
+  for (let name of ['connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization', 'te', 'trailer', 'transfer-encoding', 'upgrade']) delete headers[name];
   if (headers.location) {
     let target = new URL(headers.location, upstream);
     if (target.origin === upstream.origin) headers.location = gatewayOrigin + target.pathname + target.search + target.hash;
@@ -51,14 +55,15 @@ export function responseHeaders(input, upstream, gatewayOrigin) {
 
 export function proxyRequest(request, response, { target, gatewayOrigin }) {
   let upstream = new URL(target);
+  let destination = new URL(request.url, upstream);
+  if (destination.origin !== upstream.origin) throw new Error('The app gateway accepts paths on the configured app origin only.');
   let transport = upstream.protocol === 'https:' ? https : http;
-  let outgoing = transport.request(new URL(request.url, upstream), {
+  let outgoing = transport.request(destination, {
     method: request.method, headers: requestHeaders(request, upstream, gatewayOrigin)
   }, async incoming => {
     try {
       let headers = responseHeaders(incoming.headers, upstream, gatewayOrigin);
       if (request.method !== 'HEAD' && /text\/html/i.test(headers['content-type'] ?? '') && incoming.statusCode === 200) {
-        if (headers['content-encoding'] && headers['content-encoding'] !== 'identity') throw new Error('App ignored Accept-Encoding: identity; compressed HTML injection is unsupported.');
         let chunks = [];
         let size = 0;
         for await (let chunk of incoming) {
@@ -66,16 +71,23 @@ export function proxyRequest(request, response, { target, gatewayOrigin }) {
           if (size > 10_000_000) throw new Error('App HTML exceeds the 10 MB injection limit.');
           chunks.push(chunk);
         }
-        let html = injectBridge(Buffer.concat(chunks).toString('utf8'));
+        let bytes = Buffer.concat(chunks);
+        let encoding = headers['content-encoding']?.toLowerCase();
+        let decode = { gzip: gunzipSync, deflate: inflateSync, br: brotliDecompressSync }[encoding];
+        if (decode) bytes = decode(bytes, { maxOutputLength: 10_000_000 });
+        else if (encoding && encoding !== 'identity') throw new Error(`Unsupported HTML encoding: ${encoding}`);
+        let html = injectBridge(bytes.toString('utf8'));
         delete headers['content-length'];
         delete headers['content-encoding'];
         delete headers.etag;
+        delete headers['content-md5'];
+        delete headers.digest;
         headers['cache-control'] = 'no-store';
         response.writeHead(incoming.statusCode, headers);
         response.end(html);
       } else {
         response.writeHead(incoming.statusCode, headers);
-        incoming.pipe(response);
+        pipeline(incoming, response, () => {});
       }
     } catch (error) {
       incoming.destroy();
@@ -89,20 +101,24 @@ export function proxyRequest(request, response, { target, gatewayOrigin }) {
     response.end(`App server unavailable: ${error.message}`);
   });
   request.on('aborted', () => outgoing.destroy());
+  response.once('close', () => { if (!response.writableFinished) outgoing.destroy(); });
   request.pipe(outgoing);
 }
 
 export function proxyUpgrade(request, socket, head, { target, gatewayOrigin }) {
   let upstream = new URL(target);
+  let destination = new URL(request.url, upstream);
+  if (destination.origin !== upstream.origin) throw new Error('The app gateway accepts paths on the configured app origin only.');
   let transport = upstream.protocol === 'https:' ? https : http;
   let headers = requestHeaders(request, upstream, gatewayOrigin);
   headers.connection = 'Upgrade';
-  let outgoing = transport.request(new URL(request.url, upstream), { headers });
+  headers.upgrade = request.headers.upgrade;
+  let outgoing = transport.request(destination, { headers });
   socket.once('close', () => outgoing.destroy());
   outgoing.setTimeout(30000, () => outgoing.destroy(new Error('App WebSocket upgrade exceeded 30 seconds')));
   outgoing.on('upgrade', (response, upstreamSocket, upstreamHead) => {
     socket.write(`HTTP/1.1 ${response.statusCode} ${response.statusMessage}\r\n`);
-    for (let [name, value] of Object.entries(response.headers)) socket.write(`${name}: ${value}\r\n`);
+    for (let [name, value] of Object.entries({ ...responseHeaders(response.headers, upstream, gatewayOrigin), connection: 'Upgrade', upgrade: response.headers.upgrade })) socket.write(`${name}: ${value}\r\n`);
     socket.write('\r\n');
     if (upstreamHead.length) socket.write(upstreamHead);
     if (head.length) upstreamSocket.write(head);

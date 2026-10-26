@@ -27,7 +27,7 @@ async function project(source, overrides = {}) {
   await mkdir(join(directory, 'tests'));
   await writeFile(join(directory, 'package.json'), '{"type":"module"}');
   await writeFile(join(directory, 'tests/workflow.test.js'), `import { test, beforeEach, afterEach, Interactor } from 'dyno';\n${source}`);
-  let config = { testDir: './tests', port: 0, timeout: 1800, runTimeout: 15000, ...overrides,
+  let config = { testDir: './tests', browser: { name: process.env.DYNO_TEST_BROWSER ?? 'chrome' }, port: 0, timeout: 1800, runTimeout: 15000, ...overrides,
     webServer: { command: [process.execPath, fixtureServer], url: `http://127.0.0.1:${port}`, ready: 'FIXTURE_READY', env: { PORT: String(port) }, ...overrides.webServer }
   };
   await writeFile(join(directory, 'dyno.config.js'), `export default ${JSON.stringify(config)};`);
@@ -160,7 +160,7 @@ test('app startup and browser launch failures stop owned processes', { timeout: 
     try {
       let result = await run(fixture.directory).completion;
       assert.equal(result.code, 1, result.stderr + result.stdout);
-      assert.match(result.stderr, /Process exited \(7\)|Chrome\/Chromium not found/);
+      assert.match(result.stderr, /Process exited \(7\)|chrome not found/);
       await assert.rejects(fetch(`http://127.0.0.1:${fixture.port}`));
     } finally { await fixture.cleanup(); }
   }
@@ -193,7 +193,7 @@ test('manual capture rebuilds changed tests, freezes active bundles, rejects dup
     let foreignWrite = await fetch(new URL('/api/save', url), { method: 'POST', headers: { Origin: 'https://foreign.example', 'Content-Type': 'application/json' }, body: '{}' });
     assert.equal(foreignWrite.status, 403);
     let socket = new WebSocket(url.replace('http:', 'ws:').replace('/__dyno__/', '/socket'));
-    let [message] = await once(socket, 'message');
+    let [message] = await once(socket, 'message', { signal: AbortSignal.timeout(5000) });
     assert.equal(message.data, 'hello');
     let closed = once(socket, 'close');
     socket.close();
@@ -219,7 +219,7 @@ test('manual capture rebuilds changed tests, freezes active bundles, rejects dup
   } finally {
     process.child.kill('SIGTERM');
     let result = await process.completion;
-    assert.equal(result.code, 130, result.stderr + result.stdout);
+    assert.equal(result.code, 143, result.stderr + result.stdout);
     await assert.rejects(fetch(`http://127.0.0.1:${fixture.port}`));
     await fixture.cleanup();
   }

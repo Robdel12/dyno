@@ -1,5 +1,7 @@
 import http from 'node:http';
+import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
+import { gzipSync, brotliCompressSync } from 'node:zlib';
 
 let script = `
 window.appOnly = true;
@@ -38,8 +40,35 @@ let html = `<!doctype html><html><head><meta charset="utf-8"><title>Fixture app<
 <button id="dismiss">Dismiss notice</button><label>Review mode <select><option>Choose mode</option><option>Compare</option></select></label><output>No review mode</output>
 <script>${script}</script></body></html>`;
 let lifecycle = [];
+let descendantPort;
+let listening = false;
+let announced = false;
+function announceReady() {
+  if (announced || !listening || (process.env.SPAWN_DESCENDANT && !descendantPort)) return;
+  announced = true;
+  console.log(`FIXTURE_READY ${server.address().port} PID=${process.pid}`);
+}
+if (process.env.SPAWN_DESCENDANT) {
+  let descendant = spawn(process.execPath, ['--input-type=module', '-e', `import http from 'node:http'; process.on('SIGTERM', () => {}); let server=http.createServer((req,res)=>res.end('descendant')); server.listen(0,'127.0.0.1',()=>console.log(server.address().port));`], { stdio: ['ignore', 'pipe', 'inherit'] });
+  descendant.stdout.setEncoding('utf8');
+  descendant.stdout.on('data', data => { descendantPort = Number(data.trim()); announceReady(); });
+}
 let server = http.createServer(async (request, response) => {
   response.setHeader('Cache-Control', 'no-store');
+  if (['/gzip-app', '/brotli-app'].includes(request.url)) {
+    let gzip = request.url === '/gzip-app';
+    let bytes = (gzip ? gzipSync : brotliCompressSync)(Buffer.from(html));
+    response.writeHead(200, { 'Content-Type': 'text/html', 'Content-Encoding': gzip ? 'gzip' : 'br', 'Content-Length': bytes.length });
+    response.end(bytes);
+    return;
+  }
+  if (request.url === '/broken-stream') {
+    response.writeHead(200, { 'Content-Type': 'application/octet-stream', 'Content-Length': '1000000' });
+    response.write('partial');
+    setImmediate(() => response.destroy());
+    return;
+  }
+  if (request.url === '/descendant') { response.setHeader('Content-Type', 'application/json'); response.end(JSON.stringify({port:descendantPort})); return; }
   if (request.url === '/api/lifecycle') {
     if (request.method === 'POST') {
       let body = '';
@@ -85,4 +114,4 @@ server.on('upgrade', (request, socket) => {
   socket.on('data', () => socket.end(Buffer.from([0x88, 0])));
   socket.on('error', () => socket.destroy());
 });
-server.listen(Number(process.env.PORT), '127.0.0.1', () => console.log(`FIXTURE_READY ${server.address().port} PID=${process.pid}`));
+server.listen(Number(process.env.PORT), '127.0.0.1', () => { listening = true; announceReady(); });

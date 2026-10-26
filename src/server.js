@@ -2,6 +2,7 @@ import http from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { once } from 'node:events';
 import { randomUUID } from 'node:crypto';
+import { networkInterfaces } from 'node:os';
 import { proxyRequest, proxyUpgrade } from './proxy.js';
 import { mapStack } from './stack.js';
 import { createRun, acceptEvent } from './run.js';
@@ -11,15 +12,32 @@ let page = (title, body, script) => `<!doctype html><html><head><meta charset="u
 let shell = page('Dyno', '<main><h1>Dyno</h1><p id="status">Discovering tests…</p><button id="rerun" type="button">Run again</button> <button id="all" type="button">All tests</button><ol id="results"></ol><div id="frame"></div></main>', 'shell.js');
 let style = 'html,body{margin:0;min-height:100%;font:15px system-ui;color:#dce3ed;background:#11151d}main{padding:24px}h1{font-size:24px;margin:0 0 12px}button{font:inherit;padding:8px 16px}#results{padding-left:24px}li{padding:8px 0}li[data-status=passed]{color:#8ee4ba}li[data-status=failed]{color:#ff9e9e}pre{white-space:pre-wrap;font-size:12px}#frame>iframe{width:100%;height:760px;border:1px solid #465063}body>iframe{width:100%;height:100vh;border:0;display:block}';
 
+async function reporterInput(request) {
+  let chunks = [];
+  let size = 0;
+  for await (let chunk of request) {
+    size += chunk.length;
+    // Drain oversized requests without retaining their bodies, so the caller
+    // receives an HTTP error instead of a reset connection. requestTimeout bounds this.
+    chunks = size <= 1_000_000 ? [...chunks, chunk] : [];
+  }
+  if (size > 1_000_000) throw Object.assign(new Error('Reporter event exceeds 1 MB.'), { status: 413 });
+  try { return JSON.parse(Buffer.concat(chunks).toString('utf8')); }
+  catch { throw new Error('Reporter body must contain valid JSON.'); }
+}
+
 export async function createGateway(config, bundle, { fixtures = {}, onEvent = () => {}, rebuild } = {}) {
   let runs = new Map();
   let bundles = new Map();
   let sockets = new Set();
   let origin;
-  let server = http.createServer(async (request, response) => {
+  let allowedHosts;
+  let settings = JSON.stringify({ timeout: config.timeout, expectTimeout: config.expectTimeout, files: bundle.files, fixtures });
+  let server = http.createServer({ requestTimeout: 15000, headersTimeout: 10000 }, async (request, response) => {
     try {
+      if (!allowedHosts.has(request.headers.host?.toLowerCase())) { response.writeHead(421); response.end('Unrecognized Dyno gateway host.'); return; }
       let url = new URL(request.url, origin);
-      if (!request.url.startsWith('/')) throw new Error('The test gateway accepts origin-relative request paths only.');
+      if (!request.url.startsWith('/') || url.origin !== origin) throw new Error('The test gateway accepts origin-relative request paths only.');
       if (!url.pathname.startsWith(prefix)) return proxyRequest(request, response, { target: config.webServer.url, gatewayOrigin: `http://${request.headers.host}` });
       response.setHeader('Cache-Control', 'no-store');
       let route = url.pathname.slice(prefix.length);
@@ -36,27 +54,33 @@ export async function createGateway(config, bundle, { fixtures = {}, onEvent = (
       if (route === 'shell.js') return send('text/javascript', (await readFile(new URL('./browser/shell.js', import.meta.url), 'utf8')) + '\ndocument.querySelector("#rerun").addEventListener("click", () => location.reload());\ndocument.querySelector("#all").addEventListener("click", () => { location.href = location.pathname; });');
       if (route === 'bridge.js') return send('text/javascript', await readFile(new URL('./browser/bridge.js', import.meta.url), 'utf8'));
       if (route === 'guard.js') return send('text/javascript', await readFile(new URL('./browser/guard.js', import.meta.url), 'utf8'));
-      if (route === 'settings') return send('application/json', JSON.stringify({ timeout: config.timeout, expectTimeout: config.expectTimeout, files: bundle.files, fixtures }));
+      if (route === 'settings') return send('application/json', settings);
       if (route === 'results' && request.method === 'GET') return send('application/json', JSON.stringify([...runs.values()]));
       if (['capture', 'events'].includes(route) && request.method === 'POST') {
         if (request.headers.origin && request.headers.origin !== `http://${request.headers.host}`) throw new Error('Reporter requests must be same-origin.');
         if (route === 'capture') {
           let snapshot = rebuild ? await rebuild() : bundle;
-          if (runs.size >= 20) { let oldest = runs.keys().next().value; runs.delete(oldest); bundles.delete(oldest); }
+          while (runs.size >= 20) {
+            let finished = [...runs.values()].find(run => ['completed', 'failed'].includes(run.status));
+            if (!finished) { send('text/plain', 'Dyno already has 20 active browser runs. Finish or close one before joining again.', 429); return; }
+            runs.delete(finished.runId);
+            bundles.delete(finished.runId);
+          }
           let runId = randomUUID();
           runs.set(runId, createRun(runId));
           bundles.set(runId, snapshot);
           onEvent({ type: 'capture', runId });
           return send('application/json', JSON.stringify({ runId }));
         }
-        let body = '';
-        for await (let chunk of request) { body += chunk; if (body.length > 1_000_000) throw new Error('Reporter event exceeds 1 MB.'); }
-        let input = JSON.parse(body);
+        let input = await reporterInput(request);
         if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('Reporter event must be an object.');
-        let eventInput = typeof input.error?.stack === 'string' ? {
-          ...input,
-          error: { ...input.error, stack: mapStack(input.error.stack, bundles.get(input.runId)?.map, config.root) }
-        } : input;
+        let eventInput = input;
+        if (input.error) {
+          let stack = typeof input.error.stack === 'string' ? mapStack(input.error.stack, bundles.get(input.runId)?.map, config.root) : undefined;
+          let declaration = typeof input.error.declaration === 'string' ? mapStack(input.error.declaration, bundles.get(input.runId)?.map, config.root) : undefined;
+          if (declaration && !stack?.includes(config.testDir)) stack = `${stack ?? input.error.message}\nTest declared at:\n${declaration}`;
+          eventInput = { ...input, error: { ...input.error, ...(stack ? { stack } : {}), ...(declaration ? { declaration } : {}) } };
+        }
         let { run, event } = acceptEvent(runs.get(input.runId), eventInput);
         runs.set(run.runId, run);
         send('application/json', JSON.stringify({ error: event.error }));
@@ -65,22 +89,38 @@ export async function createGateway(config, bundle, { fixtures = {}, onEvent = (
       }
       send('text/plain', 'Unknown browser test route', 404);
     } catch (error) {
-      if (!response.headersSent) response.writeHead(400, { 'Content-Type': 'text/plain' });
+      if (!response.headersSent) response.writeHead(error.status ?? 400, { 'Content-Type': 'text/plain' });
       response.end(error.message);
     }
   });
   server.on('connection', socket => { sockets.add(socket); socket.on('close', () => sockets.delete(socket)); });
-  server.on('upgrade', (request, socket, head) => proxyUpgrade(request, socket, head, { target: config.webServer.url, gatewayOrigin: `http://${request.headers.host}` }));
+  server.on('upgrade', (request, socket, head) => {
+    let gatewayOrigin = `http://${request.headers.host}`;
+    if (!allowedHosts.has(request.headers.host?.toLowerCase()) || (request.headers.origin && request.headers.origin !== gatewayOrigin)) {
+      socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');
+      return;
+    }
+    try { proxyUpgrade(request, socket, head, { target: config.webServer.url, gatewayOrigin }); }
+    catch { socket.destroy(); }
+  });
   server.listen(config.port, config.host);
-  await once(server, 'listening');
-  let host = config.host === '0.0.0.0' ? '127.0.0.1' : config.host;
+  try { await once(server, 'listening'); }
+  catch (error) { throw new Error(`Cannot listen on ${config.host}:${config.port}: ${error.code ?? error.message}`, { cause: error }); }
+  let host = config.host === '0.0.0.0' ? '127.0.0.1' : config.host === '::' ? '::1' : config.host;
   origin = `http://${host.includes(':') ? `[${host}]` : host}:${server.address().port}`;
+  let hosts = [host];
+  if (['127.0.0.1', '::1', 'localhost'].includes(host)) hosts = [...hosts, '127.0.0.1', '::1', 'localhost'];
+  if (['0.0.0.0', '::'].includes(config.host)) hosts = [...hosts, ...Object.values(networkInterfaces()).flat().map(entry => entry.address)];
+  allowedHosts = new Set(hosts.map(host => `${host.includes(':') ? `[${host}]` : host}:${server.address().port}`.toLowerCase()));
+  let closing;
   return {
     origin, url: origin + prefix,
-    async close() {
-      let closed = new Promise(resolve => server.close(resolve));
-      for (let socket of sockets) socket.destroy();
-      await closed;
+    close() {
+      closing ??= new Promise(resolve => {
+        server.close(resolve);
+        for (let socket of sockets) socket.destroy();
+      });
+      return closing;
     }
   };
 }

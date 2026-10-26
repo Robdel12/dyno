@@ -4,7 +4,7 @@ Browser tests that run in the browser. Dyno starts your app, serves a test URL, 
 
 ## Try it
 
-Requires Node 24+ and Chrome or Chromium.
+Requires Node 24+ and an installed browser. Chrome is the default.
 
 ```sh
 npm ci
@@ -33,7 +33,7 @@ test('saves a contact', async ({ app, I }) => {
 });
 ```
 
-`--ui` opens a browser for inspection and reruns. `--manual` prints a URL you can open yourself. Tests and the app get separate, fresh JavaScript contexts; storage and database cleanup stay explicit.
+`--browser firefox` selects Firefox; `dyno browsers` lists installed launchers. [Browser setup](docs/browsers.md) covers Edge, Chromium, and Safari. `--ui` opens a browser for inspection and reruns. `--manual` prints a URL you can open yourself. Tests and the app get separate, fresh JavaScript contexts; storage and database cleanup stay explicit.
 
 ## Work on Dyno
 
