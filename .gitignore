@@ -1,0 +1,6 @@
+node_modules/
+.dyno/
+test-results/
+*.tgz
+.DS_Store
+docs/tmp-*.md

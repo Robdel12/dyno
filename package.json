@@ -1,0 +1,31 @@
+{
+  "name": "dyno",
+  "version": "0.1.0",
+  "description": "Browser-local acceptance tests from a URL",
+  "type": "module",
+  "bin": {
+    "dyno": "./bin/dyno.js"
+  },
+  "exports": {
+    ".": "./src/browser/index.js",
+    "./config": "./src/config.js"
+  },
+  "files": [
+    "bin",
+    "src",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "node --test --test-concurrency=1 tests/*.test.js",
+    "test:vizzly": "node bin/dyno.js --config examples/vizzly/dyno.config.js"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "dependencies": {
+    "@jridgewell/trace-mapping": "0.3.31",
+    "esbuild": "0.28.2",
+    "interactor.js": "3.6.2",
+    "parse5": "8.0.0"
+  }
+}
