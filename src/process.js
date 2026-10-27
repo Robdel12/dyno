@@ -14,7 +14,13 @@ export async function signalProcessGroup(group, signal) {
       // after every member exited. Verify that before accepting cleanup.
       let { stdout } = await execute('ps', ['-axo', 'pid=,pgid=,stat='], { timeout: 3000 });
       let members = stdout.trim().split('\n').map(line => line.trim().split(/\s+/)).filter(([, pgid]) => Number(pgid) === group);
-      if (members.every(([, , state]) => state?.startsWith('Z'))) return;
+      if (members.every(([pid, , state]) => {
+        if (state?.startsWith('Z')) return true;
+        // A process may disappear while ps collects its snapshot.
+        try { process.kill(Number(pid), 0); }
+        catch (error) { if (error.code === 'ESRCH') return true; }
+        return false;
+      })) return;
       error.message += ` (${signal}, process group ${group}; remaining processes: ${members.map(([pid, , state]) => `${pid} ${state}`).join(', ')})`;
     }
     throw error;

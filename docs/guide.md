@@ -21,11 +21,11 @@ Use a visible browser while writing tests:
 node bin/dyno.js --config examples/demo/dyno.config.js --ui
 ```
 
-The reporter puts your tests, rendered app, and output in one workspace. Search or filter results, select a test to read its output, and use **Run test**, **Run failed**, or **Run all** to rebuild and rerun. Failures include a source excerpt and expandable mapped stack. App and test console messages are labeled separately; **Copy output** copies the selected result and messages.
+The reporter opens on the run overview. Search or filter results, then open a test. Its **Output** view shows failure details, source excerpts, mapped stacks, and labeled app/test console messages. **Application** gives the live app its own space. These are browser routes: back/forward works without restarting the run, and you can copy a test URL. Reloading a URL starts a new run, so it isn’t a saved report. **Run test**, **Run failed**, and **Run all** rebuild the tests before rerunning.
 
-Use **Pause after this test** or **Pause on failure** to inspect the app before continuing. **Stop run** ends the active run while leaving UI/manual mode available. The final app also stays interactive. Moving to the next test disposes the previous context so its background work cannot leak into later tests; rerun a past test to inspect its app again.
+Open **Run options** for **Pause after this test** and **Pause on failure**. A paused run links directly to its app for inspection. **Stop run** ends the active run while leaving UI/manual mode available. The final app also stays interactive. Moving to the next test disposes the previous context so its background work cannot leak into later tests; rerun a past test to inspect its app again.
 
-The app runs at 1280 × 800 and scales to fit the preview. Resizing panels or expanding the app does not change that test viewport. After a test finishes, the viewport control lets you inspect its responsive layout at 768 × 1024 or 390 × 844. The next test always starts at the default size. These are viewport sizes, not device emulation.
+The app runs at 1280 × 800 and scales to fit the preview. Switching routes or resizing the browser does not change that test viewport. After a test finishes, the viewport control lets you inspect its responsive layout at 768 × 1024 or 390 × 844. The next test always starts at the default size. These are viewport sizes, not device emulation.
 
 Console capture supports `log`, `info`, `warn`, `error`, and `debug`. It keeps the first 100 messages per test, limits each message to 2,000 characters, and avoids evaluating object getters. Logging an error does not fail a test. Output capture stops when the test finishes; use the browser console for further inspection.
 

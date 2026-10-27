@@ -223,15 +223,26 @@ test('stopping a run terminates descendants that ignore graceful shutdown', { ti
   await assert.rejects(fetch(`http://127.0.0.1:${fixture.port}`));
 });
 
-test('the browser runner shows results and its Run test button starts a filtered run', { timeout: 90000 }, async t => {
+test('the test detail route reruns a selected test even when its URL is unchanged', { timeout: 90000 }, async t => {
   let name = process.env.DYNO_TEST_BROWSER ?? 'chrome';
   let fixture = await project(t, { config: { browser: { name, args: [name === 'firefox' ? '--headless' : '--headless=new'] } }, source: `
-test('first visible workflow', async ({app,I}) => { await app.goto('/'); await I.find('Fixture app').visible(); });
+test('first visible workflow', async ({app,I}) => {
+  await app.goto('/'); await I.find('Fixture app').visible();
+  await app.request('/api/lifecycle', {method:'POST', body:'visited'});
+  let visits = await (await app.request('/api/lifecycle')).json();
+  if (visits.length === 2) {
+    let UI = new Interactor({root: () => window.top.document.body});
+    await UI.find('$(#rerun)').text('Run test');
+    await UI.click('$(#rerun)');
+    await new Promise(() => {});
+  }
+});
 test('selects a result in the runner', async ({app,I}) => {
   await app.goto('/');
-  let row = window.top.document.querySelector('#results li');
-  await I.assert(() => row.querySelector('button').getAttribute('aria-label') === 'Passed: first visible workflow');
-  row.querySelector('button[title="Run this test"]').click();
+  let UI = new Interactor({root: () => window.top.document.body});
+  await UI.click('$(a[aria-label="Passed: first visible workflow"])');
+  await UI.find('$(#rerun)').text('Run test');
+  await UI.click('$(#rerun)');
   await new Promise(() => {});
 });` });
   let session = fixture.run(['--ui']);
@@ -239,11 +250,14 @@ test('selects a result in the runner', async ({app,I}) => {
   let complete = await session.waitForEvent('complete');
   assert.equal(complete.passed, 1);
   let runs = await (await fetch(url + 'results')).json();
-  assert.equal(runs.length, 2);
-  assert.equal(runs[0].status, 'failed');
-  assert.match(runs[0].error.message, /Browser left/);
+  assert.equal(runs.length, 3);
+  for (let run of runs.slice(0, 2)) {
+    assert.equal(run.status, 'failed');
+    assert.match(run.error.message, /Browser left/);
+  }
   assert.deepEqual(runs[1].tests, ['first visible workflow']);
-  assert.equal(runs[1].status, 'completed');
+  assert.deepEqual(runs[2].tests, ['first visible workflow']);
+  assert.equal(runs[2].status, 'completed');
 });
 
 test('a closed stdout consumer stops owned resources without an uncaught pipe error', { timeout: 15000, skip: process.platform === 'win32' }, async t => {

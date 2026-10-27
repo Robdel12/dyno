@@ -1,4 +1,4 @@
-import { createReporter, selectedTest, testOutput } from './reporter.js';
+import { createReporter, selectedTest, testOutput, reporterRoute } from './reporter.js';
 
 let root = '/__dyno__/';
 let serialized = error => ({ message: error?.message ?? String(error), stack: error?.stack });
@@ -8,7 +8,7 @@ let runId;
 let resume;
 let savedPause = false;
 try { savedPause = localStorage.getItem('dyno:pause-on-failure') === 'true'; } catch {}
-let state = Object.freeze({ phase: 'connecting', tests: [], current: null, selected: null, files: [], appHost: '', browser: '', query: '', filter: 'all', error: null, duration: null, interactive: false, pauseOnFailure: savedPause });
+let state = Object.freeze({ phase: 'connecting', tests: [], current: null, route: reporterRoute(location.hash), files: [], appHost: '', browser: '', query: '', filter: 'all', error: null, duration: null, interactive: false, pauseOnFailure: savedPause });
 let pendingPaint;
 let update = (patch, defer = false) => {
   state = Object.freeze({ ...state, ...patch });
@@ -22,15 +22,17 @@ let update = (patch, defer = false) => {
 };
 let updateTest = (index, patch, defer = false) => update({ tests: state.tests.map(test => test.index === index ? Object.freeze({ ...test, ...patch }) : test) }, defer);
 let rerun = names => {
-  let url = new URL(location.pathname, location.origin);
+  let url = new URL(location.href);
+  url.search = '';
+  if (names.length !== 1) url.hash = '/';
   for (let name of names) url.searchParams.append('test', name);
-  location.href = url.href;
+  history.replaceState(null, '', url);
+  location.reload();
 };
 let render = createReporter({
   rerun,
   runFailed: () => rerun(state.tests.filter(test => test.status === 'failed').map(test => test.name)),
   runSelected: () => { let test = selectedTest(state); if (test) rerun([test.name]); },
-  select: index => update({ selected: index }),
   search: query => update({ query }), filter: filter => update({ filter }),
   pause: () => update({ phase: state.phase === 'pausing' ? 'running' : 'pausing' }),
   resume: () => resume?.(),
@@ -42,6 +44,12 @@ let render = createReporter({
   copy: () => testOutput(selectedTest(state))
 });
 render(state, frames);
+window.addEventListener('hashchange', () => {
+  update({ route: reporterRoute(location.hash) });
+  document.getElementById('run-options').open = false;
+  document.getElementById('main').focus({ preventScroll: true });
+  window.scrollTo(0, 0);
+});
 window.addEventListener('pagehide', () => {
   if (runId && !['completed', 'stopped', 'error'].includes(state.phase)) navigator.sendBeacon(root + 'events', JSON.stringify({ runId, type: 'fatal', error: { message: 'Browser left the test run before completion.' } }));
 });
@@ -55,6 +63,7 @@ function runtime(mode, timeout, index) {
   let frame = document.createElement('iframe');
   frame.title = mode === 'discover' ? 'Discovering browser tests' : `Test runtime: ${state.tests.find(test => test.index === index)?.name}`;
   frame.hidden = mode === 'discover';
+  frame.tabIndex = -1;
   let deadline = AbortSignal.timeout(timeout);
   let result = new Promise((resolve, reject) => {
     let finish = (error, value) => {
@@ -102,7 +111,7 @@ async function paused() {
   resume = resolve;
   controller.signal.addEventListener('abort', aborted, { once: true });
   update({ phase: 'paused' });
-  try { await promise; update({ phase: 'running', selected: null }); }
+  try { await promise; update({ phase: 'running' }); }
   finally { resume = undefined; controller.signal.removeEventListener('abort', aborted); }
 }
 
@@ -141,16 +150,14 @@ try {
     updateTest(test.index, { status, error: reported.error ?? error, duration, output });
     controller.signal.throwIfAborted();
     if (state.interactive && position < tests.length - 1 && (state.phase === 'pausing' || (state.pauseOnFailure && status === 'failed'))) {
-      update({ selected: test.index }); await paused();
+      await paused();
     }
   }
   let failed = state.tests.filter(test => test.status === 'failed').length;
   let summary = { type: 'complete', passed: tests.length - failed, failed, duration: performance.now() - started };
   await post(summary);
   update({ phase: 'completed', duration: summary.duration });
-  document.title = `${failed ? 'FAIL' : 'PASS'} — Dyno`;
 } catch (error) {
   update({ phase: controller.signal.aborted ? 'stopped' : 'error', error: error.message, tests: state.tests.map(test => test.status === 'running' ? { ...test, status: 'stopped' } : test) });
-  document.title = controller.signal.aborted ? 'Stopped — Dyno' : 'FAIL — Dyno';
   if (runId) await post({ type: 'fatal', error: serialized(error) }).catch(() => {});
 }
