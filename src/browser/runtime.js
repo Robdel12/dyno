@@ -1,6 +1,7 @@
 import { getSuite } from './registry.js';
 import { createApp } from './app.js';
 import { createInteractor } from './interactor.js';
+import { captureConsole } from './console.js';
 
 let serialize = error => ({ message: error?.message ?? String(error), stack: error?.stack });
 export async function boot() {
@@ -16,8 +17,18 @@ export async function boot() {
     let index = Number(parameters.get('test'));
     let test = suite.tests[index];
     if (!test) throw new Error(`Unknown test index ${index}`);
-    let settings = await fetch('/__dyno__/settings').then(response => response.json());
+    let settings = await fetch(`/__dyno__/settings?run=${encodeURIComponent(runId)}`).then(response => response.json());
     let controller = new AbortController();
+    let outputStarted = performance.now();
+    let output = [];
+    let collectingOutput = true;
+    let record = (source, entries) => {
+      if (!collectingOutput || output.length >= 100) return;
+      let messages = entries.slice(0, 100 - output.length).map(entry => ({ ...entry, source, elapsed: performance.now() - outputStarted }));
+      output = [...output, ...messages];
+      send('output', { index, entries: messages });
+    };
+    let restoreConsole = captureConsole(console, entries => record('test', entries));
     let frame = document.createElement('iframe');
     frame.title = 'App under test';
     document.body.append(frame);
@@ -44,6 +55,7 @@ export async function boot() {
         return;
       }
       if (frame.contentWindow.__browserTestBridge?.id !== message.id) return;
+      if (message.kind === 'app-output') record('app', message.entries);
       if (message.kind === 'app-error') {
         let error = new Error(message.error.message);
         error.stack = message.error.stack ?? error.stack;
@@ -51,6 +63,7 @@ export async function boot() {
       }
       if (message.kind === 'app-ready' && frame.contentWindow.__browserTestBridge?.id === message.id) {
         state = Object.freeze({ ...state, readyDocument: frame.contentDocument, readyId: message.id });
+        send('location', { index, path: frame.contentWindow.location.pathname + frame.contentWindow.location.search + frame.contentWindow.location.hash });
         frame.contentWindow.addEventListener('error', event => fail(event.error ?? new Error(event.message)));
         frame.contentWindow.addEventListener('unhandledrejection', event => fail(event.reason ?? new Error('Unhandled app rejection')));
         for (let resolve of waiters) resolve();
@@ -73,6 +86,7 @@ export async function boot() {
       frame.name = state.expectedName;
       frame.contentWindow.name = state.expectedName;
       let ready = new Promise(resolve => waiters.add(resolve));
+      send('location', { index, path: target.pathname + target.search + target.hash });
       frame.src = target.href;
       try { await abortable(ready); } finally { waiters.clear(); }
     };
@@ -92,13 +106,20 @@ export async function boot() {
         try { await abortable(hook(context)); }
         catch (error) { outcome = { status: 'failed', error: { ...serialize(error), declaration: test.declaration } }; }
       }
+      restoreConsole();
+      try { frame.contentWindow.__browserTestBridge?.stopOutput?.(); } catch {}
       try {
-        await abortable(checkpoint());
+        await checkpoint();
         controller.signal.throwIfAborted();
       } catch (error) { if (outcome.status === 'passed') outcome = { status: 'failed', error: { ...serialize(error), declaration: test.declaration } }; }
+      try {
+        let location = frame.contentWindow.location;
+        send('location', { index, path: location.pathname + location.search + location.hash });
+      } catch {}
+      collectingOutput = false;
       controller.abort(new Error('Test finished'));
       waiters.clear();
     }
-    send('result', { index, name: test.name, duration: performance.now() - started, ...outcome });
+    send('result', { index, name: test.name, duration: performance.now() - started, ...outcome, output });
   } catch (error) { send('fatal', { error: serialize(error) }); }
 }

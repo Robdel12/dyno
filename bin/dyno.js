@@ -76,7 +76,7 @@ async function main() {
       if (typeof setup?.teardown === 'function') cleanups.add(setup.teardown);
     }
     controller.signal.throwIfAborted();
-    let gateway = await createGateway(config, bundle, { fixtures: setup?.fixtures, onEvent: report, rebuild: persistent ? () => buildSuite(config) : null });
+    let gateway = await createGateway(config, bundle, { fixtures: setup?.fixtures, interactive: Boolean(persistent), onEvent: report, rebuild: persistent ? () => buildSuite(config) : null });
     cleanups.add(() => gateway.close());
     let appServer = await startWebServer({ ...config.webServer, env: { ...config.webServer.env, ...setup?.env, DYNO_URL: gateway.origin } }, {
       signal: controller.signal, output: message => process.stderr.write(`[app] ${message}`)

@@ -1,6 +1,25 @@
-import { spawn } from 'node:child_process';
+import { spawn, execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { once } from 'node:events';
 import { EventEmitter } from 'node:events';
+
+let execute = promisify(execFile);
+
+export async function signalProcessGroup(group, signal) {
+  try { process.kill(-group, signal); }
+  catch (error) {
+    if (error.code === 'ESRCH') return;
+    if (process.platform === 'darwin' && error.code === 'EPERM') {
+      // macOS excludes zombies from group signalling and can report EPERM even
+      // after every member exited. Verify that before accepting cleanup.
+      let { stdout } = await execute('ps', ['-axo', 'pid=,pgid=,stat='], { timeout: 3000 });
+      let members = stdout.trim().split('\n').map(line => line.trim().split(/\s+/)).filter(([, pgid]) => Number(pgid) === group);
+      if (members.every(([, , state]) => state?.startsWith('Z'))) return;
+      error.message += ` (${signal}, process group ${group}; remaining processes: ${members.map(([pid, , state]) => `${pid} ${state}`).join(', ')})`;
+    }
+    throw error;
+  }
+}
 
 export function startProcess(command, { cwd, env, output = () => {}, shell = true, args = [], signal } = {}) {
   let events = new EventEmitter();
@@ -27,22 +46,19 @@ export function startProcess(command, { cwd, env, output = () => {}, shell = tru
   let stop = () => stopping ??= (async () => {
     await ready.catch(() => {});
     if (!child.pid) return;
-    let send = signal => {
-      try { process.kill(-child.pid, signal); }
-      catch (error) { if (error.code !== 'ESRCH') throw error; }
-    };
+    let send = signal => signalProcessGroup(child.pid, signal);
     if (process.platform === 'win32') {
       if (child.exitCode !== null || child.signalCode !== null) return;
       let killer = spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' });
       await once(killer, 'close');
     } else {
-      send('SIGTERM');
+      await send('SIGTERM');
       if (child.exitCode === null && child.signalCode === null) {
         try { await once(child, 'exit', { signal: AbortSignal.timeout(3000) }); }
         catch (error) { if (error.name !== 'AbortError') throw error; }
       }
       // Stop descendants even when the command was a short-lived shell.
-      send('SIGKILL');
+      await send('SIGKILL');
     }
     await closed;
   })();

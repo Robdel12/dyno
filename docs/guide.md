@@ -21,7 +21,15 @@ Use a visible browser while writing tests:
 node bin/dyno.js --config examples/demo/dyno.config.js --ui
 ```
 
-The runner shows each result and its error stack, lets you rerun one test, and leaves the last completed app frame available to inspect. **Run again** rebuilds edited tests before starting another run. App hot reload belongs to the app's own development server; the gateway forwards WebSocket upgrades.
+The reporter puts your tests, rendered app, and output in one workspace. Search or filter results, select a test to read its output, and use **Run test**, **Run failed**, or **Run all** to rebuild and rerun. Failures include a source excerpt and expandable mapped stack. App and test console messages are labeled separately; **Copy output** copies the selected result and messages.
+
+Use **Pause after this test** or **Pause on failure** to inspect the app before continuing. **Stop run** ends the active run while leaving UI/manual mode available. The final app also stays interactive. Moving to the next test disposes the previous context so its background work cannot leak into later tests; rerun a past test to inspect its app again.
+
+The app runs at 1280 × 800 and scales to fit the preview. Resizing panels or expanding the app does not change that test viewport. After a test finishes, the viewport control lets you inspect its responsive layout at 768 × 1024 or 390 × 844. The next test always starts at the default size. These are viewport sizes, not device emulation.
+
+Console capture supports `log`, `info`, `warn`, `error`, and `debug`. It keeps the first 100 messages per test, limits each message to 2,000 characters, and avoids evaluating object getters. Logging an error does not fail a test. Output capture stops when the test finishes; use the browser console for further inspection.
+
+App hot reload belongs to the app's own development server; the gateway forwards WebSocket upgrades.
 
 For a manually opened browser or another device:
 

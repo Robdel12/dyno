@@ -13,11 +13,11 @@ export async function buildSuite(config) {
   if (!files.length) throw new Error(`No browser tests found in ${config.testDir} matching ${config.testMatch}.`);
   let source = files.map(file => `import ${JSON.stringify(file)};`).join('\n');
   source += `\nimport { boot } from ${JSON.stringify(runtime)};\nboot();\n`;
-  let result = await build({
+  let [result, bridge] = await Promise.all([build({
     stdin: { contents: source, resolveDir: config.root, sourcefile: 'dyno-entry.js' },
     bundle: true, write: false, format: 'esm', platform: 'browser', target: 'es2022',
     absWorkingDir: config.root, sourcemap: 'external', outfile: join(config.root, 'suite.js'), logLevel: 'silent',
     alias: { 'dyno': browserEntry }
-  });
-  return { code: result.outputFiles.find(file => file.path.endsWith('suite.js')).text, map: JSON.parse(result.outputFiles.find(file => file.path.endsWith('.map')).text), files: files.map(file => relative(config.root, file)) };
+  }), build({ entryPoints: [fileURLToPath(new URL('./browser/bridge.js', import.meta.url))], bundle: true, write: false, format: 'iife', platform: 'browser', target: 'es2022', logLevel: 'silent' })]);
+  return { bridge: bridge.outputFiles[0].text, code: result.outputFiles.find(file => file.path.endsWith('suite.js')).text, map: JSON.parse(result.outputFiles.find(file => file.path.endsWith('.map')).text), files: files.map(file => relative(config.root, file)) };
 }

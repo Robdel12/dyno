@@ -16,13 +16,13 @@ export function browserCandidates(name, system = process.platform, env = process
   return { chrome: ['google-chrome', 'google-chrome-stable'], chromium: ['chromium', 'chromium-browser'], edge: ['microsoft-edge', 'microsoft-edge-stable'], firefox: ['firefox'], safari: [] }[name] ?? [];
 }
 
-export function browserArguments(name, { profile, headless, args = [], url }) {
+export function browserArguments(name, { profile, headless, args = [], url }, system = process.platform) {
   if (name === 'firefox') return [
     ...args, '--no-remote', '--new-instance', '--profile', profile,
     ...(headless ? ['--headless'] : []), '--new-window', url
   ];
   return [
-    ...args, ...(headless ? ['--headless=new'] : []), '--no-first-run', '--no-default-browser-check', '--disable-background-networking',
+    ...(system === 'linux' ? ['--password-store=basic'] : []), ...args, ...(headless ? ['--headless=new'] : []), '--no-first-run', '--no-default-browser-check', '--disable-background-networking', '--disable-component-update', '--disable-field-trial-config',
     `--user-data-dir=${profile}`, '--window-size=1440,1080', url
   ];
 }

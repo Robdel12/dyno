@@ -1,9 +1,12 @@
+import { captureConsole } from './console.js';
+
 // This small diagnostic bridge executes before app scripts. Tests stay in the parent realm.
 (() => {
   let id = [...crypto.getRandomValues(new Uint32Array(4))].join('-');
   let name = window.name;
   window.__browserTestBridge = { id };
   let send = (kind, extra = {}) => parent.postMessage({ channel: 'dyno', kind, id, name, ...extra }, location.origin);
+  window.__browserTestBridge.stopOutput = captureConsole(console, entries => send('app-output', { entries }));
   let serialize = error => ({ message: error?.message ?? String(error), stack: error?.stack });
   window.addEventListener('error', event => {
     if (event.error || event.message) send('app-error', { error: serialize(event.error ?? new Error(event.message)) });

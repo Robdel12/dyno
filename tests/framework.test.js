@@ -95,6 +95,7 @@ test('runs cleanly after failures', async ({app, I}) => {
   assert.equal(result.summary.failed, 4);
   let errors = result.events.filter(event => event.type === 'test' && event.error).map(event => event.error.message).join('\n');
   assert.match(errors, /Startup exploded/);
+  assert.ok(result.events.find(event => event.name === 'early app exception').output.some(entry => entry.text === 'Startup diagnostic before the exception'));
   assert.match(errors, /Unhandled app rejection/);
   assert.match(errors, /Expected status/);
   assert.match(errors, /text is "Ready" but expected "Expected status"/);

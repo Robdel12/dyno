@@ -230,8 +230,8 @@ test('first visible workflow', async ({app,I}) => { await app.goto('/'); await I
 test('selects a result in the runner', async ({app,I}) => {
   await app.goto('/');
   let row = window.top.document.querySelector('#results li');
-  await I.assert(() => row.textContent.startsWith('✓ first visible workflow'));
-  row.querySelector('button').click();
+  await I.assert(() => row.querySelector('button').getAttribute('aria-label') === 'Passed: first visible workflow');
+  row.querySelector('button[title="Run this test"]').click();
   await new Promise(() => {});
 });` });
   let session = fixture.run(['--ui']);

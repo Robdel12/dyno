@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import { gzipSync, brotliCompressSync } from 'node:zlib';
 
 let script = `
+console.info('Fixture app ready');
 window.appOnly = true;
 let saves = 0;
 let inputInAppRealm = true;
@@ -20,6 +21,7 @@ document.querySelector('form').addEventListener('submit', async event => {
   let response = await fetch('/api/save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: document.querySelector('input').value }) });
   let result = await response.json();
   document.querySelector('[role=status]').textContent = 'Saved ' + result.name + ' · ' + ++saves;
+  console.info('Contact saved', {name: result.name});
 });
 document.querySelector('#property').addEventListener('click', async () => {
   await fetch('/api/value');
@@ -119,7 +121,7 @@ let server = http.createServer(async (request, response) => {
   if (request.url === '/api/cookie') { response.writeHead(200, { 'Content-Type': 'application/json' }); response.end(JSON.stringify({ cookie: request.headers.cookie ?? '' })); return; }
   if (request.url === '/redirect') { response.writeHead(302, { Location: `http://127.0.0.1:${server.address().port}/other` }); response.end(); return; }
   response.writeHead(200, { 'Content-Type': 'text/html', 'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline'; frame-ancestors 'self'", 'X-Frame-Options': 'SAMEORIGIN' });
-  if (request.url === '/startup-error') response.end('<!doctype html><html><head><script>throw new Error("Startup exploded")</script></head><body><h1>Broken app</h1></body></html>');
+  if (request.url === '/startup-error') response.end('<!doctype html><html><head><script>console.error("Startup diagnostic before the exception"); throw new Error("Startup exploded")</script></head><body><h1>Broken app</h1></body></html>');
   else if (request.url === '/other') response.end('<!doctype html><html><head><title>Other</title></head><body><h1>Other page</h1></body></html>');
   else response.end(html);
 });

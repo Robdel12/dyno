@@ -33,7 +33,7 @@ test('saves a contact', async ({ app, I }) => {
 });
 ```
 
-`--browser firefox` selects Firefox; `dyno browsers` lists installed launchers. [Browser setup](docs/browsers.md) covers Edge, Chromium, and Safari. `--ui` opens a browser for inspection and reruns. `--manual` prints a URL you can open yourself. Tests and the app get separate, fresh JavaScript contexts; storage and database cleanup stay explicit.
+`--browser firefox` selects Firefox; `dyno browsers` lists installed launchers. [Browser setup](docs/browsers.md) covers Edge, Chromium, and Safari. `--ui` opens the reporter with the live app, console output, source excerpts, and pause/rerun controls. `--manual` prints a URL you can open yourself. Tests and the app get separate, fresh JavaScript contexts; storage and database cleanup stay explicit.
 
 ## Work on Dyno
 
@@ -41,6 +41,8 @@ test('saves a contact', async ({ app, I }) => {
 npm test
 npm run test:vizzly
 ```
+
+The macOS cleanup regression also uses the system C compiler (`cc`).
 
 The Vizzly example needs a sibling Vizzly checkout, its built frontend, and Docker. It creates and removes its own test services.
 

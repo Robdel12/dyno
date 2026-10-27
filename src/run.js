@@ -2,7 +2,8 @@ function snapshotEvent(event) {
   return Object.freeze({
     ...event,
     ...(event.tests ? { tests: Object.freeze([...event.tests]) } : {}),
-    ...(event.error ? { error: Object.freeze({ ...event.error }) } : {})
+    ...(event.output ? { output: Object.freeze(event.output.map(entry => Object.freeze({ ...entry }))) } : {}),
+    ...(event.error ? { error: Object.freeze({ ...event.error, ...(event.error.source ? { source: Object.freeze({ ...event.error.source }) } : {}) }) } : {})
   });
 }
 
@@ -14,6 +15,8 @@ export function acceptEvent(run, input) {
   if (!run || input.runId !== run.runId || ['completed', 'failed'].includes(run.status)) throw new Error('Unknown or finished run.');
   if (input.duration !== undefined && (typeof input.duration !== 'number' || !Number.isFinite(input.duration) || input.duration < 0)) throw new Error('Event duration must be a non-negative number.');
   if (input.error !== undefined && (!input.error || typeof input.error.message !== 'string' || (input.error.stack !== undefined && typeof input.error.stack !== 'string'))) throw new Error('An event error requires a message and an optional stack.');
+
+  if (input.output !== undefined && (!Array.isArray(input.output) || input.output.length > 100 || input.output.some(entry => !entry || !['app', 'test'].includes(entry.source) || !['log', 'info', 'warn', 'error', 'debug'].includes(entry.level) || typeof entry.text !== 'string' || entry.text.length > 2000 || typeof entry.elapsed !== 'number' || !Number.isFinite(entry.elapsed) || entry.elapsed < 0))) throw new Error('Invalid console output.');
 
   if (input.type === 'start') {
     if (run.status !== 'captured' || !Array.isArray(input.tests) || !input.tests.length || input.tests.some(name => typeof name !== 'string' || !name.trim()) || new Set(input.tests).size !== input.tests.length) throw new Error('Invalid run start.');

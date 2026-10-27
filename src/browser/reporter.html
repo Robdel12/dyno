@@ -1,0 +1,40 @@
+<a class="skip-link" href="#workspace">Skip to test details</a>
+<header class="toolbar">
+  <a class="brand" href="/__dyno__/" aria-label="Dyno, run all tests"><svg viewBox="0 0 28 28" aria-hidden="true"><path d="M5 5h9a9 9 0 0 1 0 18H5V5Zm6 5v8h3a4 4 0 0 0 0-8h-3Z" fill="currentColor"/></svg>dyno<span class="brand-caption">Browser tests</span></a>
+  <div class="run-actions"><button id="stop" class="quiet" disabled>Stop run</button><button id="rerun" class="primary" disabled><span aria-hidden="true">↻</span> Run all</button></div>
+</header>
+<main class="reporter">
+  <section class="run-overview" aria-label="Run summary">
+    <div class="summary-title"><span id="run-indicator" class="run-indicator" aria-hidden="true"></span><h1 id="status" role="status">Connecting to your app…</h1></div>
+    <p id="run-meta">Preparing the browser test suite</p>
+    <div class="summary-counts"><span><strong id="passed-count">0</strong> passed</span><span><strong id="failed-count">0</strong> failed</span><span><strong id="pending-count">0</strong> pending</span><span id="run-duration"></span></div>
+    <progress id="progress" aria-label="Test run progress" max="1" value="0"></progress>
+  </section>
+  <div class="workbench">
+    <aside class="explorer" aria-label="Tests">
+      <div class="explorer-heading"><h2>Tests <span id="test-count">0</span></h2><button id="run-failed" class="text-button" disabled>Run failed</button></div>
+      <label class="search"><span class="sr-only">Filter tests</span><span aria-hidden="true">⌕</span><input id="test-search" type="search" placeholder="Filter tests…" autocomplete="off"><kbd>/</kbd></label>
+      <div class="filters" aria-label="Test status filters"><button data-filter="all" aria-pressed="true">All</button><button data-filter="failed" aria-pressed="false">Failed</button><button data-filter="passed" aria-pressed="false">Passed</button></div>
+      <ol id="results" aria-label="Test results"></ol>
+      <p id="empty-results" class="empty-list" hidden>No tests match this filter.</p>
+      <div class="explorer-footer"><details><summary id="file-count">Test files</summary><ul id="files"></ul></details><p id="browser-name"></p></div>
+    </aside>
+    <section id="workspace" class="workspace" aria-label="Test details" tabindex="-1">
+      <div id="pause-banner" class="pause-banner" hidden><div><strong>Run paused</strong><span id="pause-reason">The app is ready to inspect.</span></div><button id="continue" class="primary">Continue run <span aria-hidden="true">→</span></button></div>
+      <section class="app-panel" aria-label="Rendered application">
+        <header class="panel-toolbar"><div class="panel-title"><h2>Application</h2><span id="preview-state">Waiting</span></div><div class="preview-controls"><label>Viewport <select id="viewport"><option value="1280">1280 × 800</option><option value="768">768 × 1024</option><option value="390">390 × 844</option></select></label><button id="expand" class="text-button" aria-pressed="false">Expand app</button></div></header>
+        <div class="address-bar"><span aria-hidden="true">↳</span><span id="app-address">Your app will appear here</span><button id="follow" class="text-button" hidden>Follow running test</button></div>
+        <div class="app-stage"><div id="preview-sizer"><div id="frame"></div></div><div id="preview-empty" class="preview-empty"><span class="empty-symbol" aria-hidden="true">↳</span><h3>See the test. Inspect the app.</h3><p>The real application renders here as your tests run.</p><button id="inspect-rerun" hidden>Rerun to inspect this app</button></div></div>
+        <div class="preview-caption"><span id="preview-name">Fresh browser context for every test</span><span id="retention-note"></span></div>
+      </section>
+      <div id="output-divider" class="output-divider" role="separator" tabindex="0" aria-label="Resize app and output panels" aria-orientation="horizontal" aria-valuemin="20" aria-valuemax="80" aria-valuenow="38"></div>
+      <section class="output-panel" aria-label="Test output">
+        <header class="panel-toolbar"><div class="panel-title"><h2>Output</h2><span id="output-count"></span></div><button id="copy-output" class="text-button" disabled>Copy output</button></header>
+        <div class="selected-heading"><div><span id="selected-status" class="test-status">Waiting</span><h3 id="selected-name">Select a test to see its output</h3></div><button id="run-selected" disabled>Run test <span aria-hidden="true">↗</span></button></div>
+        <div id="output" class="output-content" tabindex="0" aria-label="Selected test output"><p class="output-empty">Failures, stack traces, and console output will appear here.</p></div>
+        <p id="copy-status" class="sr-only" role="status"></p>
+      </section>
+    </section>
+  </div>
+  <footer class="statusbar"><span id="connection-state">Connecting</span><label id="pause-setting"><input id="pause-on-failure" type="checkbox"> Pause on failure</label><button id="pause" class="text-button" disabled>Pause after this test</button><span class="statusbar-tip">Inspect the app with your browser’s developer tools</span></footer>
+</main>

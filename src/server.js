@@ -4,13 +4,11 @@ import { once } from 'node:events';
 import { randomUUID } from 'node:crypto';
 import { networkInterfaces } from 'node:os';
 import { proxyRequest, proxyUpgrade } from './proxy.js';
-import { mapStack } from './stack.js';
+import { mapStack, sourceContext } from './stack.js';
 import { createRun, acceptEvent } from './run.js';
 
 let prefix = '/__dyno__/';
-let page = (title, body, script) => `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>${title}</title><link rel="stylesheet" href="${prefix}style.css"></head><body>${body}<script type="module" src="${prefix}${script}"></script></body></html>`;
-let shell = page('Dyno', '<main><h1>Dyno</h1><p id="status">Discovering tests…</p><button id="rerun" type="button">Run again</button> <button id="all" type="button">All tests</button><ol id="results"></ol><div id="frame"></div></main>', 'shell.js');
-let style = 'html,body{margin:0;min-height:100%;font:15px system-ui;color:#dce3ed;background:#11151d}main{padding:24px}h1{font-size:24px;margin:0 0 12px}button{font:inherit;padding:8px 16px}#results{padding-left:24px}li{padding:8px 0}li[data-status=passed]{color:#8ee4ba}li[data-status=failed]{color:#ff9e9e}pre{white-space:pre-wrap;font-size:12px}#frame>iframe{width:100%;height:760px;border:1px solid #465063}body>iframe{width:100%;height:100vh;border:0;display:block}';
+let page = (title, body, script, stylesheet = 'runtime.css') => `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>${title}</title><link rel="stylesheet" href="${prefix}${stylesheet}"></head><body>${body}<script type="module" src="${prefix}${script}"></script></body></html>`;
 
 async function reporterInput(request) {
   let chunks = [];
@@ -26,13 +24,14 @@ async function reporterInput(request) {
   catch { throw new Error('Reporter body must contain valid JSON.'); }
 }
 
-export async function createGateway(config, bundle, { fixtures = {}, onEvent = () => {}, rebuild } = {}) {
+export async function createGateway(config, bundle, { fixtures = {}, onEvent = () => {}, rebuild, interactive = false } = {}) {
+  let shell = page('Dyno', await readFile(new URL('./browser/reporter.html', import.meta.url), 'utf8'), 'shell.js', 'reporter.css');
   let runs = new Map();
   let bundles = new Map();
   let sockets = new Set();
   let origin;
   let allowedHosts;
-  let settings = JSON.stringify({ timeout: config.timeout, expectTimeout: config.expectTimeout, files: bundle.files, fixtures });
+  let settings = { timeout: config.timeout, expectTimeout: config.expectTimeout, files: bundle.files, fixtures, interactive, appURL: config.webServer.url };
   let server = http.createServer({ requestTimeout: 15000, headersTimeout: 10000 }, async (request, response) => {
     try {
       if (!allowedHosts.has(request.headers.host?.toLowerCase())) { response.writeHead(421); response.end('Unrecognized Dyno gateway host.'); return; }
@@ -44,17 +43,15 @@ export async function createGateway(config, bundle, { fixtures = {}, onEvent = (
       let send = (type, content, status = 200) => { response.writeHead(status, { 'Content-Type': type }); response.end(content); };
       if (route === '' && request.method === 'GET') return send('text/html; charset=utf-8', shell);
       if (route === 'runtime' && request.method === 'GET') return send('text/html; charset=utf-8', page('Test runtime', '<script src="/__dyno__/guard.js"></script>', `suite.js?run=${encodeURIComponent(url.searchParams.get('run'))}`));
-      if (route === 'style.css') return send('text/css', style);
+      if (['reporter.css', 'runtime.css', 'reporter.js', 'shell.js', 'guard.js'].includes(route)) return send(route.endsWith('.css') ? 'text/css' : 'text/javascript', await readFile(new URL(`./browser/${route}`, import.meta.url), 'utf8'));
       if (['suite.js', 'suite.js.map'].includes(route)) {
         let run = url.searchParams.get('run');
         let snapshot = bundles.get(run);
         if (!snapshot) throw new Error('Unknown test bundle. Reload the capture URL.');
         return route.endsWith('.map') ? send('application/json', JSON.stringify(snapshot.map)) : send('text/javascript', snapshot.code + `\n//# sourceMappingURL=suite.js.map?run=${encodeURIComponent(run)}`);
       }
-      if (route === 'shell.js') return send('text/javascript', (await readFile(new URL('./browser/shell.js', import.meta.url), 'utf8')) + '\ndocument.querySelector("#rerun").addEventListener("click", () => location.reload());\ndocument.querySelector("#all").addEventListener("click", () => { location.href = location.pathname; });');
-      if (route === 'bridge.js') return send('text/javascript', await readFile(new URL('./browser/bridge.js', import.meta.url), 'utf8'));
-      if (route === 'guard.js') return send('text/javascript', await readFile(new URL('./browser/guard.js', import.meta.url), 'utf8'));
-      if (route === 'settings') return send('application/json', settings);
+      if (route === 'bridge.js') return send('text/javascript', bundle.bridge);
+      if (route === 'settings') return send('application/json', JSON.stringify({ ...settings, files: bundles.get(url.searchParams.get('run'))?.files ?? bundle.files }));
       if (route === 'results' && request.method === 'GET') return send('application/json', JSON.stringify([...runs.values()]));
       if (['capture', 'events'].includes(route) && request.method === 'POST') {
         if (request.headers.origin && request.headers.origin !== `http://${request.headers.host}`) throw new Error('Reporter requests must be same-origin.');
@@ -79,7 +76,8 @@ export async function createGateway(config, bundle, { fixtures = {}, onEvent = (
           let stack = typeof input.error.stack === 'string' ? mapStack(input.error.stack, bundles.get(input.runId)?.map, config.root) : undefined;
           let declaration = typeof input.error.declaration === 'string' ? mapStack(input.error.declaration, bundles.get(input.runId)?.map, config.root) : undefined;
           if (declaration && !stack?.includes(config.testDir)) stack = `${stack ?? input.error.message}\nTest declared at:\n${declaration}`;
-          eventInput = { ...input, error: { ...input.error, ...(stack ? { stack } : {}), ...(declaration ? { declaration } : {}) } };
+          let mapped = { ...input.error, ...(stack ? { stack } : {}), ...(declaration ? { declaration } : {}) };
+          eventInput = { ...input, error: { ...mapped, source: sourceContext(mapped, bundles.get(input.runId), config.root) } };
         }
         let { run, event } = acceptEvent(runs.get(input.runId), eventInput);
         runs.set(run.runId, run);
