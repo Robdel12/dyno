@@ -21,11 +21,15 @@ Use a visible browser while writing tests:
 node bin/dyno.js --config examples/demo/dyno.config.js --ui
 ```
 
-The reporter opens on the run overview. Search or filter results, then open a test. Its **Output** view shows failure details, source excerpts, mapped stacks, and labeled app/test console messages. **Application** gives the live app its own space. These are browser routes: back/forward works without restarting the run, and you can copy a test URL. Reloading a URL starts a new run, so it isn’t a saved report. **Run test**, **Run failed**, and **Run all** rebuild the tests before rerunning.
+The app fills its own execution frame. The reporter runs in a separate sibling iframe, with its own styles and globals. Press **Ctrl+Shift+D** in the app to request inspection. During a test, Dyno pauses at the next test boundary before opening the overlay. You can also set the host URL fragment to `#reporter`.
 
-Open **Run options** for **Pause after this test** and **Pause on failure**. A paused run links directly to its app for inspection. **Stop run** ends the active run while leaving UI/manual mode available. The final app also stays interactive. Moving to the next test disposes the previous context so its background work cannot leak into later tests; rerun a past test to inspect its app again.
+The overview supports search and status filters. Each test has **Output** and **Application** routes; output includes source excerpts, mapped stacks, console messages, and screenshot attachments. **Show application** closes the overlay to expose the actual tested app. A **Show test results** button appears while paused or finished. Reporter navigation never moves or scales the app.
 
-The app runs at 1280 × 800 and scales to fit the preview. Switching routes or resizing the browser does not change that test viewport. After a test finishes, the viewport control lets you inspect its responsive layout at 768 × 1024 or 390 × 844. The next test always starts at the default size. These are viewport sizes, not device emulation.
+**Run options** includes **Pause on failure**. **Continue run** closes the overlay before starting the next test. **Stop run** ends execution. The last app remains inspectable; advancing disposes the previous test context. Rerun an earlier test to inspect its app again.
+
+Open `/__dyno__/reporter?run=<run-id>` separately to observe a running test without covering its app. It receives events and sends commands through the gateway. Embedded and standalone reporters use the same UI. **Run test**, **Run failed**, and **Run all** rebuild before rerunning; standalone observers follow the replacement run. Reporter hashes preserve back/forward navigation without starting another run.
+
+Native and manual runs fill the actual browser viewport and follow its resize events. Managed runs default to 1280 × 800 CSS pixels. Set `viewport` in config or await `app.setViewport({width:390,height:844})` inside a test. Inspector sizing is deliberate and resets before the next test. Managed providers may also resize their host; Playwright updates its emulated screen dimensions when doing so. Those values describe the session, not a physical device. Layout sizing works without a driver; it does not emulate a phone, DPR, touch, keyboard, or OS orientation. Manual browsers can have an app frame larger than their visible screen. Managed screenshots require the whole unscaled app to fit; impossible sizes fail clearly.
 
 Console capture supports `log`, `info`, `warn`, `error`, and `debug`. It keeps the first 100 messages per test, limits each message to 2,000 characters, and avoids evaluating object getters. Logging an error does not fail a test. Output capture stops when the test finishes; use the browser console for further inspection.
 
@@ -87,12 +91,13 @@ Node CLI
   ├─ build test modules with esbuild
   ├─ start or explicitly reuse the configured app server
   └─ serve a test gateway
-       ├─ /__dyno__/   capture UI, test bundle, reports
+       ├─ /__dyno__/   execution host, reporter, test bundle, artifacts
        └─ every other path    forwarded to the app server
 
-Browser capture page
-  └─ fresh test-runtime iframe per test
-       └─ fresh app iframe per test
+Browser execution host
+  ├─ fresh test-runtime iframe per test, stable and unscaled
+  │    └─ fresh app iframe per test
+  └─ reporter iframe, hidden during execution/capture
 ```
 
 The application keeps its normal paths: `/login`, `/assets/...`, `/api/...`. HTTP requests and WebSocket upgrades go to the configured app origin. Relative assets, cookies, and same-origin API calls continue to work through the gateway. Redirects pointing at the upstream app are rewritten to the gateway; unrelated external redirects are preserved.
@@ -140,9 +145,11 @@ A small adapter in `src/browser/interactor.js` uses the library's public `define
 
 These address the published package's assumptions about the global Event/MouseEvent/document. Package source is unchanged; no globals are replaced and no test code is injected into the app realm. Tests can import the same `Interactor` class from `dyno` to define additional native actions/assertions through its public API.
 
-The runner owns only app navigation and lifecycle:
+The runner owns app navigation, sizing, and optional capture:
 
 - `app.goto('/path')` waits for the app's early bridge and document readiness. Interactor assertions then wait for rendered UI.
+- `app.setViewport({width,height})` changes the app frame layout and waits for its actual size. Each dimension is 1–8192 CSS pixels.
+- `app.screenshot(name, {optional:false})` awaits a persisted PNG attachment from this browser’s optional provider. See below.
 - `app.request('/api/path', fetchOptions)` makes a real same-origin request with the browser session and returns a standard Response.
 - `app.document` and `app.window` expose the current app realm. Await navigation before direct access; use `I.assert` callbacks or native Interactor selectors for changing state.
 
@@ -163,6 +170,10 @@ Origin storage and backend state are intentionally explicit: frames do not reset
 | `runTimeout` | `60000` | Headless completion deadline for missing/stuck browsers |
 | `host`, `port` | `127.0.0.1`, `7357` | Gateway address; port 0 chooses an available port |
 | `browser.name`, `browser.path`, `browser.args` | `chrome` | Browser family, executable, and extra arguments |
+| `browser.provider` | `native` | URL-only launching, `playwright`, or `webdriver` |
+| `browser.deviceScaleFactor` | `1` | Playwright pixel ratio: 1, 2, or 3 |
+| `viewport` | Browser size; managed: `{width:1280,height:800}` | Explicit per-test app layout dimensions |
+| `artifactsDir` | `.dyno/artifacts` | PNG output, relative to config |
 | `webServer.url` | Required | App HTTP(S) origin, without a path |
 | `webServer.command` | None | Command to start when the URL is unavailable |
 | `webServer.cwd`, `env` | Config directory, inherited env | App process settings |
@@ -182,7 +193,31 @@ dyno --config path/to/config.js
 dyno --json                       # structured lifecycle events
 ```
 
-`CHROME_PATH` can select the launcher executable. `--manual` works without a local browser installed. `dyno browsers` lists available launchers; `--browser` overrides the configured name. The launcher only starts a browser process at the capture URL; test execution uses no browser automation protocol.
+`CHROME_PATH` can select the launcher executable. `--manual` works without a local browser installed. `dyno browsers` lists available launchers; `--browser` overrides the configured name. The native launcher only opens the URL. Optional providers use browser protocols for launch, host sizing, and pixels; test actions and assertions stay browser-local.
+
+## Screenshots
+
+Install an optional provider and select it explicitly; [browser setup](browsers.md) lists the targets. Native/manual runs need no provider package.
+
+```js
+browser: { name: 'chrome', provider: 'playwright' },
+viewport: { width: 1280, height: 800 },
+artifactsDir: '.dyno/artifacts'
+```
+
+```js
+await I.find('Dashboard').visible();
+let image = await app.screenshot('dashboard');
+// image.path, image.url, image.width, image.height, image.pixelRatio
+```
+
+The image is the actual app viewport, excluding the reporter. Dyno waits for app fonts, validates the current document and viewport, stages the PNG, then acknowledges after saving it. Await captures and viewport changes. A test or cleanup hook that finishes with unfinished app operations fails clearly; Dyno does not silently drain fire-and-forget work. Navigation, Stop, viewport changes, or lost ownership invalidate pending images; Dyno never retries against another document or browser. Captures and resizing are serialized per execution.
+
+A missing provider fails a required screenshot. `await app.screenshot('dashboard',{optional:true})` instead returns `{status:'skipped',reason,...}` and reports an explicitly skipped image when no capture capability exists. Connected-provider or storage failures still fail. Images are attachments, not visual assertions or baseline comparisons. Use explicit optional capture only when the functional assertions are sufficient without pixels.
+
+Images included in test results survive CLI cleanup. Interrupted runs discard captures that were never reported. JSON `attachment` events and each test result include metadata: browser/build/provider/version, viewport, pixel ratio, and path. The reporter links to images while the gateway is running. Browser-supplied names never become filesystem paths.
+
+Playwright capture allows animations and retains the caret. It may use internal helper scripts; Dyno never uses its driver to perform test actions or assertions. Capture is a rendered frame during the request, not a freeze of asynchronous app work. Use Interactor to converge on the state you want first.
 
 ## Real Vizzly integration
 
@@ -209,7 +244,7 @@ Both pass in real Chrome using native Interactor.js typing, click, and assertion
 
 The first release targets modern browser APIs and ES2022 syntax. Managed launchers cover Chrome, Chromium, Edge, and Firefox, with a headed Safari URL handoff on macOS. See [browser setup](browsers.md) for verified builds and platform limits. A historical WebOS browser is not yet a supported compatibility target.
 
-Interactions use browser DOM methods and synthetic events. They do not prove physical pointer hit-testing or support every API requiring trusted input/user activation. Closed shadow roots, native dialogs, downloads, screenshots/video, parallel scheduling, automatic file watching, and HTTPS gateway serving are outside this first version. Secure cookies and secure-context-only app features require an appropriate origin and may not work through this HTTP gateway.
+Interactions use browser DOM methods and synthetic events. They do not prove physical pointer hit-testing or support every API requiring trusted input/user activation. Closed shadow roots, native dialogs, downloads, video, full-page captures, visual baselines, parallel scheduling, automatic file watching, and HTTPS gateway serving are outside this first version. Secure cookies and secure-context-only app features require an appropriate origin and may not work through this HTTP gateway.
 
 Same-origin frames are trusted code sharing an origin, not a security sandbox. A synchronous infinite loop may freeze all three frames; the Node run deadline can report failure and terminate a launched browser, but cannot recover a manually captured browser's event loop.
 
@@ -223,6 +258,6 @@ The framework lives in `bin/` and `src/`. Original spike artifacts are kept sepa
 
 A server that returns an HTTP response already owns its port, including when its root returns 404 or 401. Dyno only reuses it with `reuseExistingServer: true`. Owned servers must log after listening; use `webServer.ready` to match that message. A quiet server or a message printed before listening needs a ready log from its startup wrapper. Startup failures include the URL, deadline, and recent output. No fixed readiness sleeps are used.
 
-The gateway accepts only paths on the configured app origin, rejects unknown Host headers and foreign websocket origins, and supports gzip, deflate, and Brotli HTML within a 10 MB decoded limit. It preserves app CSP. Reporter requests have a 1 MB limit and bounded request time. Up to 20 active browser runs can coexist; new captures fail clearly at capacity, and only finished runs are removed. Browser page departure reports an interrupted run when the browser can still send it.
+The gateway accepts only paths on the configured app origin, rejects unknown Host headers and foreign websocket origins, and supports gzip, deflate, and Brotli HTML within a 10 MB decoded limit. It preserves app CSP. Reporter events and commands have a 1 MB body limit; observer snapshots allow 8 MB. Request and operation deadlines are bounded. Up to 20 active browser runs can coexist; new captures fail clearly at capacity, and only finished runs are removed. Browser page departure reports an interrupted run when the browser can still send it.
 
 When a browser omits async assertion frames, errors include the test's source-mapped declaration location. Process cleanup runs once and stops owned descendants as well as the initial command. Reused app servers and Safari's existing session remain user-owned.

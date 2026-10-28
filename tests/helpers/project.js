@@ -46,15 +46,15 @@ export function launch(command, args, cwd, signal) {
   let stopping;
   return {
     child, completion,
-    waitForEvent(type) {
-      let found = events.find(event => event.type === type);
+    waitForEvent(type, predicate = () => true) {
+      let found = events.find(event => event.type === type && predicate(event));
       if (found) return Promise.resolve(found);
       return new Promise((resolve, reject) => {
         let cleanup = () => { subscribers.delete(receive); signal?.removeEventListener('abort', aborted); };
         let aborted = () => { cleanup(); reject(signal.reason); };
         let receive = event => {
           if (!event) { cleanup(); reject(spawnError ?? new Error(`CLI exited before ${type}: ${stderr}${stdout}`)); }
-          else if (event.type === type) { cleanup(); resolve(event); }
+          else if (event.type === type && predicate(event)) { cleanup(); resolve(event); }
         };
         subscribers.add(receive);
         signal?.addEventListener('abort', aborted, { once: true });

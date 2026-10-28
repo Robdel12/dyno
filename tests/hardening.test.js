@@ -102,17 +102,20 @@ test('capture limits preserve active browsers and make room when a run finishes'
   let session = fixture.run(['--manual']);
   let { url } = await session.waitForEvent('ready');
   let ids = [];
+  let connections = [];
   for (let index = 0; index < 20; index++) {
     let response = await fetch(url + 'capture', { method: 'POST' });
     assert.equal(response.status, 200);
-    ids = [...ids, (await response.json()).runId];
+    let connection = await response.json();
+    connections = [...connections, connection];
+    ids = [...ids, connection.runId];
   }
   let full = await fetch(url + 'capture', { method: 'POST' });
   assert.equal(full.status, 429);
   assert.match(await full.text(), /20 active/);
   let results = await (await fetch(url + 'results')).json();
   assert.deepEqual(results.map(run => run.runId), ids);
-  let completed = await fetch(url + 'events', { method: 'POST', body: JSON.stringify({ runId: ids[7], type: 'fatal', error: { message: 'Browser closed' } }) });
+  let completed = await fetch(url + 'events', { method: 'POST', body: JSON.stringify({ runId: ids[7], connectionKey: connections[7].connectionKey, type: 'fatal', error: { message: 'Browser closed' } }) });
   assert.equal(completed.status, 200);
   assert.equal((await fetch(url + 'capture', { method: 'POST' })).status, 200);
   results = await (await fetch(url + 'results')).json();
@@ -183,8 +186,8 @@ test('reporter size limits and origin-relative paths reject bad requests without
   let fixture = await project(t);
   let session = fixture.run(['--manual']);
   let { url } = await session.waitForEvent('ready');
-  let { runId } = await (await fetch(url + 'capture', { method: 'POST' })).json();
-  let large = await fetch(url + 'events', { method: 'POST', body: JSON.stringify({ runId, type: 'fatal', error: { message: 'é'.repeat(600000) } }) });
+  let { runId, connectionKey } = await (await fetch(url + 'capture', { method: 'POST' })).json();
+  let large = await fetch(url + 'events', { method: 'POST', body: JSON.stringify({ runId, connectionKey, type: 'fatal', error: { message: 'é'.repeat(600000) } }) });
   assert.equal(large.status, 413);
   assert.match(await large.text(), /1 MB/);
   let foreign = await new Promise((resolve, reject) => {
@@ -194,7 +197,7 @@ test('reporter size limits and origin-relative paths reject bad requests without
   });
   assert.equal(foreign, 400);
   let names = ['saves café ☕'];
-  let posted = await fetch(url + 'events', { method: 'POST', body: JSON.stringify({ runId, type: 'start', tests: names }) });
+  let posted = await fetch(url + 'events', { method: 'POST', body: JSON.stringify({ runId, connectionKey, type: 'start', tests: names }) });
   assert.equal(posted.status, 200);
   let [run] = await (await fetch(url + 'results')).json();
   assert.deepEqual(run.tests, names);
@@ -223,41 +226,29 @@ test('stopping a run terminates descendants that ignore graceful shutdown', { ti
   await assert.rejects(fetch(`http://127.0.0.1:${fixture.port}`));
 });
 
-test('the test detail route reruns a selected test even when its URL is unchanged', { timeout: 90000 }, async t => {
+test('a reporter can rerun the same selected test repeatedly without changing its URL', { timeout: 90000 }, async t => {
   let name = process.env.DYNO_TEST_BROWSER ?? 'chrome';
   let fixture = await project(t, { config: { browser: { name, args: [name === 'firefox' ? '--headless' : '--headless=new'] } }, source: `
 test('first visible workflow', async ({app,I}) => {
   await app.goto('/'); await I.find('Fixture app').visible();
   await app.request('/api/lifecycle', {method:'POST', body:'visited'});
-  let visits = await (await app.request('/api/lifecycle')).json();
-  if (visits.length === 2) {
-    let UI = new Interactor({root: () => window.top.document.body});
-    await UI.find('$(#rerun)').text('Run test');
-    await UI.click('$(#rerun)');
-    await new Promise(() => {});
-  }
 });
-test('selects a result in the runner', async ({app,I}) => {
-  await app.goto('/');
-  let UI = new Interactor({root: () => window.top.document.body});
-  await UI.click('$(a[aria-label="Passed: first visible workflow"])');
-  await UI.find('$(#rerun)').text('Run test');
-  await UI.click('$(#rerun)');
-  await new Promise(() => {});
-});` });
+test('another workflow', async ({app,I}) => { await app.goto('/'); await I.find('Fixture app').visible(); });` });
   let session = fixture.run(['--ui']);
-  let { url } = await session.waitForEvent('ready');
-  let complete = await session.waitForEvent('complete');
-  assert.equal(complete.passed, 1);
-  let runs = await (await fetch(url + 'results')).json();
-  assert.equal(runs.length, 3);
-  for (let run of runs.slice(0, 2)) {
-    assert.equal(run.status, 'failed');
-    assert.match(run.error.message, /Browser left/);
-  }
-  assert.deepEqual(runs[1].tests, ['first visible workflow']);
-  assert.deepEqual(runs[2].tests, ['first visible workflow']);
-  assert.equal(runs[2].status, 'completed');
+  let {url} = await session.waitForEvent('ready');
+  let first = await session.waitForEvent('complete');
+  let rerun = runId => fetch(url+'control',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId,command:'rerun',names:['first visible workflow']})});
+  assert.equal((await rerun(first.runId)).status,200);
+  let second = await session.waitForEvent('complete', event => event.runId !== first.runId);
+  assert.equal((await rerun(second.runId)).status,200);
+  let third = await session.waitForEvent('complete', event => ![first.runId,second.runId].includes(event.runId));
+  assert.equal(third.passed,1);
+  let runs = await (await fetch(url+'results')).json();
+  assert.equal(runs.length,3);
+  assert.ok(runs.every(run=>run.status==='completed'));
+  assert.deepEqual(runs[1].tests,['first visible workflow']);
+  assert.deepEqual(runs[2].tests,['first visible workflow']);
+  assert.deepEqual(await (await fetch(new URL('/api/lifecycle',url))).json(),['visited','visited','visited']);
 });
 
 test('a closed stdout consumer stops owned resources without an uncaught pipe error', { timeout: 15000, skip: process.platform === 'win32' }, async t => {

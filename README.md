@@ -33,7 +33,18 @@ test('saves a contact', async ({ app, I }) => {
 });
 ```
 
-`--browser firefox` selects Firefox; `dyno browsers` lists installed launchers. [Browser setup](docs/browsers.md) covers Edge, Chromium, and Safari. `--ui` opens the reporter with the live app, console output, source excerpts, and pause/rerun controls. `--manual` prints a URL you can open yourself. Tests and the app get separate, fresh JavaScript contexts; storage and database cleanup stay explicit.
+`--browser firefox` selects Firefox; `dyno browsers` lists installed launchers. [Browser setup](docs/browsers.md) covers Edge, Chromium, and Safari. `--ui` shows the actual app. Press Ctrl+Shift+D to request inspection; the reporter opens in its own overlay at the next test boundary, with output, source excerpts, and pause/rerun controls. `--manual` prints a URL you can open yourself. Tests and the app get separate, fresh JavaScript contexts; storage and database cleanup stay explicit.
+
+## Capture screenshots
+
+Add an optional provider. Tests still execute in the browser:
+
+```sh
+npm install --save-dev playwright-core
+npx dyno --provider playwright --browser chrome
+```
+
+Then `await app.screenshot('dashboard')` saves the real app viewport. `app.setViewport({ width: 390, height: 844 })` also works without a driver. [Browser setup](docs/browsers.md) covers Playwright engine builds and WebDriver for stock browsers, including Safari.
 
 ## Work on Dyno
 
@@ -46,4 +57,4 @@ The macOS cleanup regression also uses the system C compiler (`cc`).
 
 The Vizzly example needs a sibling Vizzly checkout, its built frontend, and Docker. It creates and removes its own test services.
 
-Start with [the vision](vision.md). The [guide](docs/guide.md) covers configuration and current limits. [Screenshot research](docs/research/screenshots.md) is separate from the runtime; interactions use synthetic DOM events.
+Start with [the vision](vision.md). The [guide](docs/guide.md) covers configuration and current limits. [Architecture](docs/architecture.md) explains execution and capture; interactions use synthetic DOM events.

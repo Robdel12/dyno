@@ -17,12 +17,14 @@
     "vision.md",
     "docs/guide.md",
     "docs/browsers.md",
-    "docs/research/screenshots.md"
+    "docs/research/screenshots.md",
+    "docs/architecture.md"
   ],
   "scripts": {
     "test": "node --test --test-concurrency=1 tests/*.test.js",
     "test:vizzly": "node bin/dyno.js --config examples/vizzly/dyno.config.js",
-    "test:firefox": "node scripts/test.js firefox"
+    "test:firefox": "node scripts/test.js firefox",
+    "test:capture": "node --test tests/capture.test.js"
   },
   "engines": {
     "node": ">=24"
@@ -31,7 +33,24 @@
     "@jridgewell/trace-mapping": "0.3.31",
     "esbuild": "0.28.2",
     "interactor.js": "3.6.2",
-    "parse5": "8.0.0"
+    "parse5": "8.0.0",
+    "pngjs": "7.0.0"
   },
-  "private": true
+  "private": true,
+  "devDependencies": {
+    "playwright-core": "1.64.1",
+    "selenium-webdriver": "4.51.0"
+  },
+  "peerDependencies": {
+    "playwright-core": "^1.64.1",
+    "selenium-webdriver": "^4.51.0"
+  },
+  "peerDependenciesMeta": {
+    "playwright-core": {
+      "optional": true
+    },
+    "selenium-webdriver": {
+      "optional": true
+    }
+  }
 }

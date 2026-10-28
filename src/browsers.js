@@ -1,7 +1,7 @@
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 
-export let browserNames = Object.freeze(['chrome', 'chromium', 'edge', 'firefox', 'safari']);
+export let browserNames = Object.freeze(['chrome', 'chromium', 'edge', 'firefox', 'safari', 'webkit']);
 
 export function browserCandidates(name, system = process.platform, env = process.env) {
   let app = { chrome: 'Google Chrome', chromium: 'Chromium', edge: 'Microsoft Edge', firefox: 'Firefox', safari: 'Safari' }[name];

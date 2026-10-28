@@ -13,6 +13,7 @@ import { captureConsole } from './console.js';
     else if (event.target?.localName === 'script') send('app-error', { error: { message: `App script failed to load: ${event.target.src}` } });
   }, true);
   window.addEventListener('unhandledrejection', event => send('app-error', { error: serialize(event.reason) }));
+  window.addEventListener('keydown', event => { if (event.ctrlKey && event.shiftKey && event.code === 'KeyD') { event.preventDefault(); send('inspect'); } });
   window.addEventListener('pagehide', () => send('app-unloading'));
   document.addEventListener('DOMContentLoaded', () => send('app-ready'), { once: true });
   send('app-init');

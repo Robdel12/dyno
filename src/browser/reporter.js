@@ -34,6 +34,9 @@ let names = { pending: 'Pending', running: 'Running', passed: 'Passed', failed: 
 
 export function createReporter(actions) {
   let get = id => document.getElementById(id);
+  write(get('close-reporter'), 'Show app');
+  get('close-reporter').title = actions.embedded ? 'Close the reporter and show the application' : 'Show the application in the test browser; this observer stays open';
+  write(get('show-app'), actions.embedded ? 'Show application' : 'Show app in test browser');
   let rows = new Map();
   let outputKey;
   let outputTest;
@@ -54,17 +57,12 @@ export function createReporter(actions) {
   get('test-search').addEventListener('input', event => actions.search(event.target.value));
   get('pause-on-failure').addEventListener('change', event => actions.pauseOnFailure(event.target.checked));
   for (let button of document.querySelectorAll('[data-filter]')) button.addEventListener('click', () => actions.filter(button.dataset.filter));
-  let sizePreview = () => {
-    let width = Number(get('viewport').value);
-    let height = width === 768 ? 1024 : width === 390 ? 844 : 800;
-    let stage = document.querySelector('.app-stage');
-    let scale = Math.max(.1, Math.min(1, (stage.clientWidth - 24) / width, (stage.clientHeight - 24) / height));
-    Object.assign(get('frame').style, { width: `${width}px`, height: `${height}px`, transform: `scale(${scale})` });
-    Object.assign(get('preview-sizer').style, { width: `${width * scale}px`, height: `${height * scale}px` });
-  };
-  get('viewport').addEventListener('change', sizePreview);
-  new ResizeObserver(sizePreview).observe(document.querySelector('.app-stage'));
-  sizePreview();
+  get('viewport').addEventListener('change', () => {
+    let [width, height] = get('viewport').value.split('x').map(Number);
+    actions.viewport({ width, height });
+  });
+  get('show-app').addEventListener('click', actions.showApp);
+  get('close-reporter').addEventListener('click', actions.close);
   get('copy-output').addEventListener('click', async () => {
     try { await navigator.clipboard.writeText(actions.copy()); write(get('copy-output'), 'Copied'); write(get('copy-status'), 'Test output copied.'); }
     catch { write(get('copy-status'), 'Could not copy. Select the output and copy it with your browser.'); }
@@ -73,7 +71,10 @@ export function createReporter(actions) {
     if (event.key === '/' && view === 'overview' && !event.metaKey && !event.ctrlKey && !event.altKey && !event.target.closest('input,textarea,select,[contenteditable=true]')) {
       event.preventDefault(); get('test-search').focus();
     }
-    if (event.key === 'Escape') closeOptions();
+    if (event.key === 'Escape') {
+      if (get('run-options').open) closeOptions();
+      else if (actions.embedded) actions.close();
+    }
   });
   document.addEventListener('click', event => {
     if (!get('run-options').contains(event.target)) get('run-options').open = false;
@@ -87,7 +88,7 @@ export function createReporter(actions) {
   }
 
   function renderOutput(test, fatal) {
-    let key = JSON.stringify([test?.index, test?.status, test?.error, test?.output.length, fatal]);
+    let key = JSON.stringify([test?.index, test?.status, test?.error, test?.output.length, test?.attachments, fatal]);
     if (key === outputKey) return;
     let append = outputTest === test?.index && outputStatus === test?.status && test?.status === 'running';
     if (outputTest !== test?.index) { write(get('copy-status'), ''); write(get('copy-output'), 'Copy output'); }
@@ -136,16 +137,25 @@ export function createReporter(actions) {
       content.push(element('h2', 'console-heading', 'Console'), logs);
       if (test.output.length === 100) content.push(element('p', 'output-notice', 'Showing the first 100 console messages for this test.'));
     } else if (!error) content.push(element('p', 'output-empty', test?.status === 'running' ? 'Waiting for console output…' : test ? 'No console output for this test.' : 'Select a test to see its output.'));
+    for (let attachment of test?.attachments ?? []) {
+      let figure = element('figure', 'screenshot');
+      if (attachment.status === 'captured') {
+        let link = element('a'); link.href = attachment.url; link.target = '_blank'; link.rel = 'noopener';
+        let image = element('img'); image.src = attachment.url; image.alt = `${attachment.name} — application screenshot`; image.loading = 'lazy'; link.append(image); figure.append(link);
+        figure.append(element('figcaption', '', `${attachment.name} · ${attachment.width} × ${attachment.height} · ${attachment.browser.name}`));
+      } else figure.append(element('figcaption', '', `${attachment.name} · Image skipped: ${attachment.reason}`));
+      content.push(figure);
+    }
     container.replaceChildren(...content);
     if (append && atBottom) container.scrollTop = container.scrollHeight;
     else if (!append) container.scrollTop = 0;
   }
 
-  return function render(state, frames) {
+  return function render(state) {
     let passed = state.tests.filter(test => test.status === 'passed').length;
     let failed = state.tests.filter(test => test.status === 'failed').length;
     let total = state.tests.length;
-    let active = ['running', 'pausing'].includes(state.phase);
+    let active = ['running', 'pausing', 'resuming'].includes(state.phase);
     let test = selectedTest(state);
     view = !total || state.route.page === 'overview' ? 'overview' : test ? 'test' : 'missing';
     let overview = view === 'overview';
@@ -159,7 +169,7 @@ export function createReporter(actions) {
     get('app-panel').setAttribute('aria-hidden', String(!appView));
     let titles = {
       connecting: 'Connecting to your app…', discovering: 'Discovering tests…',
-      running: `Running ${Math.min(passed + failed + 1, total)} of ${total} tests`, pausing: 'Pausing after this test…', paused: 'Paused for inspection',
+      running: `Running ${Math.min(passed + failed + 1, total)} of ${total} tests`, pausing: 'Pausing after this test…', paused: 'Paused for inspection', resuming: 'Continuing tests…',
       completed: failed ? `${failed} ${failed === 1 ? 'test' : 'tests'} failed` : 'All tests passed',
       stopped: 'Run stopped', error: 'The run could not finish'
     };
@@ -176,16 +186,24 @@ export function createReporter(actions) {
     get('rerun').disabled = detail ? !test : !total && state.phase !== 'error';
     write(get('rerun'), detail ? 'Run test' : 'Run all');
     get('run-failed').hidden = !failed;
-    get('stop').hidden = !['discovering', 'running', 'pausing', 'paused'].includes(state.phase);
+    get('stop').hidden = !['discovering', 'running', 'pausing', 'paused', 'resuming'].includes(state.phase);
     get('run-options').hidden = !state.interactive;
-    get('pause').disabled = !active;
+    get('pause').disabled = !['running', 'pausing'].includes(state.phase);
     write(get('pause'), state.phase === 'pausing' ? 'Keep running' : 'Pause after this test');
     get('pause-on-failure').checked = state.pauseOnFailure;
     get('pause-banner').hidden = state.phase !== 'paused';
     get('inspect-paused').href = `#/tests/${state.current}/app`;
     get('inspect-paused').hidden = appView && test.index === state.current;
     get('viewport').disabled = active;
-    if (active && get('viewport').value !== '1280') { get('viewport').value = '1280'; sizePreview(); }
+    let viewport = state.viewport ?? {width:1280,height:800};
+    let size = `${viewport.width}x${viewport.height}`;
+    let custom = get('viewport').querySelector('option[data-current]');
+    if (custom && custom.value !== size) custom.remove();
+    if (![...get('viewport').options].some(option => option.value === size)) {
+      custom = element('option', '', `${viewport.width} × ${viewport.height}`);
+      custom.value = size; custom.dataset.current = 'true'; get('viewport').append(custom);
+    }
+    get('viewport').value = size;
     for (let button of document.querySelectorAll('[data-filter]')) button.setAttribute('aria-pressed', String(button.dataset.filter === state.filter));
     let visible = 0;
     for (let item of state.tests) {
@@ -213,6 +231,8 @@ export function createReporter(actions) {
     get('empty-results').hidden = visible > 0 || !total;
     if (get('files').childElementCount !== state.files.length) get('files').replaceChildren(...state.files.map(file => element('li', '', file)));
     write(get('browser-name'), state.browser); write(get('app-host'), state.appHost);
+    get('standalone-reporter').hidden = !actions.embedded;
+    get('standalone-reporter').href = `/__dyno__/reporter?run=${encodeURIComponent(state.runId)}${location.hash}`;
     write(get('selected-name'), test?.name ?? 'Loading test…');
     write(get('selected-status'), test ? `${names[test.status]}${duration(test.duration) ? ` · ${duration(test.duration)}` : ''}` : '');
     get('selected-status').dataset.status = test?.status ?? 'pending';
@@ -226,14 +246,22 @@ export function createReporter(actions) {
     get('copy-output').disabled = !test || !navigator.clipboard?.writeText;
     get('copy-output').title = navigator.clipboard ? 'Copy this test’s result and console output' : 'Clipboard access needs a secure browser origin';
     if (detail && !appView) renderOutput(test, state.error);
-    let frame = frames.get(test?.index);
-    get('preview-sizer').dataset.parked = String(!frame);
-    get('preview-sizer').setAttribute('aria-hidden', String(!frame || !appView));
-    get('preview-empty').hidden = Boolean(frame);
-    write(get('preview-empty').querySelector('h2'), test?.status === 'pending' ? 'This test hasn’t run yet' : 'Run this test to inspect its app');
-    write(get('preview-empty').querySelector('p'), 'Each test starts with a fresh context. Previous output is always available.');
+    let hasApp = state.hasApp && test?.index === state.current;
+    get('show-app').hidden = !hasApp;
+    get('close-reporter').disabled = !state.hasApp;
+    let appTitle = test?.status === 'pending' ? 'This test hasn’t run yet' : 'Run this test to inspect its app';
+    let appDescription = 'Each test starts with a fresh context. Previous output is always available.';
+    if (hasApp && actions.embedded) {
+      appTitle = 'Your application is running behind the reporter';
+      appDescription = 'Close the reporter to inspect the actual app. Its viewport stays unchanged.';
+    } else if (hasApp) {
+      appTitle = 'Your application is running in the test browser';
+      appDescription = 'Show the app there while keeping this observer open. Its viewport stays unchanged.';
+    }
+    write(get('preview-empty').querySelector('h2'), appTitle);
+    write(get('preview-empty').querySelector('p'), appDescription);
     write(get('app-address'), test?.path ? `${location.origin}${test.path}` : state.appHost || 'Your app will appear here');
-    write(get('preview-caption'), frame ? active ? 'Live application · 1280 × 800 test viewport' : 'Application kept open for inspection' : '');
+    write(get('preview-caption'), hasApp ? `${state.viewport.width} × ${state.viewport.height} app viewport` : '');
     write(get('connection-state'), titles[state.phase]);
   };
 }

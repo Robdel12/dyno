@@ -12,4 +12,4 @@ The CLI handles the boring parts: starting the app, bundling tests, serving the 
 - Retry observations; keep side effects deliberate. Explain failures clearly.
 - Treat storage and backend cleanup as explicit project choices.
 
-Keep the browser execution model as we grow. Extra capabilities, including screenshots, should explain their requirements and limits. Avoid a big orchestration platform or a framework-specific integration for every app.
+Keep the browser execution model as we grow. Optional browser controllers handle launch, screenshots, and host sizing. Tests and Interactor stay browser-local. The app fills a stable frame; the reporter uses its own overlay or observer URL. Extra capabilities explain their requirements and limits. Avoid a big orchestration platform or a framework-specific integration for every app.

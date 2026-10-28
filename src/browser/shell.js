@@ -1,163 +1,496 @@
-import { createReporter, selectedTest, testOutput, reporterRoute } from './reporter.js';
+import { createExecution, transition } from './execution.js';
+import { normalizeViewport } from './viewport.js';
 
 let root = '/__dyno__/';
-let serialized = error => ({ message: error?.message ?? String(error), stack: error?.stack });
-let frames = new Map();
+let id = () => [...crypto.getRandomValues(new Uint32Array(4))].join('-');
+let serialized = (error) => ({ message: error?.message ?? String(error), stack: error?.stack });
+let state = createExecution({ width: 1280, height: 800 });
 let controller = new AbortController();
-let runId;
-let resume;
-let savedPause = false;
-try { savedPause = localStorage.getItem('dyno:pause-on-failure') === 'true'; } catch {}
-let state = Object.freeze({ phase: 'connecting', tests: [], current: null, route: reporterRoute(location.hash), files: [], appHost: '', browser: '', query: '', filter: 'all', error: null, duration: null, interactive: false, pauseOnFailure: savedPause });
-let pendingPaint;
-let update = (patch, defer = false) => {
-  state = Object.freeze({ ...state, ...patch });
-  if (defer) {
-    pendingPaint ??= requestAnimationFrame(() => { pendingPaint = undefined; render(state, frames); });
-  } else {
-    if (pendingPaint !== undefined) cancelAnimationFrame(pendingPaint);
-    pendingPaint = undefined;
-    render(state, frames);
-  }
+let runId, connectionKey, settings, resource, resume, stream;
+let contextSync = Promise.resolve();
+let operationQueue = Promise.resolve();
+let reporter = document.getElementById('reporter');
+let execution = document.getElementById('execution');
+let inspect = document.getElementById('inspect');
+let latestView, publishing;
+let post = async (route, input = {}, signal) => {
+  let response = await fetch(root + route, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ runId, connectionKey, ...input }),
+    signal: AbortSignal.any([AbortSignal.timeout(20000), ...(signal ? [signal] : [])])
+  });
+  if (!response.ok) throw new Error(await response.text());
+  return response.json();
 };
-let updateTest = (index, patch, defer = false) => update({ tests: state.tests.map(test => test.index === index ? Object.freeze({ ...test, ...patch }) : test) }, defer);
-let rerun = names => {
+let publish = () => {
+  let view = {
+    ...state,
+    runId,
+    hasApp: Boolean(resource?.frame.isConnected),
+    identity: settings?.identity,
+    capabilities: settings?.capabilities
+  };
+  reporter.contentWindow?.postMessage({ channel: 'dyno-reporter', kind: 'snapshot', runId, view }, location.origin);
+  latestView = view;
+  publishing ??= (async () => {
+    try {
+      while (latestView) {
+        let view = latestView;
+        latestView = undefined;
+        await post('view', { view });
+      }
+    } catch (error) {
+      console.error('Reporter connection:', error.message);
+    } finally {
+      publishing = undefined;
+    }
+  })();
+};
+let update = (event) => {
+  state = transition(state, event);
+  Object.assign(execution.style, {
+    width: state.viewportMode === 'browser' ? '100vw' : `${state.viewport.width}px`,
+    height: state.viewportMode === 'browser' ? '100vh' : `${state.viewport.height}px`
+  });
+  let active = ['connecting', 'discovering', 'running', 'pausing', 'resuming'].includes(state.phase);
+  let visible = !active && state.presentation === 'reporter';
+  let opening = reporter.hidden && visible;
+  reporter.hidden = !visible;
+  execution.inert = visible;
+  execution.setAttribute('aria-hidden', String(visible));
+  inspect.hidden = active || visible || !state.interactive;
+  if (opening) reporter.contentWindow?.postMessage({ channel: 'dyno-reporter', kind: 'focus', runId }, location.origin);
+  document.title = `${state.phase === 'completed' ? 'Test results' : state.phase === 'paused' ? 'Paused' : state.phase === 'pausing' ? 'Pausing after this test' : 'Running tests'} — Dyno`;
+  if (runId) publish();
+};
+let paint = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+let context = (current) =>
+  current
+    ? { executionId: current.id, documentId: current.documentId, revision: state.revision, ...state.viewport }
+    : null;
+let syncContext = (current) => {
+  let value = context(current);
+  contextSync = contextSync.catch(() => {}).then(() => post('context', { context: value }));
+  return contextSync;
+};
+let assertCurrent = (current, documentId, revision, metrics) => {
+  controller.signal.throwIfAborted();
+  let app = current.frame.contentDocument?.querySelector('iframe');
+  if (
+    resource !== current ||
+    current.finished ||
+    !current.frame.isConnected ||
+    app?.contentWindow.__browserTestBridge?.id !== documentId ||
+    current.documentId !== documentId ||
+    state.revision !== revision ||
+    (metrics &&
+      (innerWidth !== metrics.hostWidth ||
+        innerHeight !== metrics.hostHeight ||
+        devicePixelRatio !== metrics.pixelRatio))
+  )
+    throw new Error('App navigated or its viewport changed before screenshot completed. No attachment was accepted.');
+  if (!reporter.hidden || !inspect.hidden) throw new Error('Close the reporter before taking a test screenshot.');
+};
+async function sizeViewport(viewport, current = resource, mode = 'fixed') {
+  current ??= null;
+  let assertOwner = () => {
+    controller.signal.throwIfAborted();
+    if ((resource ?? null) !== current || (current && !current.frame.isConnected))
+      throw new Error('This inspection context has ended.');
+  };
+  assertOwner();
+  viewport = mode === 'browser' ? Object.freeze({ ...viewport }) : normalizeViewport(viewport);
+  if (settings.capabilities.hostViewport && (innerWidth !== viewport.width || innerHeight !== viewport.height)) {
+    await post(
+      'operations',
+      { operation: 'resize', viewport, current: { width: innerWidth, height: innerHeight } },
+      controller.signal
+    );
+    await paint();
+    // Browser chrome can change height when the window crosses its minimum width.
+    // Correct once from the observed viewport, rather than treating an OS rect as CSS size.
+    if (innerWidth < viewport.width || innerHeight < viewport.height) {
+      await post(
+        'operations',
+        { operation: 'resize', viewport, current: { width: innerWidth, height: innerHeight } },
+        controller.signal
+      );
+      await paint();
+    }
+    if (innerWidth < viewport.width || innerHeight < viewport.height)
+      throw new Error(
+        `Browser viewport ${innerWidth} × ${innerHeight} cannot fit the requested ${viewport.width} × ${viewport.height} app viewport.`
+      );
+  }
+  assertOwner();
+  update({ type: 'viewport.changed', viewport, mode });
+  await paint();
+  assertOwner();
+  await syncContext(current);
+}
+async function operate(current, message) {
+  let result;
+  try {
+    controller.signal.throwIfAborted();
+    if (resource !== current || current.finished || message.executionId !== current.id)
+      throw new Error('This test execution has ended.');
+    if (message.operation === 'viewport') {
+      await sizeViewport(message.viewport, current);
+      result = { viewport: state.viewport, revision: state.revision };
+    } else if (message.operation === 'screenshot') {
+      await contextSync;
+      let revision = state.revision;
+      assertCurrent(current, message.documentId, revision);
+      let app = current.frame.contentDocument.querySelector('iframe');
+      let box = current.frame.getBoundingClientRect();
+      if (
+        box.x !== 0 ||
+        box.y !== 0 ||
+        box.width !== state.viewport.width ||
+        box.height !== state.viewport.height ||
+        app.contentWindow.innerWidth !== state.viewport.width ||
+        app.contentWindow.innerHeight !== state.viewport.height
+      )
+        throw new Error('Screenshot requires the app at its unscaled viewport origin.');
+      let metrics = { ...state.viewport, hostWidth: innerWidth, hostHeight: innerHeight, pixelRatio: devicePixelRatio };
+      let staged;
+      try {
+        staged = await post(
+          'operations',
+          {
+            operation: 'screenshot',
+            requestId: message.requestId,
+            name: message.name,
+            optional: message.optional,
+            context: context(current),
+            metrics
+          },
+          controller.signal
+        );
+        assertCurrent(current, message.documentId, revision, metrics);
+        result =
+          staged.status === 'skipped' ? staged : await post('attachments/commit', { id: staged.id }, controller.signal);
+        assertCurrent(current, message.documentId, revision, metrics);
+      } catch (error) {
+        if (staged?.id) await post('attachments/discard', { id: staged.id }).catch(() => {});
+        throw error;
+      }
+    } else throw new Error('Unknown app operation.');
+    current.frame.contentWindow.postMessage(
+      {
+        channel: 'dyno',
+        runId,
+        kind: 'operation-result',
+        executionId: current.id,
+        requestId: message.requestId,
+        result
+      },
+      location.origin
+    );
+  } catch (error) {
+    current.frame.contentWindow?.postMessage(
+      {
+        channel: 'dyno',
+        runId,
+        kind: 'operation-result',
+        executionId: current.id,
+        requestId: message.requestId,
+        error: serialized(error)
+      },
+      location.origin
+    );
+  }
+}
+let rerun = (names) => {
   let url = new URL(location.href);
   url.search = '';
-  if (names.length !== 1) url.hash = '/';
+  url.hash = '';
   for (let name of names) url.searchParams.append('test', name);
   history.replaceState(null, '', url);
   location.reload();
 };
-let render = createReporter({
-  rerun,
-  runFailed: () => rerun(state.tests.filter(test => test.status === 'failed').map(test => test.name)),
-  runSelected: () => { let test = selectedTest(state); if (test) rerun([test.name]); },
-  search: query => update({ query }), filter: filter => update({ filter }),
-  pause: () => update({ phase: state.phase === 'pausing' ? 'running' : 'pausing' }),
-  resume: () => resume?.(),
-  stop: () => controller.abort(new Error('Run stopped from the reporter.')),
-  pauseOnFailure: pauseOnFailure => {
-    update({ pauseOnFailure });
-    try { localStorage.setItem('dyno:pause-on-failure', String(pauseOnFailure)); } catch {}
-  },
-  copy: () => testOutput(selectedTest(state))
+function command(input) {
+  if (input.command === 'stop') controller.abort(new Error('Run stopped from the reporter.'));
+  else if (input.command === 'pause') update({ type: 'pause.requested' });
+  else if (input.command === 'inspect') update({ type: 'reporter.requested' });
+  else if (input.command === 'show-app') {
+    update({ type: 'app.requested' });
+    resource?.frame.contentDocument?.querySelector('iframe')?.contentWindow.focus();
+  } else if (input.command === 'continue' && state.phase === 'paused') {
+    let continuation = resume;
+    update({ type: 'continue.requested' });
+    operationQueue = operationQueue.then(() => {
+      if (resume === continuation && state.phase === 'resuming') continuation?.();
+    });
+  } else if (input.command === 'rerun') rerun(input.names);
+  else if (input.command === 'pause-on-failure') {
+    update({ type: 'preferences.changed', pauseOnFailure: Boolean(input.value) });
+    try {
+      localStorage.setItem('dyno:pause-on-failure', String(state.pauseOnFailure));
+    } catch {}
+  } else if (input.command === 'viewport' && ['paused', 'completed'].includes(state.phase)) {
+    let current = resource;
+    operationQueue = operationQueue
+      .then(() => sizeViewport(input.viewport, current))
+      .catch((error) => console.error(error));
+  }
+}
+window.addEventListener('message', (event) => {
+  if (
+    event.origin !== location.origin ||
+    event.source !== reporter.contentWindow ||
+    event.data?.channel !== 'dyno-reporter'
+  )
+    return;
+  if (event.data.kind === 'ready') {
+    if (runId) publish();
+    if (!reporter.hidden)
+      reporter.contentWindow.postMessage({ channel: 'dyno-reporter', kind: 'focus', runId }, location.origin);
+  }
+  if (event.data.kind === 'command' && event.data.runId === runId) command(event.data);
 });
-render(state, frames);
+window.addEventListener('resize', () => {
+  if (controller.signal.aborted) return;
+  update({ type: 'browser.resized', viewport: { width: innerWidth, height: innerHeight } });
+  if (runId) void syncContext(resource).catch((error) => console.error(error));
+});
+inspect.addEventListener('click', () => update({ type: 'reporter.requested' }));
 window.addEventListener('hashchange', () => {
-  update({ route: reporterRoute(location.hash) });
-  document.getElementById('run-options').open = false;
-  document.getElementById('main').focus({ preventScroll: true });
-  window.scrollTo(0, 0);
+  if (location.hash === '#reporter') command({ command: 'inspect' });
 });
 window.addEventListener('pagehide', () => {
-  if (runId && !['completed', 'stopped', 'error'].includes(state.phase)) navigator.sendBeacon(root + 'events', JSON.stringify({ runId, type: 'fatal', error: { message: 'Browser left the test run before completion.' } }));
+  if (runId && !['completed', 'stopped', 'error'].includes(state.phase))
+    navigator.sendBeacon(
+      root + 'events',
+      JSON.stringify({
+        runId,
+        connectionKey,
+        type: 'fatal',
+        error: { message: 'Browser left the test run before completion.' }
+      })
+    );
 });
-let post = async event => {
-  let response = await fetch(root + 'events', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ runId, ...event }), signal: AbortSignal.timeout(15000) });
-  if (!response.ok) throw new Error(`Reporter failed: ${response.status} ${await response.text()}`);
-  return response.json();
-};
 
-function runtime(mode, timeout, index) {
+async function runtime(mode, timeout, index) {
   let frame = document.createElement('iframe');
-  frame.title = mode === 'discover' ? 'Discovering browser tests' : `Test runtime: ${state.tests.find(test => test.index === index)?.name}`;
+  frame.title =
+    mode === 'discover'
+      ? 'Discovering browser tests'
+      : `Test runtime: ${state.tests.find((test) => test.index === index)?.name}`;
   frame.hidden = mode === 'discover';
-  frame.tabIndex = -1;
+  frame.tabIndex = mode === 'discover' ? -1 : 0;
+  let current = { frame, id: id(), documentId: null, finished: false, remove: () => frame.remove() };
   let deadline = AbortSignal.timeout(timeout);
-  let result = new Promise((resolve, reject) => {
+  current.result = new Promise((resolve, reject) => {
     let finish = (error, value) => {
+      current.finished = true;
       window.removeEventListener('message', receive);
       deadline.removeEventListener('abort', expired);
       controller.signal.removeEventListener('abort', aborted);
       error ? reject(error) : resolve(value);
     };
-    let receive = event => {
+    let receive = (event) => {
       let message = event.data;
-      if (event.origin !== location.origin || event.source !== frame.contentWindow || message?.channel !== 'dyno' || message.runId !== runId) return;
-      if (message.kind === 'output' && message.index === index) {
-        let test = state.tests.find(test => test.index === index);
-        if (test && test.output.length < 100) updateTest(index, { output: [...test.output, ...message.entries].slice(0, 100) }, true);
+      if (
+        event.origin !== location.origin ||
+        event.source !== frame.contentWindow ||
+        message?.channel !== 'dyno' ||
+        message.runId !== runId ||
+        message.executionId !== current.id
+      )
+        return;
+      if (message.kind === 'output' && message.index === index)
+        update({ type: 'test.output', index, entries: message.entries });
+      if (message.kind === 'location' && message.index === index)
+        update({ type: 'test.location', index, path: message.path });
+      if (message.kind === 'context') {
+        current.documentId = message.documentId;
+        void syncContext(current).catch(() => {});
       }
-      if (message.kind === 'location' && message.index === index) updateTest(index, { path: message.path });
+      if (message.kind === 'inspect') command({ command: 'inspect' });
+      if (message.kind === 'operation') operationQueue = operationQueue.then(() => operate(current, message));
       if (message.kind === 'fatal') {
-        let error = new Error(message.error.message); error.stack = message.error.stack ?? error.stack;
+        let error = new Error(message.error.message);
+        error.stack = message.error.stack;
         finish(error);
       }
       if (mode === 'discover' && message.kind === 'discovered') finish(null, message.tests);
-      if (mode !== 'discover' && message.kind === 'result' && message.index === index) finish(null, message);
+      if (mode !== 'discover' && message.kind === 'result') finish(null, message);
     };
-    let expired = () => finish(new Error(`${mode === 'discover' ? 'Test discovery' : 'Test'} exceeded ${timeout} ms. Check app startup, blocked scripts, or unresolved async work.`));
+    let expired = () =>
+      finish(
+        new Error(
+          `${mode === 'discover' ? 'Test discovery' : 'Test'} exceeded ${timeout} ms. Check app startup, blocked scripts, or unresolved async work.`
+        )
+      );
     let aborted = () => finish(controller.signal.reason);
     window.addEventListener('message', receive);
     deadline.addEventListener('abort', expired, { once: true });
     controller.signal.addEventListener('abort', aborted, { once: true });
     if (controller.signal.aborted) aborted();
   });
-  frame.src = `${root}runtime?run=${encodeURIComponent(runId)}&mode=${mode}${index === undefined ? '' : `&test=${index}`}`;
-  document.querySelector('#frame').append(frame);
-  return { frame, result, remove: () => frame.remove() };
+  current.result.catch(() => {});
+  resource?.remove();
+  resource = current;
+  await syncContext(current);
+  frame.src = `${root}runtime?run=${encodeURIComponent(runId)}&execution=${current.id}&mode=${mode}${index === undefined ? '' : `&test=${index}`}`;
+  execution.append(frame);
+  return current;
 }
-
-function retain(index, runner) {
-  // Moving on disposes the previous app, including its timers and pending work.
-  for (let resource of frames.values()) resource.remove();
-  frames.clear(); frames.set(index, runner);
-}
-
 async function paused() {
-  let { promise, resolve, reject } = Promise.withResolvers();
-  let aborted = () => reject(controller.signal.reason);
-  resume = resolve;
-  controller.signal.addEventListener('abort', aborted, { once: true });
-  update({ phase: 'paused' });
-  try { await promise; update({ phase: 'running' }); }
-  finally { resume = undefined; controller.signal.removeEventListener('abort', aborted); }
+  let pending = Promise.withResolvers();
+  resume = pending.resolve;
+  let abort = () => pending.reject(controller.signal.reason);
+  controller.signal.addEventListener('abort', abort, { once: true });
+  update({ type: 'paused' });
+  try {
+    await pending.promise;
+    await paint();
+    update({ type: 'continued' });
+  } finally {
+    resume = undefined;
+    controller.signal.removeEventListener('abort', abort);
+  }
 }
-
 try {
-  if (typeof globalThis.AbortSignal?.timeout !== 'function' || typeof globalThis.crypto?.getRandomValues !== 'function') throw new Error('This browser needs AbortSignal.timeout and crypto.getRandomValues. Update the browser before running Dyno.');
-  let capture = await fetch(root + 'capture', { method: 'POST', signal: AbortSignal.any([controller.signal, AbortSignal.timeout(15000)]) });
-  if (!capture.ok) throw new Error(await capture.text());
-  ({ runId } = await capture.json());
-  let settings = await fetch(root + `settings?run=${encodeURIComponent(runId)}`, { signal: controller.signal }).then(response => response.json());
-  let agent = navigator.userAgent.match(/(?:Edg|Firefox|Chrome)\/([\d.]+)/);
-  let browser = agent ? `${agent[0].startsWith('Edg') ? 'Edge' : agent[0].split('/')[0]} ${agent[1]}` : navigator.userAgent;
-  update({ phase: 'discovering', files: settings.files, interactive: settings.interactive, appHost: new URL(settings.appURL).host, browser });
-  let discovery = runtime('discover', settings.timeout);
+  if (typeof globalThis.AbortSignal?.timeout !== 'function' || typeof globalThis.crypto?.getRandomValues !== 'function')
+    throw new Error(
+      'This browser needs AbortSignal.timeout and crypto.getRandomValues. Update the browser before running Dyno.'
+    );
+  let launchKey, previous;
+  try {
+    let incoming = new URLSearchParams(location.hash.slice(1)).get('launch');
+    if (incoming) {
+      sessionStorage.setItem('dyno:launch', incoming);
+      history.replaceState(null, '', location.pathname + location.search);
+    }
+    launchKey = sessionStorage.getItem('dyno:launch');
+    previous = JSON.parse(sessionStorage.getItem('dyno:previous') ?? 'null');
+  } catch {}
+  let joined = await post('capture', { launchKey, previous }, controller.signal);
+  ({ runId, connectionKey } = joined);
+  try {
+    sessionStorage.setItem('dyno:previous', JSON.stringify({ runId, connectionKey }));
+  } catch {}
+  settings = {
+    ...(await fetch(root + `settings?run=${encodeURIComponent(runId)}`, { signal: controller.signal }).then(
+      (response) => response.json()
+    )),
+    ...joined
+  };
+  let viewportMode = settings.viewport || settings.capabilities.hostViewport ? 'fixed' : 'browser';
+  let initialViewport =
+    settings.viewport ??
+    (settings.capabilities.hostViewport ? settings.managedViewport : { width: innerWidth, height: innerHeight });
+  let pauseOnFailure = false;
+  try {
+    pauseOnFailure = localStorage.getItem('dyno:pause-on-failure') === 'true';
+  } catch {}
+  let identity = settings.identity;
+  update({
+    type: 'connected',
+    settings: {
+      files: settings.files,
+      interactive: settings.interactive,
+      pauseOnFailure,
+      appHost: new URL(settings.appURL).host,
+      browser: identity
+        ? `${identity.name} ${identity.version ?? ''} · ${identity.provider}${identity.build === 'playwright' ? ' build' : ''}`.trim()
+        : navigator.userAgent,
+      viewport: Object.freeze({ ...initialViewport }),
+      viewportMode
+    }
+  });
+  reporter.src = `${root}reporter?run=${encodeURIComponent(runId)}&embedded=1`;
+  stream = new EventSource(root + `stream?run=${encodeURIComponent(runId)}&role=host`);
+  stream.addEventListener('command', (event) => command(JSON.parse(event.data)));
+  let discovery = await runtime('discover', settings.timeout);
   let tests;
-  try { tests = await discovery.result; } finally { discovery.remove(); }
+  try {
+    tests = await discovery.result;
+  } finally {
+    discovery.remove();
+    resource = undefined;
+  }
   let selected = new URLSearchParams(location.search).getAll('test');
-  if (selected.length) tests = tests.filter(test => selected.includes(test.name));
-  if (!tests.length) throw new Error(selected.length ? `No test named "${selected.join('", "')}". --test uses an exact name.` : 'No tests registered. Use test(name, async ({ app }) => …).');
-  await post({ type: 'start', tests: tests.map(test => test.name), userAgent: navigator.userAgent });
-  update({ phase: 'running', tests: tests.map(test => Object.freeze({ ...test, status: 'pending', output: [] })) });
+  if (selected.length) tests = tests.filter((test) => selected.includes(test.name));
+  if (!tests.length)
+    throw new Error(
+      selected.length
+        ? `No test named "${selected.join('", "')}". --test uses an exact name.`
+        : 'No tests registered. Use test(name, async ({ app }) => …).'
+    );
+  await post('events', { type: 'start', tests: tests.map((test) => test.name), userAgent: navigator.userAgent });
+  update({ type: 'started', tests });
   let started = performance.now();
   for (let [position, test] of tests.entries()) {
     controller.signal.throwIfAborted();
-    let runner = runtime('test', test.timeout ?? settings.timeout, test.index);
-    retain(test.index, runner);
-    update({ current: test.index }); updateTest(test.index, { status: 'running' });
+    resource?.remove();
+    resource = undefined;
+    await sizeViewport(
+      settings.viewport ??
+        (settings.capabilities.hostViewport ? settings.managedViewport : { width: innerWidth, height: innerHeight }),
+      null,
+      viewportMode
+    );
+    let runner = await runtime('test', test.timeout ?? settings.timeout, test.index);
+    update({ type: 'test.started', index: test.index });
     let outcome;
-    try { outcome = await runner.result; }
-    catch (error) {
-      runner.remove(); frames.delete(test.index);
+    try {
+      outcome = await runner.result;
+    } catch (error) {
+      runner.remove();
       controller.signal.throwIfAborted();
-      outcome = { index: test.index, name: test.name, status: 'failed', error: serialized(error), output: state.tests.find(item => item.index === test.index).output };
+      outcome = {
+        status: 'failed',
+        error: serialized(error),
+        output: state.tests.find((item) => item.index === test.index).output
+      };
     }
-    let { status, error, duration, name, output = [] } = outcome;
-    let reported = await post({ type: 'test', index: position, name, status, duration, error, output });
-    updateTest(test.index, { status, error: reported.error ?? error, duration, output });
+    await syncContext(null);
+    let { status, error, duration, output = [] } = outcome;
+    let reported = await post('events', {
+      type: 'test',
+      executionId: runner.id,
+      index: position,
+      name: test.name,
+      status,
+      duration,
+      error,
+      output
+    });
+    update({
+      type: 'test.finished',
+      index: test.index,
+      outcome: {
+        status,
+        error: reported.error ?? error,
+        duration,
+        output: Object.freeze(output),
+        attachments: Object.freeze(reported.attachments ?? [])
+      }
+    });
     controller.signal.throwIfAborted();
-    if (state.interactive && position < tests.length - 1 && (state.phase === 'pausing' || (state.pauseOnFailure && status === 'failed'))) {
+    if (
+      state.interactive &&
+      position < tests.length - 1 &&
+      (state.phase === 'pausing' || (state.pauseOnFailure && status === 'failed'))
+    )
       await paused();
-    }
   }
-  let failed = state.tests.filter(test => test.status === 'failed').length;
-  let summary = { type: 'complete', passed: tests.length - failed, failed, duration: performance.now() - started };
-  await post(summary);
-  update({ phase: 'completed', duration: summary.duration });
+  let failed = state.tests.filter((test) => test.status === 'failed').length;
+  let duration = performance.now() - started;
+  await post('events', { type: 'complete', passed: tests.length - failed, failed, duration });
+  update({ type: 'completed', duration });
 } catch (error) {
-  update({ phase: controller.signal.aborted ? 'stopped' : 'error', error: error.message, tests: state.tests.map(test => test.status === 'running' ? { ...test, status: 'stopped' } : test) });
-  if (runId) await post({ type: 'fatal', error: serialized(error) }).catch(() => {});
+  update({ type: 'failed', stopped: controller.signal.aborted, error: error.message });
+  await syncContext(null).catch(() => {});
+  if (controller.signal.aborted) resource?.remove();
+  if (runId) await post('events', { type: 'fatal', error: serialized(error) }).catch(() => {});
+  if (!reporter.getAttribute('src')) {
+    let notice = document.getElementById('host-error');
+    notice.hidden = false;
+    notice.textContent = error.message;
+  }
 }

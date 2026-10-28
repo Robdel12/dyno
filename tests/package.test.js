@@ -10,6 +10,7 @@ test('the packaged artifact installs and runs the documented first-test workflow
   let [pack] = JSON.parse(packed);
   assert.ok(pack.files.some(file => file.path === 'src/browsers.js'));
   assert.ok(pack.files.some(file => file.path === 'docs/browsers.md'));
+  assert.ok(pack.files.some(file => file.path === 'docs/architecture.md'));
   assert.equal(pack.files.some(file => file.path.startsWith('tests/')), false);
   await exec('npm', ['install', '--ignore-scripts', '--no-audit', '--no-fund', '--cache', join(fixture.directory, '.npm-cache'), join(fixture.directory, pack.filename)], { cwd: fixture.directory, timeout: 60000 });
   await rm(join(fixture.directory, 'dyno.config.js'));
@@ -20,5 +21,6 @@ test('the packaged artifact installs and runs the documented first-test workflow
   let { stdout, stderr } = await exec(process.execPath, [bin, '--json'], { cwd: fixture.directory, timeout: 70000 });
   let events = stdout.trim().split('\n').map(line => JSON.parse(line));
   assert.equal(events.find(event => event.type === 'complete').passed, 2, stderr + stdout);
+  await assert.rejects(exec(process.execPath, [bin, '--provider', 'playwright'], { cwd: fixture.directory, timeout: 10000 }), /requires playwright-core/);
   await assert.rejects(fetch(`http://127.0.0.1:${fixture.port}`));
 });

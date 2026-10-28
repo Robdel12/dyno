@@ -173,7 +173,7 @@ test('manual capture rebuilds changed tests, freezes active bundles, rejects dup
     assert.match(firstBundle, /original workflow/);
     assert.doesNotMatch(firstBundle, /edited workflow/);
     assert.match(secondBundle, /edited workflow/);
-    let post = event => fetch(url + 'events', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ runId: second.runId, ...event }) });
+    let post = event => fetch(url + 'events', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ runId: second.runId, connectionKey: second.connectionKey, ...event }) });
     assert.equal((await post({ type: 'start', tests: ['edited workflow'] })).status, 200);
     assert.equal((await post({ type: 'test', index: 0, name: 'edited workflow', status: 'passed' })).status, 200);
     assert.equal((await post({ type: 'test', index: 0, name: 'edited workflow', status: 'passed' })).status, 400);

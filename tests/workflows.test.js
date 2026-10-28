@@ -104,7 +104,7 @@ test('manual browsers have independent runs and malformed or stale reports canno
   let first = await capture();
   let second = await capture();
   assert.notEqual(first.runId, second.runId);
-  let post = (runId, event) => fetch(url + 'events', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({runId, ...event}) });
+  let post = (runId, event) => fetch(url + 'events', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({runId, connectionKey:[first,second].find(run=>run.runId===runId)?.connectionKey, ...event}) });
   assert.equal((await fetch(url + 'capture', {method:'POST', headers:{Origin:'https://foreign.example'}})).status, 400);
   assert.equal((await post(first.runId, {type:'start', tests:['first']})).status, 200);
   assert.equal((await post(second.runId, {type:'start', tests:['second']})).status, 200);

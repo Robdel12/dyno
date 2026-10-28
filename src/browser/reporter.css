@@ -128,17 +128,12 @@ kbd { color: #717c86; font-size: 12px; }
 .output-empty, .output-notice { color: var(--muted); font-size: 13px; margin: 20px 0; }
 .app-panel { margin-top: 20px; }
 /* Keep the execution context laid out when a different route is visible. */
-.app-panel[data-active=false] { position: fixed; left: -100000px; top: 0; width: 1280px; height: 900px; pointer-events: none; }
 .app-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 24px; margin-bottom: 14px; color: var(--muted); font-size: 12px; }
 .app-toolbar > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .app-toolbar label { display: flex; align-items: center; gap: 10px; white-space: nowrap; }
 .app-toolbar select { font-size: 12px; background: transparent; }
-.app-stage { min-height: 360px; aspect-ratio: 16 / 10; display: flex; align-items: center; justify-content: center; background: #101214; overflow: hidden; position: relative; }
-#preview-sizer { flex: none; }
-#preview-sizer[data-parked=true] { position: fixed; left: -100000px; top: 0; }
-#frame { width: 1280px; height: 800px; transform-origin: top left; }
-#frame > iframe { display: block; width: 100%; height: 100%; border: 0; background: white; }
-.preview-empty { text-align: center; color: var(--muted); padding: 32px; }
+.app-stage { padding: 24px 0; }
+.preview-empty { color: var(--muted); padding: 8px 0; }
 .preview-empty h2 { color: var(--text); }
 .preview-empty p { margin: 10px 0 20px; font-size: 13px; }
 .preview-caption { margin-top: 12px; color: var(--muted); font-size: 12px; }
@@ -174,6 +169,10 @@ kbd { color: #717c86; font-size: 12px; }
   .log-text { grid-column: 1 / -1; }
   .app-toolbar { align-items: flex-start; flex-direction: column; gap: 12px; }
   .app-toolbar > span { max-width: 100%; font-size: 10px; }
-  .app-stage { height: 420px; min-height: 300px; }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; } }
+
+.app-panel[data-active=false]{display:none}
+.screenshot{margin:24px 0}
+.screenshot img{display:block;max-width:100%;height:auto;border:1px solid var(--line)}
+.screenshot figcaption{margin-top:8px;color:var(--muted);font-size:13px}

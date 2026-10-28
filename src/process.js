@@ -27,9 +27,9 @@ export async function signalProcessGroup(group, signal) {
   }
 }
 
-export function startProcess(command, { cwd, env, output = () => {}, shell = true, args = [], signal } = {}) {
+export function startProcess(command, { cwd, env, output = () => {}, shell = true, args = [], signal, ipc = false } = {}) {
   let events = new EventEmitter();
-  let child = spawn(command, args, { cwd, env: { ...process.env, ...env }, shell, detached: process.platform !== 'win32', stdio: ['ignore', 'pipe', 'pipe'] });
+  let child = spawn(command, args, { cwd, env: { ...process.env, ...env }, shell, detached: process.platform !== 'win32', stdio: ['ignore', 'pipe', 'pipe', ...(ipc ? ['ipc'] : [])] });
   let logs = '';
   let failed;
   let ready = new Promise((resolve, reject) => {

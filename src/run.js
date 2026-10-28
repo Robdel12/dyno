@@ -1,6 +1,7 @@
 function snapshotEvent(event) {
   return Object.freeze({
     ...event,
+    ...(event.attachments ? { attachments: Object.freeze(event.attachments.map(attachment => Object.freeze({ ...attachment }))) } : {}),
     ...(event.tests ? { tests: Object.freeze([...event.tests]) } : {}),
     ...(event.output ? { output: Object.freeze(event.output.map(entry => Object.freeze({ ...entry }))) } : {}),
     ...(event.error ? { error: Object.freeze({ ...event.error, ...(event.error.source ? { source: Object.freeze({ ...event.error.source }) } : {}) }) } : {})

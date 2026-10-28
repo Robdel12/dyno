@@ -2,6 +2,7 @@ import { access } from 'node:fs/promises';
 import { resolve, dirname, isAbsolute } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { browserNames } from './browsers.js';
+import { normalizeViewport } from './browser/viewport.js';
 
 export function defineConfig(config) { return config; }
 let text = value => typeof value === 'string' && value.trim().length > 0;
@@ -12,7 +13,7 @@ function keys(input, allowed, label) {
 }
 
 export function normalizeConfig(input, file, overrides = {}) {
-  keys(input, ['testDir', 'testMatch', 'timeout', 'runTimeout', 'expectTimeout', 'host', 'port', 'browser', 'webServer', 'setup'], 'config');
+  keys(input, ['testDir', 'testMatch', 'timeout', 'runTimeout', 'expectTimeout', 'host', 'port', 'browser', 'viewport', 'artifactsDir', 'webServer', 'setup'], 'config');
   let root = dirname(file);
   let webServer = input.webServer;
   keys(webServer, ['url', 'command', 'cwd', 'env', 'ready', 'timeout', 'reuseExistingServer'], 'webServer');
@@ -28,9 +29,20 @@ export function normalizeConfig(input, file, overrides = {}) {
     if (!record(webServer.env) || Object.values(webServer.env).some(value => typeof value !== 'string')) throw new Error('webServer.env must contain string values.');
   }
   let browser = input.browser ?? {};
-  keys(browser, ['name', 'path', 'args'], 'browser');
+  keys(browser, ['name', 'path', 'args', 'provider', 'deviceScaleFactor'], 'browser');
+  let provider = overrides.provider ?? browser.provider ?? 'native';
+  if (!['native', 'playwright', 'webdriver'].includes(provider)) throw new Error('browser.provider must be native, playwright, or webdriver.');
   let name = overrides.browser ?? browser.name ?? 'chrome';
   if (!browserNames.includes(name)) throw new Error(`Unknown browser "${name}". Choose ${browserNames.join(', ')}.`);
+  if (name === 'webkit' && provider !== 'playwright') throw new Error('WebKit requires browser.provider: "playwright". Safari is a separate browser.');
+  if (name === 'safari' && provider === 'playwright') throw new Error('Playwright cannot launch Safari. Choose webkit or the webdriver provider.');
+  if (browser.deviceScaleFactor !== undefined && (provider !== 'playwright' || ![1, 2, 3].includes(browser.deviceScaleFactor))) throw new Error('browser.deviceScaleFactor requires Playwright and must be 1, 2, or 3.');
+  let viewport = null;
+  if (input.viewport !== undefined) {
+    keys(input.viewport, ['width', 'height'], 'viewport');
+    viewport = normalizeViewport(input.viewport);
+  }
+  if (input.artifactsDir !== undefined && !text(input.artifactsDir)) throw new Error('artifactsDir must be a non-empty path.');
   let path = overrides.browserPath ?? browser.path;
   if (path !== undefined && !text(path)) throw new Error('browser.path must be a non-empty executable path.');
   if (browser.args !== undefined && (!Array.isArray(browser.args) || browser.args.some(arg => typeof arg !== 'string'))) throw new Error('browser.args must be an array of strings.');
@@ -41,7 +53,8 @@ export function normalizeConfig(input, file, overrides = {}) {
     timeout: input.timeout ?? 10000, runTimeout: input.runTimeout ?? 60000,
     expectTimeout: input.expectTimeout ?? Math.min(2000, Math.floor((input.timeout ?? 10000) / 2)),
     port: overrides.port ?? input.port ?? 7357, host: overrides.host ?? input.host ?? '127.0.0.1',
-    browser: Object.freeze({ name, ...(path ? { path } : {}), args: Object.freeze([...(browser.args ?? [])]) }),
+    browser: Object.freeze({ name, provider, ...(path ? { path } : {}), ...(browser.deviceScaleFactor ? { deviceScaleFactor: browser.deviceScaleFactor } : {}), args: Object.freeze([...(browser.args ?? [])]) }),
+    viewport, artifactsDir: resolve(root, input.artifactsDir ?? '.dyno/artifacts'),
     webServer: Object.freeze({
       ...webServer, url: url.origin, cwd: resolve(root, webServer.cwd ?? '.'), timeout: webServer.timeout ?? 30000,
       ...(Array.isArray(webServer.command) ? { command: Object.freeze([...webServer.command]) } : {}),

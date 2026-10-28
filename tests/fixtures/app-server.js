@@ -1,4 +1,5 @@
 import http from 'node:http';
+import { readFileSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { gzipSync, brotliCompressSync } from 'node:zlib';
@@ -42,6 +43,14 @@ let html = `<!doctype html><html><head><meta charset="utf-8"><title>Fixture app<
 <button id="dismiss">Dismiss notice</button><label>Review mode <select><option>Choose mode</option><option>Compare</option></select></label><output>No review mode</output>
 <script>${script}</script></body></html>`;
 let lifecycle = [];
+let inspection = Promise.withResolvers();
+let browserWaiting = Promise.withResolvers();
+let releaseBrowser = Promise.withResolvers();
+let captureGate = readFileSync(new URL('./capture-gate.js', import.meta.url));
+let captureBefore = Promise.withResolvers();
+let captureStaged = Promise.withResolvers();
+let captureCommitted = Promise.withResolvers();
+let releaseCapture = Promise.withResolvers();
 let navigationRequested = Promise.withResolvers();
 let releaseNavigation = Promise.withResolvers();
 let descendantPort;
@@ -53,12 +62,34 @@ function announceReady() {
   console.log(`FIXTURE_READY ${server.address().port} PID=${process.pid}`);
 }
 if (process.env.SPAWN_DESCENDANT) {
-  let descendant = spawn(process.execPath, ['--input-type=module', '-e', `import http from 'node:http'; process.on('SIGTERM', () => {}); let server=http.createServer((req,res)=>res.end('descendant')); server.listen(0,'127.0.0.1',()=>console.log(server.address().port));`], { stdio: ['ignore', 'pipe', 'inherit'] });
+  let descendant = spawn(process.execPath, ['--input-type=module', '-e', `import http from 'node:http';
+import { readFileSync } from 'node:fs'; process.on('SIGTERM', () => {}); let server=http.createServer((req,res)=>res.end('descendant')); server.listen(0,'127.0.0.1',()=>console.log(server.address().port));`], { stdio: ['ignore', 'pipe', 'inherit'] });
   descendant.stdout.setEncoding('utf8');
   descendant.stdout.on('data', data => { descendantPort = Number(data.trim()); announceReady(); });
 }
 let server = http.createServer(async (request, response) => {
   response.setHeader('Cache-Control', 'no-store');
+  if (request.url === '/api/browser-waiting') { if(request.method==='POST')browserWaiting.resolve();else await browserWaiting.promise;response.end('waiting');return; }
+  if (request.url === '/api/release-browser') { if(request.method==='POST')releaseBrowser.resolve();else await releaseBrowser.promise;response.end('released');return; }
+  if (request.url === '/capture-gate.js') {
+    response.writeHead(200, {'Content-Type':'text/javascript','Service-Worker-Allowed':'/'});
+    response.end(captureGate);
+    return;
+  }
+  if (request.url === '/api/capture-before') { if(request.method==='POST')captureBefore.resolve();else await captureBefore.promise;response.end('before');return; }
+  if (request.url === '/api/capture-committed') { if(request.method==='POST')captureCommitted.resolve();else await captureCommitted.promise;response.end('committed');return; }
+  if (request.url === '/api/capture-staged') { if(request.method==='POST')captureStaged.resolve();else await captureStaged.promise;response.end('staged');return; }
+  if (request.url === '/api/release-capture') { if(request.method==='POST')releaseCapture.resolve();else await releaseCapture.promise;response.end('released');return; }
+  if (request.url === '/api/inspection') {
+    if (request.method === 'POST') { let body='';for await(let chunk of request)body+=chunk;inspection.resolve(JSON.parse(body));response.end('recorded'); }
+    else { response.setHeader('Content-Type','application/json');response.end(JSON.stringify(await inspection.promise)); }
+    return;
+  }
+  if (request.url === '/visual') {
+    response.writeHead(200, { 'Content-Type': 'text/html' });
+    response.end(`<!doctype html><style>html,body{margin:0;background:rgb(20,150,80)}canvas{position:absolute;left:0;top:0}form{margin:80px 20px}#layout:after{content:'Wide'}@media(max-width:500px){#layout:after{content:'Narrow'}}</style><canvas width="40" height="40"></canvas><form><label>Name <input name="name"></label><button>Save</button></form><p role="status">Ready</p><p id="layout"></p><script>let context=document.querySelector('canvas').getContext('2d');context.fillStyle='rgb(30,70,210)';context.fillRect(0,0,40,40);let saves=0;document.querySelector('form').onsubmit=event=>{event.preventDefault();document.querySelector('[role=status]').textContent='Saved '+document.querySelector('input').value+' · '+ ++saves;};</script>`);
+    return;
+  }
   if (request.url === '/held-app') {
     navigationRequested.resolve();
     await releaseNavigation.promise;

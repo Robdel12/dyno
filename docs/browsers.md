@@ -1,6 +1,6 @@
 # Running browsers
 
-`dyno browsers` lists what Dyno can find. Pick a browser with `dyno --browser firefox`, or set `browser.name` in your config. Dyno launches a process at the test URL; test actions never use a remote driver.
+`dyno browsers` lists what Dyno can find. Pick a browser with `dyno --browser firefox`, or set `browser.name` in your config. Native mode launches a process at the test URL. Optional providers also capture pixels and size their owned window; test actions never use a remote driver.
 
 | Browser | Headless | Visible | Session |
 | --- | --- | --- | --- |
@@ -11,6 +11,36 @@
 | Other browsers and devices | Through their own tooling | `--manual` | Open the printed URL yourself |
 
 Safari's handoff doesn't provide profile isolation or browser-close detection. Storage cleanup stays explicit. Dyno never quits a browser it didn't create. Use manual mode on iOS, Android, or another device; the browser still needs the modern APIs listed in the guide.
+
+## Optional managed providers
+
+```sh
+npm install --save-dev playwright-core
+npx dyno install --browser webkit
+npx dyno --provider playwright --browser webkit
+
+npm install --save-dev selenium-webdriver
+npx dyno --provider webdriver --browser firefox
+npx dyno --provider webdriver --browser safari --ui
+```
+
+| Target | Playwright | WebDriver |
+| --- | --- | --- |
+| Installed Chrome / Edge | Branded channels | Matching vendor driver |
+| Chromium | Playwright build | Installed Chromium + ChromeDriver |
+| Firefox | Patched Playwright build | Installed Firefox + GeckoDriver |
+| WebKit | Playwright build | Not a stock browser target |
+| Actual Safari | Unsupported; choose WebKit explicitly | macOS Safari + built-in safaridriver; headed only |
+
+Playwright's engine builds are coupled to its version. `dyno install` explicitly downloads matching Chromium/Firefox/WebKit builds; ordinary runs don't install browsers. A missing build gives a setup error. `browser.deviceScaleFactor` supports 1/2/3 with Playwright. Installed Chrome and Edge use their existing channels, unless an explicit executable path is selected.
+
+WebDriver uses Selenium Manager to resolve/cache a matching driver, which may need network access on first use. Browser downloads are disabled; install the actual browser yourself. `browser.path` and the usual executable environment variables select an installed browser. Safari uses its system driver and requires **Remote Automation** opt-in. Dyno never enables it automatically or attaches to personal Safari tabs. Automation windows are isolated and can restrict physical interaction.
+
+Providers run in a task-owned Node worker, with a disposable profile owned and removed by the CLI even if that worker crashes. Launch, capture, navigation, and shutdown have deadlines; cleanup also stops the worker's process tree. Manual URL visitors receive their own run and no managed capture capability, even while another browser has a driver connected. Chrome/Edge WebDriver sessions activate their owned page before navigating, so browser-local focus works in headless mode; no test actions use the driver. Tests never receive the driver handle.
+
+Current local contract results cover Playwright Chrome/Chromium/WebKit and WebDriver stock Chrome/Firefox on this Mac. Actual Safari capture remains unverified because Remote Automation is disabled here. The provider reports that prerequisite before starting the app. CI adds Linux engine/provider contracts; Windows provider behavior still needs verification. Existing native-launcher CI is separate from screenshot coverage.
+
+Physical iPhone/iPad Safari can use native safaridriver through a connected, trusted Mac after device opt-in, but Dyno does not configure that integration yet. URL-only functional tests still work subject to the runner's browser requirements. A desktop mobile-sized viewport isn't real-device coverage. See [Apple’s setup](https://developer.apple.com/documentation/safari-developer-tools/ios-enabling-webdriver).
 
 ## Finding executables
 
@@ -30,7 +60,7 @@ Extra arguments are passed directly. Dyno reserves profile and instance flags so
 
 ## Firefox on macOS 27
 
-Firefox 157 and earlier can fail before loading the URL with `Could not find profile folder`, even with a fresh profile. Mozilla fixed the shared app-data lookup in Firefox 158. Use a current build or `--manual` and open the URL through Firefox normally. We keep the browser's diagnostic output in the CLI error. [Mozilla's report](https://bugzilla.mozilla.org/show_bug.cgi?id=2060476), [upstream fix tracking](https://github.com/microsoft/playwright/issues/42768).
+Firefox 157 and earlier can fail before loading the URL with `Could not find profile folder`, even with a fresh profile. Mozilla fixed the shared app-data lookup in Firefox 158. Use a current installed build with native/WebDriver mode, a fixed Playwright build, or `--manual` and open the URL through Firefox normally. We keep the browser's diagnostic output in the CLI error. [Mozilla's report](https://bugzilla.mozilla.org/show_bug.cgi?id=2060476), [upstream fix tracking](https://github.com/microsoft/playwright/issues/42768).
 
 Dyno doesn't change OS permissions, rewrite Firefox's application metadata, or change your installed browser. The suite passed in local Chrome and a disposable official Firefox Beta 159 build. Linux Firefox ESR 153 was also verified inside a disposable container limited to one CPU during the launcher work. Both Vizzly workflows passed in the earlier Chrome/Firefox integration checks. Installed Firefox 157 reproduced the macOS startup failure above.
 

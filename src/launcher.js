@@ -21,6 +21,7 @@ async function executable(candidate, name) {
 }
 
 export async function resolveBrowser({ name = 'chrome', path, args = [] } = {}, { headless = true } = {}) {
+  if (name === 'webkit') throw new Error('WebKit requires the Playwright provider.');
   if (!browserNames.includes(name)) throw new Error(`Unknown browser "${name}". Choose ${browserNames.join(', ')}.`);
   if (name === 'safari' && process.platform !== 'darwin') throw new Error('Safari launching is available on macOS. Use --manual for another device.');
   if (name === 'safari' && headless) throw new Error('Safari has no headless launcher. Use --browser safari --ui, or --manual.');
@@ -35,7 +36,7 @@ export async function resolveBrowser({ name = 'chrome', path, args = [] } = {}, 
 }
 
 export async function installedBrowsers() {
-  return Promise.all(browserNames.map(async name => {
+  return Promise.all(browserNames.filter(name => name !== 'webkit').map(async name => {
     try {
       let browser = await resolveBrowser({ name }, { headless: false });
       return { name, installed: true, path: browser.path, headless: name !== 'safari', isolated: browser.isolated };
