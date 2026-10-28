@@ -1,26 +1,30 @@
 # Dyno
 
-Browser tests that run in the browser. Dyno starts your app, serves a test URL, and reports the results. [Interactor.js](https://github.com/wwilsman/interactor.js) handles DOM interaction and assertions.
+Browser tests that run in the browser. Dyno starts your app, serves a test URL, and reports the results. [Interactor.js](https://github.com/wwilsman/interactor.js) handles DOM interaction and assertions in the same browser as your app.
+
+Open that URL in another browser or on another device to run the same tests. No driver or extension is required. Optional providers add screenshots and browser window control.
+
+Dyno is early and isn't published to npm yet. You'll need Node 24+ and an installed browser. Chrome is the default.
 
 ## Try it
 
-Requires Node 24+ and an installed browser. Chrome is the default.
-
 ```sh
+git clone https://github.com/Robdel12/dyno.git
+cd dyno
 npm ci
 node bin/dyno.js --config examples/demo/dyno.config.js --ui
 ```
 
+The app fills the browser. Press **Ctrl+Shift+D** to open the reporter after the current test finishes, or use the printed reporter URL in a separate tab.
+
 ## Use it in an app
 
-Dyno is private and isn't published to npm yet. Install your checkout, then generate a config and an example test:
-
 ```sh
-npm install --save-dev /path/to/Dyno
+npm install --save-dev github:Robdel12/dyno
 npx dyno init
 ```
 
-Set your app's command and URL in `dyno.config.js`, then run `npx dyno`.
+Set your app's command and URL in `dyno.config.js`, then write a test:
 
 ```js
 import { test } from 'dyno';
@@ -33,28 +37,19 @@ test('saves a contact', async ({ app, I }) => {
 });
 ```
 
-`--browser firefox` selects Firefox; `dyno browsers` lists installed launchers. [Browser setup](docs/browsers.md) covers Edge, Chromium, and Safari. `--ui` shows the actual app. Press Ctrl+Shift+D to request inspection; the reporter opens in its own overlay at the next test boundary, with output, source excerpts, and pause/rerun controls. `--manual` prints a URL you can open yourself. Tests and the app get separate, fresh JavaScript contexts; storage and database cleanup stay explicit.
+Run `npx dyno` for a headless run, `npx dyno --ui` to inspect the app, or `npx dyno --manual` to open the URL yourself. Tests and the app get fresh JavaScript contexts for each test. Storage and database cleanup stay explicit.
 
-## Capture screenshots
-
-Add an optional provider. Tests still execute in the browser:
+## Screenshots
 
 ```sh
 npm install --save-dev playwright-core
 npx dyno --provider playwright --browser chrome
 ```
 
-Then `await app.screenshot('dashboard')` saves the real app viewport. `app.setViewport({ width: 390, height: 844 })` also works without a driver. [Browser setup](docs/browsers.md) covers Playwright engine builds and WebDriver for stock browsers, including Safari.
+Then `await app.screenshot('dashboard')` saves the app viewport. `await app.setViewport({ width: 390, height: 844 })` changes its layout, with or without a driver. [Browser setup](docs/browsers.md) covers Playwright builds and WebDriver for installed browsers.
 
 ## Work on Dyno
 
-```sh
-npm test
-npm run test:vizzly
-```
+Run `npm test` with Chrome installed. The macOS process-cleanup test also needs `cc`. The optional `npm run test:vizzly` integration needs a Vizzly checkout, its built frontend, and Docker; the main suite doesn't need any of those.
 
-The macOS cleanup regression also uses the system C compiler (`cc`).
-
-The Vizzly example needs a sibling Vizzly checkout, its built frontend, and Docker. It creates and removes its own test services.
-
-Start with [the vision](vision.md). The [guide](docs/guide.md) covers configuration and current limits. [Architecture](docs/architecture.md) explains execution and capture; interactions use synthetic DOM events.
+Start with [the vision](vision.md). The [guide](docs/guide.md) covers the API and configuration; [architecture](docs/architecture.md) explains execution and capture. The [design guide](docs/design.md) covers the reporter.

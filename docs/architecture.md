@@ -1,46 +1,46 @@
 # How Dyno runs a test
 
-The CLI owns app/server processes, bundle snapshots, optional browser controllers, and artifacts. The browser owns test execution. Opening the execution URL works without a driver.
+Node manages processes, bundles, and output. The browser executes tests and Interactor actions. A driver is optional.
 
 ```text
 Browser host
-├─ execution frame: fresh test runtime
-│  └─ app frame: fresh app document and globals
-└─ reporter frame: inspection overlay, separate URL
+├─ execution iframe: fresh test runtime
+│  └─ app iframe: fresh document and globals
+└─ reporter iframe: inspection overlay
 
-Node gateway → optional owned controller → browser pixels/window
+Node gateway → optional provider → browser window and screenshots
 ```
 
-## State and ownership
+The gateway forwards app requests and WebSocket upgrades to the app server. It adds a small script for errors and document readiness. The test bundle stays in the execution frame. See the [guide](guide.md#app-server-integration) for cookies, redirects, and CSP behavior.
 
-`src/browser/execution.js` holds pure transitions over immutable execution snapshots. The host in `shell.js` applies DOM, network, and lifecycle effects. Frame handles, pending promises, and abort controllers stay outside render state. The reporter keeps its own route, search, and filter; it receives execution snapshots rather than owning app frames.
+## State and frames
 
-The app stays unscaled at the viewport origin. Native/manual defaults fill the actual browser and follow its resize events. Explicit dimensions and managed defaults stay fixed until a deliberate sizing request. Reporter routes never move it. Inspect requests pause at a test boundary; the overlay opens once paused. Continue hides it before running the next test. A paused runner doesn't freeze app timers or network activity. Inspection can deliberately change focus and viewport.
+[execution.js](../src/browser/execution.js) contains pure transitions over immutable state. [shell.js](../src/browser/shell.js) applies DOM and network effects. Frame handles, promises, and abort controllers stay outside that state.
 
-An embedded reporter uses checked postMessage messages; a standalone observer uses server events and narrow HTTP commands. Both render the same UI. No snapshot loop polls the DOM or server. Interactor owns assertion convergence.
+The app stays unscaled at the viewport origin. URL-only runs follow the browser's size by default; managed runs use fixed dimensions. Reporter routes never move the app. Inspection opens an overlay at a test boundary. Continue hides it before the next test starts; pausing doesn't freeze the app's timers or network activity.
 
-Each CLI-owned browser has a private launch binding. Each join gets its own run and connection identity. Each test gets a fresh execution ID; the existing app bridge identifies each document. A manual browser never borrows a managed controller. Reruns invalidate old ownership and notify observers of the replacement run.
+The reporter owns its route, search, and filter. Embedded reporters receive checked `postMessage` messages. Separate reporter URLs receive server events and send HTTP commands. Both use the same UI.
 
-## Provider boundary
+Frames isolate documents, styles, and globals. They share origin storage and can access each other, so they aren't a security boundary against hostile code.
 
-`browser-session.js` exposes identity, capabilities, open, resize, capture, and stop. Native sessions only open URLs. Playwright and WebDriver implementations live behind optional imports in an owned worker process. The parent owns disposable profiles and process cleanup, including after a provider crash. Cleanup also finds SDK-detached browsers by that unique profile before removing it. Test code gets `app` and Interactor; it never gets a driver, remote selectors, or arbitrary protocol commands.
+## Browser providers
 
-`app.setViewport` changes app-frame CSS dimensions locally. A managed controller also prepares enough top-level visible space. WebDriver OS window dimensions aren't CSS viewport dimensions, so the browser reports its actual size and permits one measured correction for browser chrome. Unsupported sizes fail instead of producing a scaled image.
+[browser-session.js](../src/browser-session.js) exposes `open`, `resize`, `capture`, `stop`, identity, and capabilities. Native sessions only launch URLs. Playwright and WebDriver load in an owned worker when selected. The CLI removes disposable profiles and stops owned processes, including detached browsers left by a worker crash.
 
-## Screenshot completion
+Each launched browser has a private launch token. Each browser that joins gets its own run. Manual visitors can't use another run's controller. Reruns replace the old run and notify its observers.
 
-1. Runtime waits for the app's fonts and requests capture with execution, document, and request IDs.
-2. Host checks its active frame, hidden reporter, document bridge, viewport revision, actual host dimensions, and DPR.
-3. Gateway verifies connection/owned run and captures only that controller's known page. It verifies PNG dimensions against the reported host size and DPR, crops actual pixels to the app viewport when needed and stages the PNG under a generated filename.
-4. Host rechecks document and geometry before requesting commit.
-5. Gateway rechecks context, atomically renames the file, and records immutable attachment metadata. Only then does the test receive acknowledgement. Attachments are published with the accepted test result; interrupted runs discard unreported images.
+`app.setViewport` changes app-frame dimensions locally. Managed providers also make room in the browser window. WebDriver window dimensions include browser chrome, so the host measures the actual viewport and allows one correction. A size that still won't fit fails clearly.
 
-Navigation, disposal, rerun, Stop, or changed geometry invalidates pending capture. Late results and partial files are discarded. Tests awaiting capture cannot finish before persistence. App APIs return native promises; unfinished operations at the test or cleanup boundary fail clearly, while explicitly caught failures remain catchable. Optional missing capability produces an explicit skipped image; provider failures remain failures.
+## Saving a screenshot
 
-A screenshot observes a rendered frame during the request. It doesn't freeze arbitrary async work, establish visual equality, or emulate a physical device. Playwright WebKit is labeled WebKit; Safari requires its own provider and environment validation.
+1. The runtime waits for app fonts and sends the execution, document, and request IDs.
+2. The host checks the active frame, hidden reporter, viewport revision, host dimensions, and device pixel ratio.
+3. The gateway verifies ownership, captures its known page, checks PNG dimensions, crops to the app, and writes a temporary file.
+4. The host checks the document and geometry again. The gateway then renames the file and returns attachment metadata.
+5. The test receives the saved attachment. It becomes run output when the gateway accepts that test's result.
 
-## Tests and limits
+Navigation, resizing, Stop, disposal, or lost ownership invalidates pending captures. Late results and partial files are removed. Interrupted runs also discard saved images that weren't reported. Reported images remain on disk.
 
-Tests run actual CLI/app/browser workflows and assert real image dimensions and solid-color/canvas pixels. HTTP-gated Service Worker requests force navigation and host resize during capture, proving stale images are discarded. Real filesystem failures verify that optional capture doesn't swallow errors. Reporter tests exercise independent routes, messages, pause/continue, app preservation, and standalone Stop.
+These operations return promises. Finishing a test or hook with unfinished screenshot or viewport work fails clearly. Missing optional capture produces a skipped image; provider and storage errors still fail. A screenshot records a rendered frame during the request, without freezing other app work.
 
-Same-origin frames isolate documents, styles, and globals; they share origin storage and can access one another intentionally. They aren't a security boundary against hostile app/test code. Storage and backend cleanup remain explicit project choices.
+The real browser workflows in [tests](../tests) cover image pixels, resizing, navigation races, manual/managed ownership, reporter controls, interruption, and cleanup. Internal modules aren't mocked.

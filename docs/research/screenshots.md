@@ -1,28 +1,24 @@
 # Screenshot research
 
-Updated October 28, 2026. The browser-control and iframe spikes are now implemented. [Architecture](../architecture.md), [browser setup](../browsers.md), and the [guide](../guide.md#screenshots) describe the actual API.
+Dyno keeps tests in the browser and uses an optional provider for real screenshots. The [architecture](../architecture.md) and [guide](../guide.md#screenshots) describe the implementation.
 
-## What shaped the implementation
+## What we learned
 
-- Tests, DOM actions, convergence, and assertions stay in the browser. An optional controller handles launch, host sizing, and actual pixels.
-- Playwright covers managed engine builds and branded Chrome/Edge. Stock Firefox and actual Safari use WebDriver. WebKit isn't Safari; no automatic substitution hides that distinction.
-- A screenshot of a parked or scaled iframe is unreliable. Chrome captured reporter pixels at negative offscreen coordinates, and showing the app changed IntersectionObserver behavior.
-- A sibling reporter overlay preserves app dimensions and document identity, verified in Chrome/WebKit. It still appears in screenshots while covering the app, including captures targeting the execution iframe. Keep it hidden during execution/capture and open it for paused inspection.
-- A successful driver command can return another document's pixels. Capture requires local document/viewport checks, explicit ownership, and persistence acknowledgement before test teardown.
-- Local iframe sizing changes responsive layout without a driver. Physical screen, DPR, touch, browser chrome, and real-device behavior are separate capabilities.
+- DOM interaction and assertions can stay local. Drivers only need to manage the browser window and capture pixels.
+- Moving an iframe offscreen or scaling it can change layout and visibility behavior. Capturing it can also include the reporter.
+- Keep the app unscaled at the viewport origin. Hide the sibling reporter during execution and capture; open it for paused inspection.
+- A successful capture command can return pixels from a later document. Check ownership, document identity, viewport, and persistence before accepting an attachment.
+- Local iframe sizing handles responsive layout. It doesn't emulate a physical screen, touch input, or device pixel ratio.
+- Playwright covers its engine builds and branded Chrome/Edge. WebDriver provides a path to installed Firefox and Safari. WebKit isn't Safari.
 
-The seven-lane swarm tested Playwright, WebDriver, browser-only APIs, geometry, lifecycle, API behavior, and navigation races. Real proofs covered exact canvas/background pixels, DPR 1/2, resize without reload, manual/managed separation, and late-result rejection. Actual Safari capture wasn't verified: this Mac refused automation because Remote Automation is disabled. Physical devices and Windows provider capture remain unverified.
+Real browser tests check canvas/background pixels, image dimensions, DPR 2, resize without navigation, manual/managed separation, navigation races, and interrupted capture cleanup. Safari capture, physical-device capture, and Windows providers still need verification.
 
-## Browser-only capture
+## Browser-only alternatives
 
-Ordinary canvas export reads canvas content; it cannot export arbitrary DOM. DOM exporters reconstruct an image and can fail on cross-origin canvas content. They aren't a transparent screenshot fallback.
+Canvas export reads an existing canvas; it doesn't capture arbitrary DOM. DOM-to-image libraries reconstruct a page and can miss browser rendering and cross-origin content. Neither gives us a reliable screenshot of an unchanged app.
 
-[Screen sharing](https://w3c.github.io/mediacapture-screen-share/) can supply real pixels after a real gesture and chosen surface. One sharing session can supply multiple images, but permission doesn't persist and app-only cropping isn't universal. Current compatibility data lists iOS 27 support; physical-device verification is still needed. Keep a possible interactive provider separate from unattended capture.
+[Screen sharing](https://w3c.github.io/mediacapture-screen-share/) can provide real pixels after user interaction and permission to capture a chosen surface. That could support an interactive provider later. Surface selection and app-only cropping still need browser-specific verification, so it isn't the unattended fallback.
 
-[HTML-in-Canvas](https://developer.chrome.com/blog/html-in-canvas?hl=en) is an emerging Chrome path, not established cross-browser support for untouched app iframes. Extensions add installation, permissions, release maintenance, and device gaps. Neither belongs in this first implementation.
+Browser-specific DOM capture APIs and extensions would add installation and maintenance requirements. Keep those separate from the URL-only runner rather than making them a requirement for tests.
 
-## Evidence
-
-Disposable artifacts remain at `/private/tmp/dyno-driver-swarm-M4Kckc/`, with one report and runnable proof per lane. The sibling-overlay follow-up lives at `/private/tmp/dyno-overlay-spike-JMby7v/`. Earlier platform/DOM/CDP evidence remains at `/private/tmp/dyno-screenshots-ipN38E/`.
-
-The old Chromium-only recommendation is superseded. Production regression tests now live in the repository; temporary artifacts aren't required to verify the shipped behavior.
+The regression tests live in [tests/capture.test.js](../../tests/capture.test.js) and [tests/reporter.test.js](../../tests/reporter.test.js). They replace the temporary spike scripts as the reproducible checks.

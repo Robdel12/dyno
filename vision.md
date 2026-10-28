@@ -1,15 +1,23 @@
 # What we're building
 
-Dyno makes acceptance tests feel like working on the app itself. Open a URL, run the tests in a real browser, and debug them there. A browser shouldn't need a dedicated driver to join a test run.
+Dyno is for developers writing acceptance tests for web apps. Open a URL, run the tests in that browser, and debug them there. You should be able to use another desktop browser, a phone, or a TV without needing a dedicated driver for each one.
 
-The CLI handles the boring parts: starting the app, bundling tests, serving the runner, and reporting results. Interactor.js handles DOM interaction and assertions. Tests live in their own JavaScript context and can read the app's DOM directly.
+The CLI starts the app, bundles tests, serves the runner, and reports results. Tests run in their own JavaScript context and read the app's DOM directly. Interactor.js handles interaction and assertions without a remote command for every step.
 
-## Keep it simple
+## What to preserve
 
-- One config and a useful first test. Setup should be easy to understand.
-- Prefer small functions, immutable data, and composition. Keep effects at the edges.
-- Test through real user workflows. Mock external services only when necessary.
-- Retry observations; keep side effects deliberate. Explain failures clearly.
-- Treat storage and backend cleanup as explicit project choices.
+- Make the first test easy to write. One config, an app URL, and ordinary browser code.
+- Keep tests and Interactor in the browser. Optional controllers handle launch, screenshots, and window sizing.
+- Give the app its full, unscaled viewport. Open the reporter for inspection without moving the app.
+- Keep functions small, data immutable, and side effects at clear boundaries.
+- Test real user workflows. Wait for observable state and explain failures plainly.
+- Leave storage and backend cleanup to the project. Fresh frames don't reset a database or browser session.
+- Say when a capability is unavailable. Required screenshots fail; explicitly optional screenshots can skip.
 
-Keep the browser execution model as we grow. Optional browser controllers handle launch, screenshots, and host sizing. Tests and Interactor stay browser-local. The app fills a stable frame; the reporter uses its own overlay or observer URL. Extra capabilities explain their requirements and limits. Avoid a big orchestration platform or a framework-specific integration for every app.
+## Keep the scope small
+
+Dyno owns the test run, its processes, and its output. Apps keep their own development servers and hot reload. Avoid an adapter for every framework or a large orchestration service.
+
+Interactions use DOM methods and synthetic events. Physical input, real-device emulation, and visual baseline comparison are separate problems. URL-only execution is the goal across browsers; the current runner still needs modern browser APIs.
+
+Write docs and UI copy like you're helping another developer: short, concrete, and candid about limits. See the [guide](docs/guide.md) for current behavior and the [design guide](docs/design.md) for the reporter.
