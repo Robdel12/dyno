@@ -2,8 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { chmod } from 'node:fs/promises';
 import { join } from 'node:path';
-import { resolveBrowser } from '../src/launcher.js';
-import { project } from './helpers/project.js';
+import { resolveBrowser } from '../../src/launcher.js';
+import { project } from '../helpers/project.js';
 
 test(
   'the launched browser owns CLI completion even when a manual browser finishes first',

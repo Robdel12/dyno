@@ -4,7 +4,7 @@ import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { project, repository } from './helpers/project.js';
+import { project, repository } from '../helpers/project.js';
 
 let fixtureServer = join(repository, 'tests/fixtures/app-server.js');
 

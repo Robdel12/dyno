@@ -1,0 +1,15 @@
+name: Set up Dyno
+description: Install Node and locked dependencies.
+inputs:
+  node-version:
+    description: Node version to test.
+    default: '24'
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      with:
+        node-version: ${{ inputs.node-version }}
+        cache: npm
+    - run: npm ci
+      shell: bash

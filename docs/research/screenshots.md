@@ -21,4 +21,4 @@ Canvas export reads an existing canvas; it doesn't capture arbitrary DOM. DOM-to
 
 Browser-specific DOM capture APIs and extensions would add installation and maintenance requirements. Keep those separate from the URL-only runner rather than making them a requirement for tests.
 
-The regression tests live in [tests/capture.test.js](../../tests/capture.test.js) and [tests/reporter.test.js](../../tests/reporter.test.js). They replace the temporary spike scripts as the reproducible checks.
+The regression tests live in [capture tests](../../tests/capture/screenshots.test.js) and [reporter tests](../../tests/browser/reporter.test.js). They replace the temporary spike scripts as the reproducible checks.

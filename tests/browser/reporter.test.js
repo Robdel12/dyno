@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { project } from './helpers/project.js';
+import { project } from '../helpers/project.js';
 
 let browser = process.env.DYNO_TEST_BROWSER ?? 'chrome';
 let visibleConfig = {
@@ -66,14 +66,16 @@ test('keeps the current app available for inspection', async ({ app, I }) => {
       await UI.assert(
         () =>
           !document.querySelector('#overview').hidden &&
-          document.querySelector('#output-panel').hidden
+          document.querySelector('#output-panel').hidden,
+        'Expected the reporter overview'
       );
       await UI.click('$(a[aria-label="Passed: saves a contact with console output"])');
       await UI.assert(() => location.hash === '#/tests/0/output');
       await UI.assert(
         () =>
           document.querySelector('#output').textContent.includes('Starting save workflow') &&
-          document.querySelector('#output').textContent.includes('Contact saved')
+          document.querySelector('#output').textContent.includes('Contact saved'),
+        'Expected test and app console output'
       );
       await UI.click('Application');
       await UI.find('Run this test to inspect its app').visible();
@@ -82,16 +84,25 @@ test('keeps the current app available for inspection', async ({ app, I }) => {
       await UI.assert(
         () =>
           document.querySelector('#output').textContent.includes('Contact archived') &&
-          document.querySelector('#output').textContent.includes('tests/browser/workflow.test.js')
+          document.querySelector('#output').textContent.includes('tests/browser/workflow.test.js'),
+        'Expected assertion diagnostics and source location'
       );
       await UI.click('All tests');
       reporter.contentWindow.history.back();
       await UI.assert(
         () =>
-          location.hash === '#/tests/1/output' && !document.querySelector('#output-panel').hidden
+          location.hash === '#/tests/1/output' && !document.querySelector('#output-panel').hidden,
+        'Expected the reporter overview'
       );
       reporter.contentWindow.history.forward();
-      await UI.assert(() => location.hash === '#/' && !document.querySelector('#overview').hidden);
+      await UI.assert(() => location.hash === '#/' && !document.querySelector('#overview').hidden, 'Forward should restore the overview');
+      await UI.find('$(#test-search)').then.focus();
+      let sameOverview = new Promise((resolve) =>
+        reporter.contentWindow.addEventListener('hashchange', resolve, { once: true })
+      );
+      location.hash = '';
+      await sameOverview;
+      await UI.find('$(#test-search)').focused();
       await UI.type('actual assertion').into('$(#test-search)');
       await UI.assert(
         () =>
@@ -99,6 +110,7 @@ test('keeps the current app available for inspection', async ({ app, I }) => {
       );
       await UI.click('$(a[aria-label="Failed: reports an actual assertion failure"])');
       await UI.click('All tests');
+      await UI.find('$(#test-search)').visible();
       await UI.find('$(#test-search)').value('actual assertion');
       await UI.find('$(#test-search)').then.press('Delete', { replace: true });
       await UI.click('"Failed"$(button[data-filter])');
@@ -120,7 +132,8 @@ test('keeps the current app available for inspection', async ({ app, I }) => {
       );
       await UI.assert(
         () =>
-          appDocument.defaultView.innerWidth === 900 && appDocument.defaultView.innerHeight === 650
+          appDocument.defaultView.innerWidth === 900 && appDocument.defaultView.innerHeight === 650,
+        'Reporter navigation changed the app viewport'
       );
       let hostUI = new Interactor({ root: () => host.body });
       await hostUI.click('Show test results');
@@ -138,7 +151,7 @@ test('keeps the current app available for inspection', async ({ app, I }) => {
     } catch (error) {
       await fetch('/api/inspection', {
         method: 'POST',
-        body: JSON.stringify({ error: error.stack })
+        body: JSON.stringify({ error: error.message, stack: error.stack })
       });
     }
   });
@@ -285,8 +298,10 @@ test('continues with a fresh app', async ({ app, I }) => {
 `
     });
     let session = fixture.run(['--ui']);
+    let { url } = await session.waitForEvent('ready');
     let result = await session.waitForEvent('complete');
-    assert.equal(result.passed, 1);
+    let runs = await (await fetch(url + 'results')).json();
+    assert.equal(result.passed, 1, JSON.stringify(runs));
     assert.equal(result.failed, 1);
   }
 );

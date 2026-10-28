@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { injectBridge, responseHeaders } from '../src/proxy.js';
+import { injectBridge, responseHeaders } from '../../src/proxy.js';
 
 test('injects before executable app scripts while preserving CSP, comments, and template content', () => {
   let input = '<!doctype html><!-- <head>fake</head> --><html><head><meta http-equiv="Content-Security-Policy" content="script-src self"><template><script>inert()</script></template><script src="/app.js"></script></head><body></body></html>';

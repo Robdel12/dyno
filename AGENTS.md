@@ -4,6 +4,6 @@ Read [vision.md](vision.md) before product, API, or execution changes. Use [docs
 
 Use plain JavaScript ES modules, prefer `let`, and keep functions small. Prefer immutable data and explicit inputs; keep browser, filesystem, network, and process effects at the boundaries. Avoid compatibility wrappers and parallel implementations.
 
-Tests should run the CLI and real browser/app workflows. Don't mock Dyno internals or add arbitrary sleeps. Run `npm test`; use `npm run test:vizzly` for app integration changes when the Vizzly checkout is available. Interactor.js owns convergence and DOM interaction.
+Tests should run the CLI and real browser/app workflows. Don't mock Dyno internals or add arbitrary sleeps. Run `npm test`; use `npm run test:vizzly` for app integration changes when the Vizzly checkout is available. Interactor.js owns convergence and DOM interaction. [docs/ci.md](docs/ci.md) lists the test suites and CI setup.
 
 Write docs and UI copy in plain, conversational language. Keep it brief, explain what happens, and be candid about limits. Commits start with a gitmoji. Never add co-author or AI attribution.

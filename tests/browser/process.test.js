@@ -5,8 +5,8 @@ import { once } from 'node:events';
 import { join } from 'node:path';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { signalProcessGroup } from '../src/process.js';
-import { exec, repository } from './helpers/project.js';
+import { signalProcessGroup } from '../../src/process.js';
+import { exec, repository } from '../helpers/project.js';
 
 test('macOS cleanup accepts a zombie-only group and leaves its supervisor running', { timeout: 15000, skip: process.platform !== 'darwin' }, async t => {
   let directory = await mkdtemp(join(tmpdir(), 'dyno-process-group-'));

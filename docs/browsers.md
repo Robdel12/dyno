@@ -72,10 +72,10 @@ On macOS 27, some Firefox builds exit with `Could not find profile folder` when 
 ```sh
 npm test
 npm run test:firefox
-node scripts/test.js edge
+npm run test:browser -- edge
 DYNO_CAPTURE_PROVIDER=webdriver DYNO_CAPTURE_BROWSER=firefox npm run test:capture
 ```
 
-The [CI workflow](../.github/workflows/test.yml) defines native Chrome/Firefox/Edge jobs on macOS and Linux, plus Linux Playwright and WebDriver capture jobs. Check the [latest run](https://github.com/Robdel12/dyno/actions/workflows/test.yml) for results.
+The [CI workflow](../.github/workflows/ci.yml) defines native Chrome/Firefox/Edge jobs on macOS and Linux, plus Linux Playwright and WebDriver capture jobs. [CI setup](ci.md) covers the suites and saved results. Check the [latest run](https://github.com/Robdel12/dyno/actions/workflows/ci.yml) for results.
 
 Linux CI supplies a D-Bus session. Its Edge job installs the official browser package and repairs the hosted image's sandbox setup. Those machine-specific fixes stay in the workflow; Dyno doesn't change browser permissions or OS security settings. The packaged-install check needs normal registry access and an empty npm cache.

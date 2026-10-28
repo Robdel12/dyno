@@ -59,7 +59,10 @@ let render = createReporter({
 });
 render(state);
 window.addEventListener('hashchange', () => {
-  update({ route: reporterRoute(location.hash) });
+  let route = reporterRoute(location.hash);
+  // Queued history events shouldn't steal focus from the current view.
+  if (['page', 'index', 'tab'].every((key) => route[key] === state.route[key])) return;
+  update({ route });
   document.getElementById('run-options').open = false;
   document.getElementById('main').focus();
   window.scrollTo(0, 0);
@@ -76,7 +79,8 @@ if (embedded) {
     )
       return;
     if (message.kind === 'snapshot') receive(message.view);
-    if (message.kind === 'focus') document.getElementById('main').focus();
+    if (message.kind === 'focus' && (!document.hasFocus() || document.activeElement === document.body))
+      document.getElementById('main').focus();
   });
   parent.postMessage({ channel: 'dyno-reporter', kind: 'ready', runId }, location.origin);
 } else if (runId) {

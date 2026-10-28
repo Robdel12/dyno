@@ -1,0 +1,39 @@
+name: Run Dyno tests
+description: Run one suite and retain its console and JUnit output.
+inputs:
+  suite:
+    description: core, browser, package, or capture.
+    required: true
+  browser:
+    description: Native browser for browser/package suites.
+    default: chrome
+  artifact:
+    description: Unique artifact name for this job.
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Run tests
+      shell: bash
+      env:
+        DYNO_TEST_SUITE: ${{ inputs.suite }}
+        DYNO_NATIVE_BROWSER: ${{ inputs.browser }}
+        DYNO_TEST_REPORT_DIR: test-results
+      run: |
+        mkdir -p test-results
+        command=(node scripts/test.js "$DYNO_TEST_SUITE")
+        if [[ "$DYNO_TEST_SUITE" == 'browser' || "$DYNO_TEST_SUITE" == 'package' ]]; then
+          command+=("$DYNO_NATIVE_BROWSER")
+        fi
+        if [[ "$RUNNER_OS" == 'Linux' ]]; then
+          command=(dbus-run-session -- "${command[@]}")
+        fi
+        "${command[@]}" 2>&1 | tee test-results/output.log
+    - name: Upload test results
+      if: ${{ always() && !cancelled() }}
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: ${{ inputs.artifact }}
+        path: test-results/
+        if-no-files-found: error
+        retention-days: 7

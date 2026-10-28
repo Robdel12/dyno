@@ -19,13 +19,17 @@
     "docs/browsers.md",
     "docs/research/screenshots.md",
     "docs/architecture.md",
-    "docs/design.md"
+    "docs/design.md",
+    "docs/ci.md"
   ],
   "scripts": {
-    "test": "node --test --test-concurrency=1 tests/*.test.js",
-    "test:vizzly": "node bin/dyno.js --config examples/vizzly/dyno.config.js",
-    "test:firefox": "node scripts/test.js firefox",
-    "test:capture": "node --test tests/capture.test.js"
+    "test": "node scripts/test.js",
+    "test:core": "node scripts/test.js core",
+    "test:browser": "node scripts/test.js browser",
+    "test:package": "node scripts/test.js package",
+    "test:capture": "node scripts/test.js capture",
+    "test:firefox": "node scripts/test.js browser firefox",
+    "test:vizzly": "node bin/dyno.js --config examples/vizzly/dyno.config.js"
   },
   "engines": {
     "node": ">=24"

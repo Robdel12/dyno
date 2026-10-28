@@ -50,6 +50,6 @@ Then `await app.screenshot('dashboard')` saves the app viewport. `await app.setV
 
 ## Work on Dyno
 
-Run `npm test` with Chrome installed. The macOS process-cleanup test also needs `cc`. The optional `npm run test:vizzly` integration needs a Vizzly checkout, its built frontend, and Docker; the main suite doesn't need any of those.
+Run `npm test` with Chrome installed. [CI setup](docs/ci.md) lists the individual suites. The macOS process-cleanup test also needs `cc`. The optional `npm run test:vizzly` integration needs a Vizzly checkout, its built frontend, and Docker; the main suite doesn't need any of those.
 
 Start with [the vision](vision.md). The [guide](docs/guide.md) covers the API and configuration; [architecture](docs/architecture.md) explains execution and capture. The [design guide](docs/design.md) covers the reporter.

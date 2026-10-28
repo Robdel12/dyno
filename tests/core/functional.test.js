@@ -3,10 +3,10 @@ import assert from 'node:assert/strict';
 import { mkdtemp, appendFile, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createSuite, addTest, addHook } from '../src/suite.js';
-import { createRun, acceptEvent } from '../src/run.js';
-import { normalizeConfig } from '../src/config.js';
-import { createCleanup } from '../src/cleanup.js';
+import { createSuite, addTest, addHook } from '../../src/suite.js';
+import { createRun, acceptEvent } from '../../src/run.js';
+import { normalizeConfig } from '../../src/config.js';
+import { createCleanup } from '../../src/cleanup.js';
 
 test('suite snapshots keep earlier test and hook definitions unchanged', () => {
   let empty = createSuite();
