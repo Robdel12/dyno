@@ -163,7 +163,16 @@ export function createBrowserControl({ artifactsDir, onReplaced = () => {} }) {
         let listeners = streams.get(runId) ?? new Set();
         listeners.add(listener);
         streams.set(runId, listeners);
-        response.on('close', () => listeners.delete(listener));
+        let hostConnected = () =>
+          [...listeners].some(
+            (item) => item.role === 'host' && !item.response.destroyed && !item.response.writableEnded
+          );
+        response.write(`event: host-status\ndata: ${JSON.stringify({ connected: hostConnected() })}\n\n`);
+        if (role === 'host') broadcast(runId, 'host-status', { connected: true });
+        response.on('close', () => {
+          listeners.delete(listener);
+          if (role === 'host') broadcast(runId, 'host-status', { connected: hostConnected() });
+        });
         return true;
       }
       if (route.startsWith('artifacts/') && request.method === 'GET') {
@@ -178,6 +187,7 @@ export function createBrowserControl({ artifactsDir, onReplaced = () => {} }) {
         ![
           'view',
           'control',
+          'command-result',
           'context',
           'operations',
           'operations/cancel',
@@ -204,11 +214,16 @@ export function createBrowserControl({ artifactsDir, onReplaced = () => {} }) {
           (!Array.isArray(input.ids) || input.ids.some((name) => typeof name !== 'string'))
         )
           throw problem(400, 'Invalid test selection.');
-        broadcast(input.runId, 'command', { ...input, id: randomUUID() });
+        broadcast(input.runId, 'command', { ...input, requestId: input.requestId ?? randomUUID() });
         send({ accepted: true });
         return true;
       }
       let connection = authorize(input);
+      if (route === 'command-result') {
+        broadcast(input.runId, 'command-result', { requestId: input.requestId, error: input.error });
+        send({});
+        return true;
+      }
       if (route === 'view') {
         if (!input.view || typeof input.view !== 'object' || !Array.isArray(input.view.tests))
           throw problem(400, 'Invalid execution snapshot.');
