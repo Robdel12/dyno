@@ -38,7 +38,7 @@ document.querySelector('select').addEventListener('change', event => {
 });
 `;
 let html = `<!doctype html><html><head><meta charset="utf-8"><title>Fixture app</title></head><body>
-<h1>Fixture app</h1><form><label>Name <input name="name"></label><button>Save</button></form>
+<h1>Fixture app</h1><form><label>Name<input name="name"></label><button>Save</button></form>
 <p role="status">Ready</p><button id="property">Change property</button><button id="reject">Reject</button><a href="/other">Other page</a>
 <button id="dismiss">Dismiss notice</button><label>Review mode <select><option>Choose mode</option><option>Compare</option></select></label><output>No review mode</output>
 <script>${script}</script></body></html>`;
@@ -92,9 +92,28 @@ let server = http.createServer(async (request, response) => {
     response.end('<!doctype html><style>p{width:179px;font:20px/1.5 system-ui}#large{height:200vh}#hidden{visibility:hidden}#cover{position:fixed;inset:0;background:white;pointer-events:none;display:none}</style><p>Start here with a <a href="/other">Create an account to document history</a></p><section id="large">A large section</section><button id="hidden">Hidden</button>');
     return;
   }
+  if (request.url === '/interactor') {
+    response.writeHead(200, { 'Content-Type': 'text/html' });
+    response.end(`<!doctype html><h1>Contacts</h1>
+      <section id="personal"><label>Name<input></label><output>Unchanged</output></section>
+      <section id="work"><label>Name<input></label><label>Seats<input type="number"></label><label>Notes<textarea></textarea></label><output>Unchanged</output></section>
+      <label>Photos<input type="file" multiple></label><p id="uploads">No photos</p>
+      <p id="below" style="margin-top:200vh">Below the fold</p>
+      <script>
+        for(let section of document.querySelectorAll('section')) section.addEventListener('input', event => {
+          section.querySelector('output').textContent = event instanceof Event ? event.target.value : 'Wrong event realm';
+        });
+        document.querySelector('[type=file]').addEventListener('change', async event => {
+          let files = [...event.target.files];
+          document.querySelector('#uploads').textContent = event instanceof Event && files.every(file=>file instanceof File)
+            ? (await Promise.all(files.map(async file=>file.name+': '+await file.text()))).join(', ') : 'Wrong file realm';
+        });
+      </script>`);
+    return;
+  }
   if (request.url === '/visual') {
     response.writeHead(200, { 'Content-Type': 'text/html' });
-    response.end(`<!doctype html><meta charset="utf-8"><style>html,body{margin:0;background:rgb(20,150,80)}canvas{position:absolute;left:0;top:0}form{margin:80px 20px}#layout:after{content:'Wide'}@media(max-width:500px){#layout:after{content:'Narrow'}}</style><canvas width="40" height="40"></canvas><form><label>Name <input name="name"></label><button>Save</button></form><p role="status">Ready</p><p id="layout"></p><script>let context=document.querySelector('canvas').getContext('2d');context.fillStyle='rgb(30,70,210)';context.fillRect(0,0,40,40);let saves=0;document.querySelector('form').onsubmit=event=>{event.preventDefault();document.querySelector('[role=status]').textContent='Saved '+document.querySelector('input').value+' · '+ ++saves;};</script>`);
+    response.end(`<!doctype html><meta charset="utf-8"><style>html,body{margin:0;background:rgb(20,150,80)}canvas{position:absolute;left:0;top:0}form{margin:80px 20px}#layout:after{content:'Wide'}@media(max-width:500px){#layout:after{content:'Narrow'}}</style><canvas width="40" height="40"></canvas><form><label>Name<input name="name"></label><button>Save</button></form><p role="status">Ready</p><p id="layout"></p><script>let context=document.querySelector('canvas').getContext('2d');context.fillStyle='rgb(30,70,210)';context.fillRect(0,0,40,40);let saves=0;document.querySelector('form').onsubmit=event=>{event.preventDefault();document.querySelector('[role=status]').textContent='Saved '+document.querySelector('input').value+' · '+ ++saves;};</script>`);
     return;
   }
   if (request.url === '/held-app') {

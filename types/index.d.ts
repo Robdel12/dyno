@@ -1,5 +1,22 @@
-import type { Interactor as BrowserInteractor } from 'interactor.js';
-export { Interactor } from 'interactor.js';
+import { Interactor as BrowserInteractor } from 'interactor.js';
+
+export interface UploadFile {
+  readonly bytes: BlobPart;
+  readonly name: string;
+  readonly type?: string;
+}
+type Chain<T> = { readonly then: Interactor & PromiseLike<T>['then'] };
+type Assertions = BrowserInteractor['assert'] & {
+  rendered(): Chain<boolean>;
+  readonly not: BrowserInteractor['assert']['not'] & { rendered(): Chain<boolean> };
+};
+export class Interactor extends BrowserInteractor {
+  scope(selector: Parameters<BrowserInteractor['find']>[0]): Interactor;
+  fill(value: string | number): Chain<HTMLElement>;
+  upload(...files: UploadFile[]): Chain<HTMLElement>;
+  get assert(): Assertions;
+  find(selector?: Parameters<BrowserInteractor['find']>[0]): ReturnType<BrowserInteractor['find']> & Assertions & Chain<HTMLElement>;
+}
 
 export interface Viewport {
   readonly width: number;
@@ -81,7 +98,7 @@ export interface Timings {
 }
 export interface TestContext {
   readonly app: Application;
-  readonly I: BrowserInteractor;
+  readonly I: Interactor;
   readonly fixtures: Fixtures;
   readonly signal: AbortSignal;
   readonly test: TestDescriptor;

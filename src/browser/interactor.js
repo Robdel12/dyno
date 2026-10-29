@@ -1,4 +1,22 @@
-import { Interactor } from 'interactor.js';
+import { Interactor as BrowserInteractor } from 'interactor.js';
+
+export class Interactor extends BrowserInteractor {
+  static Assert = class extends BrowserInteractor.Assert {};
+
+  scope(selector) {
+    let context = new this.constructor.Context(this[this.constructor.Context.Symbol]);
+    context.selector = selector;
+    return new this.constructor({
+      root: () => context.$,
+      signal: context.signal,
+      assert: {
+        timeout: context.assert.timeout,
+        frequency: context.assert.frequency,
+        reliability: context.assert.reliability,
+      },
+    });
+  }
+}
 
 function dispatch(element, eventName, { bubbles = true, cancelable = true, ...properties } = {}, signal) {
   signal?.throwIfAborted();
@@ -38,6 +56,49 @@ Interactor.defineAction('click', function* click(selector) {
     return $;
   };
 });
+
+Interactor.defineAction('fill', function* fill(value) {
+  yield this.focus();
+  yield this.assert.not.disabled();
+  yield ({ $, signal }) => {
+    signal?.throwIfAborted();
+    let window = $.ownerDocument.defaultView;
+    let prototype = $.localName === 'textarea' ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype;
+    let setter = Object.getOwnPropertyDescriptor(prototype, 'value')?.set;
+    if (!setter || !/^(input|textarea)$/.test($.localName)) throw new Error('fill requires an input or textarea');
+    setter.call($, String(value));
+  };
+  yield this.trigger('input', { cancelable: false, inputType: 'insertReplacementText', data: String(value) });
+  yield this.trigger('change', { cancelable: false });
+  return ({ $ }) => $;
+});
+
+Interactor.defineAction('upload', function* upload(...files) {
+  yield this.assert.not.disabled();
+  yield ({ $, signal }) => {
+    signal?.throwIfAborted();
+    if ($.localName !== 'input' || $.type !== 'file') throw new Error('upload requires a file input');
+    if (files.length > 1 && !$.multiple) throw new Error('Multiple files require a multiple file input');
+    let window = $.ownerDocument.defaultView;
+    let transfer = new window.DataTransfer();
+    for (let { bytes, name, type = '' } of files) transfer.items.add(new window.File([bytes], name, { type }));
+    $.files = transfer.files;
+  };
+  yield this.trigger('input', { cancelable: false });
+  yield this.trigger('change', { cancelable: false });
+  return ({ $ }) => $;
+});
+
+Interactor.defineAssertion(
+  'rendered',
+  () => ({ $ }) => {
+    let style = $.ownerDocument.defaultView.getComputedStyle($);
+    return style.display !== 'none' && style.visibility === 'visible' && Number(style.opacity) > 0 &&
+      [...$.getClientRects()].some(rect => rect.width > 0 && rect.height > 0);
+  },
+  '#{this} is not rendered',
+  '#{this} is rendered',
+);
 
 Interactor.defineAssertion(
   'focused',
