@@ -112,10 +112,19 @@ export function createBrowserControl({ artifactsDir, onReplaced = () => {} }) {
         connectionKey: connection.key,
         owned,
         identity: owned ? session.identity : null,
+        previousRunId: replaced,
         capabilities: owned ? session.capabilities : { screenshot: false, hostViewport: false }
       };
     },
     authorize,
+    notify(runId, kind, value) {
+      broadcast(runId, kind, value);
+    },
+    reload(runId) {
+      if (![...(streams.get(runId) ?? [])].some((listener) => listener.role === 'host' && !listener.response.destroyed))
+        throw problem(409, 'Open the test browser URL to run updated tests.');
+      broadcast(runId, 'command', { command: 'reload' });
+    },
     finish: (runId) => invalidate(runId, true),
     attachments(runId, executionId) {
       return [...records.values()]

@@ -9,6 +9,7 @@ You'll need Node 24+ and an installed browser. Chrome is the default. Dyno is ea
 ```sh
 npm install --save-dev github:Robdel12/dyno
 npx dyno init
+npx dyno doctor
 ```
 
 `init` creates `dyno.config.js` and one example test. It checks both paths before writing and leaves existing files alone. Update the command, URL, and assertion for your app.
@@ -42,6 +43,7 @@ Run `npx dyno`, or add `"test:browser": "dyno"` to your package scripts. Tests c
 ```sh
 dyno                              # headless run
 dyno --ui                         # visible browser and repeated runs
+dyno --watch                      # rerun when tests or imported helpers change
 dyno --manual --host 0.0.0.0      # open the URL yourself or on another device
 dyno --test 'saves a contact'      # exact test name
 dyno --config path/to/config.js
@@ -59,6 +61,24 @@ The overview groups files and suites, with search and status filters saved in it
 The CLI also prints a separate reporter URL. Open it in another tab to observe and control the run without covering the app. Reruns rebuild tests; separate reporters follow the new run. Back/forward navigation only changes reporter routes.
 
 Console capture keeps the first 100 messages per test, up to 2,000 characters each, without evaluating object getters. It supports `log`, `info`, `warn`, `error`, and `debug`. Logging an error doesn't fail the test. Capture ends with the test; use the browser console for later inspection.
+
+## Editing and debugging
+
+`dyno doctor` checks config, bundles tests, locates the selected browser/provider, and checks the app URL without launching anything. Add `--manual` for a URL-only setup. It cannot prove that a configured server command starts successfully; the run checks its output and HTTP readiness.
+
+`--watch` keeps the app server and browser session alive. It watches test files and imported project helpers using filesystem events. Edits during a run queue one rebuild of the latest files. Build errors leave the previous results available; fixing the file runs again. Config and Node setup changes need a CLI restart. App code keeps its own hot reload.
+
+Use `await app.pause('Inspect this contact')` within a test or setup hook with `--ui` or `--manual`. It opens the reporter immediately, retains the current app and test, and suspends the test deadline. Continue hides the reporter and resumes the remaining budget. It does not freeze application timers or network requests. Cleanup has its own deadline and cannot pause. Headless pause calls fail clearly.
+
+The package includes types for tests, hooks, config, fixtures, and app APIs. Browser tests use TypeScript's `moduleResolution: "Bundler"`; Interactor.js currently has extensionless declaration imports that do not support strict NodeNext checking. Config types work independently of those browser declarations. TypeScript is still transpiled during a run; use your project's `tsc --noEmit` for type checking. JavaScript editors get the same declarations.
+
+Extend `Fixtures` in your project to type values returned by Node setup:
+
+```ts
+declare module 'dyno' {
+  interface Fixtures { contactId: string }
+}
+```
 
 ## Browser API
 
@@ -188,6 +208,7 @@ Paths are relative to the config file unless noted. See `dyno --help` for CLI ov
 | `testDir` | `tests/browser` | Test directory |
 | `testMatch` | `**/*.test.{js,jsx,ts,tsx}` | File pattern |
 | `timeout` | `10000` | Test deadline, including runtime startup and hooks |
+| `cleanupTimeout` | `5000` | Total budget for cleanup after execution ends |
 | `expectTimeout` | `min(2000, timeout / 2)`, rounded down | Interactor assertion timeout |
 | `runTimeout` | `60000` | Headless run deadline |
 | `host`, `port` | `127.0.0.1`, `7357` | Gateway address; port 0 chooses a free port |
@@ -221,7 +242,7 @@ This example is optional. `npm test` uses the self-contained fixture app.
 
 The runner uses ES2022 syntax and modern APIs, including `AbortSignal.timeout`, `AbortSignal.any`, `Promise.withResolvers`, `crypto.getRandomValues`, and `EventSource`. Older browsers, including historical WebOS builds, need compatibility work. See [browser setup](browsers.md#known-limits) for verification gaps.
 
-Interactions use DOM methods and synthetic events. They don't prove physical pointer hit-testing or satisfy every API requiring trusted user input. Closed shadow roots, native dialogs, downloads, video capture, full-page screenshots, visual baselines, parallel scheduling, file watching, and HTTPS gateway serving are outside this version.
+Interactions use DOM methods and synthetic events. They don't prove physical pointer hit-testing or satisfy every API requiring trusted user input. Closed shadow roots, native dialogs, downloads, video capture, full-page screenshots, visual baselines, parallel scheduling and HTTPS gateway serving are outside this version.
 
 The gateway uses HTTP. Secure cookies and secure-context-only features may need a different test origin. Frames share an origin and aren't a security sandbox. An infinite loop can freeze the browser; the Node deadline can stop a browser it owns but can't recover a manual browser's event loop.
 

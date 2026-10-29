@@ -1,6 +1,7 @@
-export function createApp(frame, readState, signal, navigate, operation) {
+export function createApp(frame, readState, signal, navigate, operation, pause) {
   return Object.freeze({
     goto: navigate,
+    pause,
     setViewport: (viewport) =>
       operation({ operation: 'viewport', viewport }, undefined, (result) => Object.freeze(result.viewport)),
     screenshot: (name, options = {}) =>

@@ -212,7 +212,22 @@ export function createReporter(actions) {
     for (let failureError of [error, ...(test?.additionalErrors ?? [])].filter(Boolean)) {
       let error = failureError;
       let failure = element('div', 'failure');
-      if (error.phase) failure.append(element('p', 'failure-location', ({test:'Test',beforeEach:'Setup · beforeEach',afterEach:'Cleanup · afterEach',app:'Application',timeout:'Test timeout',cleanup:'Cleanup timeout',runtime:'Test runtime'})[error.phase] ?? error.phase));
+      if (error.phase)
+        failure.append(
+          element(
+            'p',
+            'failure-location',
+            {
+              test: 'Test',
+              beforeEach: 'Setup · beforeEach',
+              afterEach: 'Cleanup · afterEach',
+              app: 'Application',
+              timeout: 'Test timeout',
+              cleanup: 'Cleanup timeout',
+              runtime: 'Test runtime'
+            }[error.phase] ?? error.phase
+          )
+        );
       failure.append(element('h2', '', error.message));
       if (error.source) {
         let source = error.source;
@@ -347,6 +362,7 @@ export function createReporter(actions) {
       pausing: 'Pausing after this test…',
       paused: 'Paused for inspection',
       resuming: 'Continuing tests…',
+      debugging: 'Paused in this test',
       completed: failed
         ? `${failed} ${failed === 1 ? 'test' : 'tests'} failed`
         : skipped
@@ -385,12 +401,15 @@ export function createReporter(actions) {
     get('rerun').disabled = detail ? !test : !total && state.phase !== 'error';
     write(get('rerun'), detail ? 'Run test' : 'Run all');
     get('run-failed').hidden = !failed;
-    get('stop').hidden = !['discovering', 'running', 'pausing', 'paused', 'resuming'].includes(state.phase);
+    get('stop').hidden = !['discovering', 'running', 'pausing', 'paused', 'resuming', 'debugging'].includes(
+      state.phase
+    );
     get('run-options').hidden = !state.interactive;
     get('pause').disabled = !['running', 'pausing'].includes(state.phase);
     write(get('pause'), state.phase === 'pausing' ? 'Keep running' : 'Pause after this test');
     get('pause-on-failure').checked = state.pauseOnFailure;
-    get('pause-banner').hidden = state.phase !== 'paused';
+    get('pause-banner').hidden = !['paused', 'debugging'].includes(state.phase);
+    write(get('pause-message'), state.phase === 'debugging' ? state.debugMessage : 'Run paused.');
     get('inspect-paused').href = href({
       page: 'test',
       id: state.tests.find((test) => test.index === state.current)?.id,
@@ -428,8 +447,11 @@ export function createReporter(actions) {
         groups.set(group.file, fileGroup);
       }
       let failedCount = group.tests.filter((test) => test.status === 'failed').length;
-      write(fileGroup.count, `${group.tests.length} ${group.tests.length === 1 ? 'test' : 'tests'}${failedCount ? ` · ${failedCount} failed` : ''}`);
-      fileGroup.run.disabled = active || unavailable;
+      write(
+        fileGroup.count,
+        `${group.tests.length} ${group.tests.length === 1 ? 'test' : 'tests'}${failedCount ? ` · ${failedCount} failed` : ''}`
+      );
+      fileGroup.run.disabled = active || state.phase === 'debugging' || unavailable;
       let fileVisible = false;
       for (let suite of group.suites) {
         let key = JSON.stringify([group.file, ...suite.path]);
@@ -452,7 +474,8 @@ export function createReporter(actions) {
           suiteGroup = { node, list };
           suites.set(key, suiteGroup);
         }
-        for (let run of suiteGroup.node.querySelectorAll('button')) run.disabled = active || unavailable;
+        for (let run of suiteGroup.node.querySelectorAll('button'))
+          run.disabled = active || state.phase === 'debugging' || unavailable;
         let matches = suite.tests.some(
           (test) =>
             `${test.file} ${test.suites.join(' ')} ${test.name}`
@@ -563,7 +586,7 @@ export function createReporter(actions) {
       'pause-on-failure'
     ])
       get(id).disabled ||= unavailable;
-    get('rerun').disabled ||= active;
-    get('run-failed').disabled = active || unavailable;
+    get('rerun').disabled ||= active || state.phase === 'debugging';
+    get('run-failed').disabled = active || state.phase === 'debugging' || unavailable;
   };
 }

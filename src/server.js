@@ -196,7 +196,7 @@ export async function createGateway(
           runs.set(runId, createRun(runId));
           bundles.set(runId, snapshot);
           let joined = control.join(runId, joining.launchKey, joining.previous);
-          onEvent({ type: 'capture', runId, owned: joined.owned });
+          onEvent({ type: 'capture', runId, owned: joined.owned, previousRunId: joined.previousRunId });
           return send('application/json', JSON.stringify({ runId, ...joined }));
         }
         let input = await reporterInput(request);
@@ -292,6 +292,8 @@ export async function createGateway(
     origin,
     url: origin + prefix,
     attachSession: control.attach,
+    reload: control.reload,
+    notify: control.notify,
     close() {
       closing ??= control.close().then(
         () =>

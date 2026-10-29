@@ -225,7 +225,8 @@ let rerun = (ids) => {
   location.reload();
 };
 function command(input) {
-  if (input.command === 'stop') {
+  if (input.command === 'reload') location.reload();
+  else if (input.command === 'stop') {
     stoppingReason ??= new Error('Run stopped from the reporter.');
     if (resource && !resource.finished && resource.ready) resource.cancel(stoppingReason);
     else controller.abort(stoppingReason);
@@ -234,6 +235,9 @@ function command(input) {
   else if (input.command === 'show-app') {
     update({ type: 'app.requested' });
     resource?.frame.contentDocument?.querySelector('iframe')?.contentWindow.focus();
+  } else if (input.command === 'continue' && state.phase === 'debugging') {
+    update({ type: 'debug.continued' });
+    return paint().then(() => resource?.continueDebug());
   } else if (input.command === 'continue' && state.phase === 'paused') {
     let continuation = resume;
     update({ type: 'continue.requested' });
@@ -246,7 +250,7 @@ function command(input) {
     try {
       localStorage.setItem('dyno:pause-on-failure', String(state.pauseOnFailure));
     } catch {}
-  } else if (input.command === 'viewport' && ['paused', 'completed'].includes(state.phase)) {
+  } else if (input.command === 'viewport' && ['paused', 'completed', 'debugging'].includes(state.phase)) {
     let current = resource;
     operationQueue = operationQueue.then(() => sizeViewport(input.viewport, current));
     let work = operationQueue;
@@ -322,11 +326,13 @@ async function runtime(mode, timeout, index, testId) {
     canceled: new Set(),
     remove: () => frame.remove()
   };
-  current.cancel = (error) =>
+  current.cancel = (error) => {
+    if (state.phase === 'debugging') current.watchdog(settings.cleanupTimeout + 1000);
     frame.contentWindow.postMessage(
       { channel: 'dyno', kind: 'cancel', runId, executionId: current.id, error: serialized(error) },
       location.origin
     );
+  };
   let executionDeadline = Date.now() + timeout;
   let startup = AbortSignal.timeout(timeout);
   // Allow the runtime to deliver its result after exhausting both execution and cleanup budgets.
@@ -342,6 +348,18 @@ async function runtime(mode, timeout, index, testId) {
       startup.removeEventListener('abort', startupExpired);
       controller.signal.removeEventListener('abort', aborted);
       error ? reject(error) : resolve(value);
+    };
+    current.watchdog = (ms) => {
+      deadline.removeEventListener('abort', expired);
+      deadline = AbortSignal.timeout(Math.min(2147483647, Math.ceil(ms)));
+      deadline.addEventListener('abort', expired, { once: true });
+    };
+    current.continueDebug = () => {
+      current.watchdog(current.debugRemaining + settings.cleanupTimeout + 1000);
+      frame.contentWindow.postMessage(
+        { channel: 'dyno', kind: 'debug-continue', runId, executionId: current.id },
+        location.origin
+      );
     };
     let receive = (event) => {
       let message = event.data;
@@ -361,7 +379,15 @@ async function runtime(mode, timeout, index, testId) {
         current.documentId = message.documentId;
         void syncContext(current).catch(() => {});
       }
-      if (message.kind === 'runtime-ready') current.ready = true;
+      if (message.kind === 'runtime-ready') {
+        current.ready = true;
+        startup.removeEventListener('abort', startupExpired);
+      }
+      if (message.kind === 'debug-paused') {
+        current.debugRemaining = message.remaining;
+        deadline.removeEventListener('abort', expired);
+        update({ type: 'debug.paused', message: message.message });
+      }
       if (message.kind === 'operation-cancel') {
         current.canceled.add(message.requestId);
         current.operations.get(message.requestId)?.abort(new Error('Operation cancelled.'));
@@ -380,7 +406,10 @@ async function runtime(mode, timeout, index, testId) {
       if (mode === 'discover' && message.kind === 'discovered') finish(null, message.tests);
       if (mode !== 'discover' && message.kind === 'result') {
         if (message.testId !== testId) finish(new Error('The runtime reported a different test identity.'));
-        else finish(null, message);
+        else {
+          if (state.phase === 'debugging') update({ type: 'debug.continued' });
+          finish(null, message);
+        }
       }
     };
     let expired = () =>
@@ -476,6 +505,7 @@ try {
   });
   reporter.src = `${root}reporter?run=${encodeURIComponent(runId)}&embedded=1`;
   stream = new EventSource(root + `stream?run=${encodeURIComponent(runId)}&role=host`);
+  stream.addEventListener('watch', (event) => update({ type: 'watch.changed', watch: JSON.parse(event.data) }));
   stream.addEventListener('command', (event) => void dispatchCommand(JSON.parse(event.data)));
   let discovery = await runtime('discover', settings.timeout);
   let tests;

@@ -6,7 +6,12 @@ import { tmpdir } from 'node:os';
 import { project, exec, repository, launch } from '../helpers/project.js';
 
 let cli = join(repository, 'bin/dyno.js');
-let eventsFrom = stdout => stdout.trim().split('\n').filter(Boolean).map(line => JSON.parse(line));
+let eventsFrom = (stdout) =>
+  stdout
+    .trim()
+    .split('\n')
+    .filter(Boolean)
+    .map((line) => JSON.parse(line));
 
 async function failedCLI(args, directory = repository) {
   let session = launch(process.execPath, [cli, ...args, '--json'], directory);
@@ -23,13 +28,16 @@ test('help, version, and browser discovery work without an app config', { timeou
     let [event] = eventsFrom(stdout);
     assert.equal(event.type, args[0] === 'browsers' ? 'browsers' : args[0].slice(2));
     if (event.type === 'browsers') {
-      assert.deepEqual(event.browsers.map(browser => browser.name), ['chrome', 'chromium', 'edge', 'firefox', 'safari']);
-      assert.equal(event.browsers.find(browser => browser.name === 'safari').headless, false);
+      assert.deepEqual(
+        event.browsers.map((browser) => browser.name),
+        ['chrome', 'chromium', 'edge', 'firefox', 'safari']
+      );
+      assert.equal(event.browsers.find((browser) => browser.name === 'safari').headless, false);
     }
   }
 });
 
-test('CLI mistakes are structured errors and never partially initialize a project', { timeout: 15000 }, async t => {
+test('CLI mistakes are structured errors and never partially initialize a project', { timeout: 15000 }, async (t) => {
   let fixture = await project(t);
   let original = await readFile(join(fixture.directory, 'dyno.config.js'), 'utf8');
   for (let [args, message] of [
@@ -41,31 +49,75 @@ test('CLI mistakes are structured errors and never partially initialize a projec
     [['--manual', '--browser', 'firefox'], /does not launch/],
     [['--test', '  '], /non-empty/],
     [['--unknown'], /Unknown option/]
-  ]) assert.match(await failedCLI(args, fixture.directory), message);
+  ])
+    assert.match(await failedCLI(args, fixture.directory), message);
   assert.equal(await readFile(join(fixture.directory, 'dyno.config.js'), 'utf8'), original);
   await assert.rejects(readFile(join(fixture.directory, 'tests/browser/home.test.js')), { code: 'ENOENT' });
 });
 
-test('config typos and unsafe profile overrides fail before app startup', { timeout: 15000 }, async t => {
+test('config typos and unsafe profile overrides fail before app startup', { timeout: 15000 }, async (t) => {
   for (let config of [
-    { timeuot: 1000 }, { timeout: 2147483648 }, { browser: { name: 'netscape' } },
+    { timeuot: 1000 },
+    { timeout: 2147483648 },
+    { browser: { name: 'netscape' } },
     { browser: { args: ['--user-data-dir=/some/user/profile'] } },
-    { webServer: { reuseExistingServer: 'yes' } }, { webServer: { env: { PORT: 12 } } }
+    { webServer: { reuseExistingServer: 'yes' } },
+    { webServer: { env: { PORT: 12 } } }
   ]) {
     let fixture = await project(t, { config });
     let result = await fixture.run().completion;
     assert.equal(result.code, 1, result.stdout + result.stderr);
-    assert.equal(result.events.some(event => event.type === 'ready'), false);
+    assert.equal(
+      result.events.some((event) => event.type === 'ready'),
+      false
+    );
     assert.equal(result.events.at(-1).type, 'error');
     await assert.rejects(fetch(`http://127.0.0.1:${fixture.port}`));
   }
 });
 
-test('Safari headless requests explain the supported mode before starting an app', { timeout: 10000 }, async t => {
+test('Safari headless requests explain the supported mode before starting an app', { timeout: 10000 }, async (t) => {
   let fixture = await project(t);
   let result = await fixture.run(['--browser', 'safari']).completion;
   assert.equal(result.code, 1);
   assert.match(result.events.at(-1).message, /Safari.*(headless|macOS)/);
-  assert.equal(result.events.some(event => event.type === 'ready'), false);
+  assert.equal(
+    result.events.some((event) => event.type === 'ready'),
+    false
+  );
   await assert.rejects(fetch(`http://127.0.0.1:${fixture.port}`));
+});
+
+test(
+  'doctor validates tests, browser prerequisites, and app startup without starting processes',
+  { timeout: 15000 },
+  async (t) => {
+    let fixture = await project(t);
+    let result = await fixture.run(['doctor']).completion;
+    assert.equal(result.code, 0, result.stdout + result.stderr);
+    let diagnosis = result.events.find((event) => event.type === 'diagnosis');
+    assert.equal(diagnosis.ok, true);
+    assert.ok(diagnosis.checks.some((check) => check.name === 'tests' && check.status === 'passed'));
+    assert.equal(
+      result.events.some((event) => event.type === 'ready'),
+      false
+    );
+    await assert.rejects(fetch('http://127.0.0.1:' + fixture.port));
+    let missing = await fixture.run(['doctor', '--browser-path', '/missing/browser']).completion;
+    assert.equal(missing.code, 1);
+    assert.equal(missing.events.find((event) => event.type === 'diagnosis').ok, false);
+    let manual = await fixture.run(['doctor', '--manual']).completion;
+    assert.equal(manual.code, 0);
+    assert.ok(
+      manual.events.find((event) => event.type === 'diagnosis').checks.some((check) => check.status === 'info')
+    );
+  }
+);
+
+test('init rejects an explicit CommonJS package before writing ES module scaffolds', { timeout: 10000 }, async (t) => {
+  let fixture = await project(t, { files: { 'package.json': '{"type":"commonjs"}' } });
+  let result = await fixture.run(['init']).completion;
+  assert.equal(result.code, 1);
+  assert.match(result.events.at(-1).message, /config uses ES modules/);
+  await assert.rejects(readFile(join(fixture.directory, 'tests/browser/home.test.js')), { code: 'ENOENT' });
 });
