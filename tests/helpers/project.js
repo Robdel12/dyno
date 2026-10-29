@@ -3,6 +3,7 @@ import { promisify } from 'node:util';
 import { once } from 'node:events';
 import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
 import { createServer } from 'node:net';
+import { randomInt } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -79,13 +80,22 @@ export function launch(command, args, cwd, signal) {
   };
 }
 
+let nextAppPort = randomInt(20000, 30000);
 async function availablePort() {
-  let socket = createServer();
-  socket.listen(0, '127.0.0.1');
-  await once(socket, 'listening');
-  let port = socket.address().port;
-  await new Promise(resolve => socket.close(resolve));
-  return port;
+  // The app binds in another process. Keep its reserved port below the default
+  // outbound-client range, where a port:0 reservation can be reused meanwhile.
+  for (let attempt = 0; attempt < 16; attempt++) {
+    let socket = createServer();
+    let candidate = nextAppPort;
+    nextAppPort = candidate === 29999 ? 20000 : candidate + 1;
+    socket.listen(candidate, '127.0.0.1');
+    try { await once(socket, 'listening'); }
+    catch (error) { if (error.code === 'EADDRINUSE') continue; throw error; }
+    let port = socket.address().port;
+    await new Promise(resolve => socket.close(resolve));
+    return port;
+  }
+  throw new Error('Could not reserve a local test app port.');
 }
 
 export async function project(t, { source = "test('opens the app', async ({ app, I }) => { await app.goto('/'); await I.find('Fixture app').visible(); });", config: overrides = {}, files = {} } = {}) {

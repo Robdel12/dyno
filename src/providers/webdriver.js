@@ -2,6 +2,8 @@ import { Builder } from 'selenium-webdriver';
 import chrome from 'selenium-webdriver/chrome.js';
 import firefox from 'selenium-webdriver/firefox.js';
 import edge from 'selenium-webdriver/edge.js';
+import getBrowsingContext from 'selenium-webdriver/bidi/browsingContext.js';
+import { CaptureScreenshotParameters, Origin } from 'selenium-webdriver/bidi/captureScreenshotParameters.js';
 
 export async function open(plan, viewport) {
   let builder = new Builder().forBrowser(
@@ -9,6 +11,7 @@ export async function open(plan, viewport) {
   );
   if (['chrome', 'chromium', 'edge'].includes(plan.name)) {
     let options = plan.name === 'edge' ? new edge.Options() : new chrome.Options();
+    options.enableBidi();
     options.setBinaryPath(plan.path);
     options.addArguments(
       ...plan.args,
@@ -25,17 +28,27 @@ export async function open(plan, viewport) {
   } else if (plan.name === 'firefox') {
     let options = new firefox.Options()
       .setBinary(plan.path)
+      .enableBidi()
       .addArguments(...plan.args, '-profile', plan.profile, ...(plan.headless ? ['-headless'] : []));
     builder = builder.setFirefoxOptions(options);
   }
   let driver = await builder.build();
   try {
+    let ownedWindow = await driver.getWindowHandle();
+    let selectApp = () => driver.switchTo().window(ownedWindow);
     let caps = await driver.getCapabilities();
-    if (plan.name !== 'safari')
-      await driver
-        .manage()
-        .window()
-        .setRect({ width: viewport.width, height: viewport.height + 160 });
+    let context;
+    if (plan.name !== 'safari') {
+      try {
+        context = await getBrowsingContext(driver, { browsingContextId: ownedWindow });
+        await context.setViewport(viewport.width, viewport.height, plan.deviceScaleFactor ?? 1);
+      } catch (error) {
+        throw new Error(
+          `WebDriver ${plan.name} requires BiDi viewport support. Update the browser and driver. ${error.message}`,
+          { cause: error }
+        );
+      }
+    }
     return Object.freeze({
       identity: Object.freeze({
         provider: 'webdriver',
@@ -44,13 +57,20 @@ export async function open(plan, viewport) {
         build: 'installed'
       }),
       open: async (url) => {
-        // ChromeDriver's initial headless tab can be visible but unfocused.
-        // Activate the owned page once; browser-local Interactor handles all actions.
-        if (['chrome', 'chromium', 'edge'].includes(plan.name))
-          await driver.sendDevToolsCommand('Page.bringToFront', {});
+        await selectApp();
+        if (context) await context.activate();
         await driver.get(url);
       },
+      activate: async () => {
+        await selectApp();
+        if (context) await context.activate();
+      },
       resize: async ({ width, height, current }) => {
+        await selectApp();
+        if (context) {
+          await context.setViewport(width, height, plan.deviceScaleFactor ?? 1);
+          return;
+        }
         let rect = await driver.manage().window().getRect();
         await driver
           .manage()
@@ -60,7 +80,19 @@ export async function open(plan, viewport) {
             height: Math.max(100, rect.height + height - current.height)
           });
       },
-      capture: async () => Buffer.from(await driver.takeScreenshot(), 'base64'),
+      capture: async ({ fullPage = false } = {}) => {
+        await selectApp();
+        if (context)
+          return Buffer.from(
+            await context.captureScreenshot(
+              new CaptureScreenshotParameters().origin(fullPage ? Origin.DOCUMENT : Origin.VIEWPORT)
+            ),
+            'base64'
+          );
+        if (fullPage)
+          throw new Error('Full-page screenshots are unavailable in WebDriver Safari. Use a viewport screenshot.');
+        return Buffer.from(await driver.takeScreenshot(), 'base64');
+      },
       stop: () => driver.quit()
     });
   } catch (error) {

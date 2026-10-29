@@ -68,6 +68,8 @@ import { readFileSync } from 'node:fs'; process.on('SIGTERM', () => {}); let ser
   descendant.stdout.on('data', data => { descendantPort = Number(data.trim()); announceReady(); });
 }
 let server = http.createServer(async (request, response) => {
+  if (process.env.COOP) response.setHeader('Cross-Origin-Opener-Policy', process.env.COOP);
+  if (process.env.COEP) response.setHeader('Cross-Origin-Embedder-Policy', process.env.COEP);
   response.setHeader('Cache-Control', 'no-store');
   if (request.url === '/api/browser-waiting') { if(request.method==='POST')browserWaiting.resolve();else await browserWaiting.promise;response.end('waiting');return; }
   if (request.url === '/api/release-browser') { if(request.method==='POST')releaseBrowser.resolve();else await releaseBrowser.promise;response.end('released');return; }
@@ -85,9 +87,14 @@ let server = http.createServer(async (request, response) => {
     else { response.setHeader('Content-Type','application/json');response.end(JSON.stringify(await inspection.promise)); }
     return;
   }
+  if (request.url === '/wrapped-link') {
+    response.writeHead(200, { 'Content-Type': 'text/html' });
+    response.end('<!doctype html><style>p{width:179px;font:20px/1.5 system-ui}#large{height:200vh}#hidden{visibility:hidden}#cover{position:fixed;inset:0;background:white;pointer-events:none;display:none}</style><p>Start here with a <a href="/other">Create an account to document history</a></p><section id="large">A large section</section><button id="hidden">Hidden</button>');
+    return;
+  }
   if (request.url === '/visual') {
     response.writeHead(200, { 'Content-Type': 'text/html' });
-    response.end(`<!doctype html><style>html,body{margin:0;background:rgb(20,150,80)}canvas{position:absolute;left:0;top:0}form{margin:80px 20px}#layout:after{content:'Wide'}@media(max-width:500px){#layout:after{content:'Narrow'}}</style><canvas width="40" height="40"></canvas><form><label>Name <input name="name"></label><button>Save</button></form><p role="status">Ready</p><p id="layout"></p><script>let context=document.querySelector('canvas').getContext('2d');context.fillStyle='rgb(30,70,210)';context.fillRect(0,0,40,40);let saves=0;document.querySelector('form').onsubmit=event=>{event.preventDefault();document.querySelector('[role=status]').textContent='Saved '+document.querySelector('input').value+' · '+ ++saves;};</script>`);
+    response.end(`<!doctype html><meta charset="utf-8"><style>html,body{margin:0;background:rgb(20,150,80)}canvas{position:absolute;left:0;top:0}form{margin:80px 20px}#layout:after{content:'Wide'}@media(max-width:500px){#layout:after{content:'Narrow'}}</style><canvas width="40" height="40"></canvas><form><label>Name <input name="name"></label><button>Save</button></form><p role="status">Ready</p><p id="layout"></p><script>let context=document.querySelector('canvas').getContext('2d');context.fillStyle='rgb(30,70,210)';context.fillRect(0,0,40,40);let saves=0;document.querySelector('form').onsubmit=event=>{event.preventDefault();document.querySelector('[role=status]').textContent='Saved '+document.querySelector('input').value+' · '+ ++saves;};</script>`);
     return;
   }
   if (request.url === '/held-app') {

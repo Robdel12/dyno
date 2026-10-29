@@ -4,15 +4,14 @@ import { project, reportPayload } from '../helpers/project.js';
 
 let browser = process.env.DYNO_TEST_BROWSER ?? 'chrome';
 let visibleConfig = {
-  viewport: { width: 1280, height: 800 },
   browser: { name: browser, args: [browser === 'firefox' ? '--headless' : '--headless=new'] }
 };
 let observerFrame = `
-let observer = document.createElement('iframe');
-Object.assign(observer.style,{position:'fixed',inset:'0',width:'100%',height:'100%',border:'0'});
+let observer = app.document.createElement('iframe');
+Object.assign(observer.style,{position:'fixed',inset:'0',width:'100%',height:'100%',border:'0',zIndex:'2147483647'});
 let loaded = new Promise(resolve=>observer.addEventListener('load',resolve,{once:true}));
 observer.src='/__dyno__/reporter?run='+new URLSearchParams(location.search).get('run');
-document.body.append(observer); await loaded;
+app.document.body.append(observer); await loaded;
 let UI = new Interactor({root:()=>observer.contentDocument.body});
 `;
 
@@ -48,13 +47,14 @@ test('reports an actual assertion failure', async ({ app, I }) => {
   await I.find('$([role=status])').text('Contact archived');
 });
 test('keeps the current app available for inspection', async ({ app, I }) => {
-  await app.setViewport({ width: 900, height: 650 });
   await app.goto('/');
   await I.type('Route check').into('$(input[name=name])');
   let appDocument = app.document;
-  let host = window.top.document;
-  let reporter = host.querySelector('#reporter');
-  await I.assert(() => !!reporter.contentDocument?.querySelector('#main'));
+  let appWindow = app.window;
+  let originalViewport = { width: appWindow.innerWidth, height: appWindow.innerHeight };
+  await I.assert(() => appWindow.top === appWindow && appWindow.frameElement === null, 'The app must be a top-level document');
+  let reporter;
+  await I.assert(() => !!(reporter = appDocument.querySelector('#__dynoReporter'))?.contentDocument?.querySelector('#main'));
   let inspect = new window.top.MutationObserver(async () => {
     if (reporter.hidden) return;
     inspect.disconnect();
@@ -121,27 +121,25 @@ test('keeps the current app available for inspection', async ({ app, I }) => {
       await UI.click('"All"$(button[data-filter])');
       await UI.click('$(a[aria-label="Passed: keeps the current app available for inspection"])');
       await UI.click('Application');
-      await UI.find('$(#viewport)').value('900x650');
+      await UI.find('$(#viewport)').value(originalViewport.width + 'x' + originalViewport.height);
       await UI.click('$(#show-app)');
       await UI.assert(() => reporter.hidden);
       await UI.assert(
         () =>
-          appDocument ===
-            host.querySelector('#execution iframe').contentDocument.querySelector('iframe')
-              .contentDocument && appDocument.querySelector('input').value === 'Route check'
+          appWindow.document === appDocument && appDocument.querySelector('input').value === 'Route check'
       );
       await UI.assert(
         () =>
-          appDocument.defaultView.innerWidth === 900 && appDocument.defaultView.innerHeight === 650,
+          appDocument.defaultView.innerWidth === originalViewport.width && appDocument.defaultView.innerHeight === originalViewport.height,
         'Reporter navigation changed the app viewport'
       );
-      let hostUI = new Interactor({ root: () => host.body });
-      await hostUI.click('Show test results');
+      let appUI = new Interactor({ root: () => appDocument.documentElement });
+      await appUI.click('Show test results');
       await UI.assert(() => !reporter.hidden);
       document.querySelector('#main').focus();
       await UI.find('$(#main)').then.press('Escape');
       await UI.assert(() => reporter.hidden);
-      await hostUI.click('Show test results');
+      await appUI.click('Show test results');
       await UI.assert(() => !reporter.hidden);
       location.hash = '/tests/999/output';
       await UI.find('Test not found').visible();
@@ -232,7 +230,7 @@ test('stops while the app is open', async ({ app }) => {
 });
 
 test(
-  'pause on failure preserves the failed app and Continue starts a fresh viewport',
+  'pause on failure preserves the top-level app and unsupported resizing stays honest before Continue',
   { timeout: 90000 },
   async (t) => {
     let fixture = await project(t, {
@@ -246,9 +244,10 @@ test('pauses with the failed app', async ({ app, I }) => {
   await UI.click('$(#pause-on-failure)');
   await UI.assert(() => observer.contentDocument.querySelector('#pause-on-failure').checked);
   observer.remove();
-  let host = window.top.document;
-  let reporter = host.querySelector('#reporter');
   let appDocument = app.document;
+  let originalViewport = { width: app.window.innerWidth, height: app.window.innerHeight };
+  let reporter;
+  await I.assert(() => !!(reporter = appDocument.querySelector('#__dynoReporter'))?.contentDocument?.querySelector('#main'));
   let inspect = new window.top.MutationObserver(async () => {
     if (reporter.hidden) return;
     inspect.disconnect();
@@ -261,19 +260,13 @@ test('pauses with the failed app', async ({ app, I }) => {
         method: 'POST',
         body: 'inspected: ' + appDocument.querySelector('[role=status]').textContent
       });
-      appDocument.defaultView.addEventListener(
-        'resize',
-        () =>
-          appDocument.defaultView.localStorage.setItem(
-            'inspected-width',
-            String(appDocument.defaultView.innerWidth)
-          ),
-        { once: true }
-      );
+      appDocument.defaultView.localStorage.setItem('inspected-viewport', JSON.stringify(originalViewport));
       let viewport = reporter.contentDocument.querySelector('#viewport');
-      viewport.value = '390x844';
+      viewport.value = originalViewport.width === 390 && originalViewport.height === 844 ? '1280x800' : '390x844';
       viewport.dispatchEvent(new reporter.contentWindow.Event('change', { bubbles: true }));
-      await UI.assert(() => !reporter.contentDocument.querySelector('#continue').disabled, 'Resize command did not finish');
+      await UI.find('$(#command-status)').text('This browser cannot resize the application viewport. Resize its window manually or select a managed provider.');
+      await UI.assert(() => appDocument.defaultView.innerWidth === originalViewport.width && appDocument.defaultView.innerHeight === originalViewport.height, 'An unsupported resize changed the app');
+      await UI.assert(() => !reporter.contentDocument.querySelector('#continue').disabled, 'Resize failure should leave Continue usable');
       await UI.click('$(#continue)');
     } catch (error) {
       await fetch('/api/lifecycle', { method: 'POST', body: 'inspection error: ' + error.message });
@@ -289,10 +282,10 @@ test('continues with a fresh app', async ({ app, I }) => {
   let inspections = await (await app.request('/api/lifecycle')).json();
   await I.assert(() => inspections.join(',') === 'inspected: Saved Robert · 1');
   await I.assert(
-    () => app.window.localStorage.getItem('inspected-width') === '390',
-    'Inspection resize did not finish before Continue'
+    () => { let size = JSON.parse(app.window.localStorage.getItem('inspected-viewport')); return app.window.innerWidth === size.width && app.window.innerHeight === size.height; },
+    'Inspection changed the actual app viewport'
   );
-  await I.assert(() => app.window.innerWidth === 1280 && app.window.innerHeight === 800);
+  await I.assert(() => app.window.top === app.window && app.window.frameElement === null);
   await I.find('$(input[name=name])').value('');
   await I.find('$([role=status])').text('Ready');
 });
@@ -320,8 +313,9 @@ describe('Contacts',()=>{
 });
 test('another workflow', async ({app,I})=>{
   await app.goto('/');
-  let reporter=window.top.document.querySelector('#reporter');
-  await I.assert(()=>!!reporter.contentDocument?.querySelector('#main'));
+  let appDocument=app.document;
+  let reporter;
+  await I.assert(()=>!!(reporter=appDocument.querySelector('#__dynoReporter'))?.contentDocument?.querySelector('#main'));
   let inspect=new window.top.MutationObserver(async()=>{
     if(reporter.hidden)return;inspect.disconnect();
     try{
