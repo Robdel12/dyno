@@ -22,6 +22,12 @@ export interface CapturedScreenshot {
   readonly pixelRatio: number;
   readonly viewport: Viewport;
   readonly browser: BrowserIdentity;
+  readonly policy: {
+    readonly fullPage: boolean;
+    readonly animations: 'allow' | 'disabled';
+    readonly caret: 'hide' | 'initial';
+    readonly scale: 'device';
+  };
 }
 export interface SkippedScreenshot {
   readonly status: 'skipped';
@@ -30,11 +36,18 @@ export interface SkippedScreenshot {
   readonly reason: string;
 }
 export type Screenshot = CapturedScreenshot | SkippedScreenshot;
+export interface ScreenshotOptions {
+  readonly optional?: boolean;
+  readonly fullPage?: boolean;
+  readonly animations?: 'allow' | 'disabled';
+  readonly caret?: 'hide' | 'initial';
+  readonly mask?: readonly Element[];
+}
 export interface Application {
   goto(path: string): Promise<void>;
   request(path: string, options?: RequestInit): Promise<Response>;
   setViewport(viewport: Viewport): Promise<Viewport>;
-  screenshot(name: string, options?: { optional?: boolean }): Promise<Screenshot>;
+  screenshot(name: string, options?: ScreenshotOptions): Promise<Screenshot>;
   pause(message?: string): Promise<void>;
   readonly document: Document;
   readonly window: Window & typeof globalThis;

@@ -1,6 +1,6 @@
 # Browser setup
 
-`dyno browsers` lists installed launchers. Choose one with `dyno --browser firefox` or `browser.name` in your config. Native mode opens the test URL; tests run in that browser.
+`dyno browsers` lists installed launchers. Choose one with `dyno --browser firefox` or `browser.name` in your config. Native mode opens the start URL. The app stays in the original window; tests run in a companion window in that browser.
 
 | Browser | Headless | Visible | Native session |
 | --- | --- | --- | --- |
@@ -12,7 +12,9 @@
 
 Safari's native launcher opens a URL in your existing session. It leaves tabs and storage alone and can't detect when you close the test tab. Other native launchers own their browser process and profile.
 
-Manual mode works without a local browser installed. Use `--manual --host 0.0.0.0` for another device. The runner needs the [modern browser APIs listed in the guide](guide.md#current-limits).
+Manual mode needs no local browser installed. Open the printed URL, click **Start** if its popup was blocked, and keep the app and companion windows open. Use `--manual --host 0.0.0.0` to try another device. The runner needs the [modern browser APIs listed in the guide](guide.md#current-limits); mobile popup and background-tab behavior remains unverified.
+
+Native and manual sessions use the actual app viewport. They cannot resize it through `app.setViewport`; a matching request succeeds and a different size fails. Fixed config dimensions must also match. Use a managed provider for window sizing.
 
 ## Add screenshots and window control
 
@@ -43,7 +45,21 @@ Playwright builds must match the installed `playwright-core` version. `dyno inst
 
 WebDriver uses Selenium Manager to find a matching driver, which may need network access the first time. Install the browser yourself; browser downloads are disabled. For Safari, enable Remote Automation yourself, then run `dyno --provider webdriver --browser safari --ui`. Custom Safari paths aren't supported with WebDriver.
 
-Managed sessions own their browser, profile, and cleanup. Chrome/Edge WebDriver sessions activate the page before navigation so headless focus works. A manual visitor gets a separate run without access to the managed browser's capture provider.
+Managed sessions own their browser, profile, and cleanup. Screenshots activate the owned app tab before browser-local animation preparation. WebDriver Chrome, Edge, and Firefox use BiDi for viewport sizing and viewport capture, including sizes below the outer window’s minimum width. They retain the original app page/window handle for capture and resizing, even when the companion is active. Chrome/Edge WebDriver sessions activate the page before navigation so headless focus works. A manual visitor gets a separate run without access to the managed browser's capture provider.
+
+## Screenshot support
+
+All captures are PNGs from the original app window. Viewport capture is the default; `fullPage: true` leaves the viewport unchanged and captures the page's full content.
+
+| Provider | Full-page capture |
+| --- | --- |
+| Playwright | Its page screenshot API |
+| WebDriver Chrome / Chromium / Edge | BiDi viewport or document capture |
+| WebDriver Firefox | BiDi viewport or document capture |
+| WebDriver Safari | Unavailable; the request fails clearly |
+| Native / manual | No screenshot provider |
+
+`mask` accepts an array of app elements. `animations` accepts `'allow'` or `'disabled'`; `caret` accepts `'initial'` or `'hide'`. Defaults preserve animations and the caret. Dyno finishes finite animations and suspends infinite ones before measuring masks, with the same browser-local preparation for each provider. Masks affect only the PNG. Temporary caret styles are restored after capture. [The guide](guide.md#screenshots) shows the API.
 
 ## Choose an executable
 
@@ -63,7 +79,9 @@ On Linux, Chromium-family launchers use a basic password store and disable backg
 
 ## Known limits
 
-Local checks cover Chrome and Firefox URL-only runs, Playwright Chrome/Chromium/WebKit capture, and WebDriver Chrome/Firefox capture. Safari capture and Windows providers still need verification. A mobile-sized desktop viewport doesn't prove real-device behavior. Dyno doesn't configure iOS WebDriver sessions yet.
+The implemented layout passed the local framework suite, plus Chrome and Firefox URL-only runs. Capture checks passed through Playwright Chrome and WebKit, and through WebDriver Chrome and Firefox 159 beta. They cover full-page pixels, masks, animation cleanup, responsive sizing, and interruption. Installed Firefox 158 failed initialization on this Mac; the beta results do not establish support for that installation.
+
+Safari viewport capture, Windows providers, and companion behavior on phones, iOS, and TVs still need verification. Edge uses the same BiDi path but was not checked locally. WebKit does not establish Safari behavior, and a mobile-sized desktop viewport does not establish real-device behavior. Dyno does not configure iOS WebDriver sessions yet.
 
 On macOS 27, some Firefox builds exit with `Could not find profile folder` when launched from the command line. Try a current build, or use `--manual` and open the URL in Firefox yourself. See [Mozilla's report](https://bugzilla.mozilla.org/show_bug.cgi?id=2060476). Dyno includes browser output in startup failures.
 

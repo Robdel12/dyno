@@ -54,9 +54,11 @@ export async function boot() {
       send('output', { index, entries: messages });
     };
     let restoreConsole = captureConsole(console, (entries) => record('test', entries));
-    let frame = document.createElement('iframe');
-    frame.title = 'App under test';
-    document.body.append(frame);
+    let appWindow = parent.opener;
+    if (!appWindow || appWindow.closed || parent.__dynoController?.runId !== runId)
+      throw new Error('The application window is unavailable. Reopen the Dyno execution URL.');
+    window.__dynoRuntimeBinding = Object.freeze({ runId, executionId });
+    parent.__dynoAppRuntime = window;
     let state = Object.freeze({ readyDocument: null, readyId: null, expectedName: null });
     let waiters = new Set();
     let fail = (error, kind = phase) => {
@@ -92,9 +94,14 @@ export async function boot() {
       });
     let receive = (event) => {
       let message = event.data;
-      if (event.origin !== location.origin || event.source !== frame.contentWindow || message?.channel !== 'dyno')
+      if (event.origin !== location.origin || event.source !== appWindow || message?.channel !== 'dyno')
         return;
-      if (message.name !== state.expectedName) return;
+      if (
+        message.runId !== runId ||
+        message.executionId !== executionId ||
+        message.name !== state.expectedName
+      )
+        return;
       if (message.kind === 'app-unloading') {
         if (message.id === state.readyId) {
           state = Object.freeze({ ...state, readyDocument: null });
@@ -102,7 +109,7 @@ export async function boot() {
         }
         return;
       }
-      if (frame.contentWindow.__browserTestBridge?.id !== message.id) return;
+      if (appWindow.__browserTestBridge?.id !== message.id) return;
       if (message.kind === 'inspect') send('inspect');
       if (message.kind === 'app-output') record('app', message.entries);
       if (message.kind === 'app-error') {
@@ -110,15 +117,15 @@ export async function boot() {
         error.stack = message.error.stack ?? error.stack;
         fail(error, 'app');
       }
-      if (message.kind === 'app-ready' && frame.contentWindow.__browserTestBridge?.id === message.id) {
-        state = Object.freeze({ ...state, readyDocument: frame.contentDocument, readyId: message.id });
+      if (message.kind === 'app-ready' && appWindow.__browserTestBridge?.id === message.id) {
+        state = Object.freeze({ ...state, readyDocument: appWindow.document, readyId: message.id });
+        try {
+          appWindow.focus();
+        } catch {}
         send('context', { documentId: message.id });
         send('location', {
           index,
-          path:
-            frame.contentWindow.location.pathname +
-            frame.contentWindow.location.search +
-            frame.contentWindow.location.hash
+          path: appWindow.location.pathname + appWindow.location.search + appWindow.location.hash
         });
         for (let resolve of waiters) resolve();
       }
@@ -133,26 +140,59 @@ export async function boot() {
           .then(resolve, reject)
           .finally(() => signal.removeEventListener('abort', aborted));
       });
-    let navigate = async (path, signal) => {
+    let navigate = async (path, signal, internal = false) => {
       let target = new URL(path, location.origin);
-      if (target.origin !== location.origin || target.pathname.startsWith('/__dyno__/'))
+      if (target.origin !== location.origin || (!internal && target.pathname.startsWith('/__dyno__/')))
         throw new Error('app.goto requires an app path on the gateway origin.');
       signal.throwIfAborted();
+      let current;
+      try {
+        if (state.readyDocument === appWindow.document && state.readyId === appWindow.__browserTestBridge?.id)
+          current = new URL(appWindow.location.href);
+      } catch {}
+      if (
+        current &&
+        current.pathname === target.pathname &&
+        current.search === target.search &&
+        current.hash !== target.hash
+      ) {
+        let changed;
+        let ready = new Promise((resolve) => {
+          changed = (event) => {
+            if (event.newURL === target.href) resolve();
+          };
+          appWindow.addEventListener('hashchange', changed);
+        });
+        try {
+          appWindow.location.replace(target.href);
+          await abortable(ready, signal);
+          send('location', { index, path: target.pathname + target.search + target.hash });
+        } finally {
+          appWindow.removeEventListener('hashchange', changed);
+        }
+        return;
+      }
       state = Object.freeze({
         readyDocument: null,
         readyId: null,
         expectedName: `dyno-${runId}-${index}-${[...crypto.getRandomValues(new Uint32Array(2))].join('-')}`
       });
       send('context', { documentId: null });
-      frame.name = state.expectedName;
-      frame.contentWindow.name = state.expectedName;
+      appWindow.name = JSON.stringify({
+        dyno: 1,
+        controller: parent.name,
+        runId,
+        executionId,
+        appName: state.expectedName
+      });
       let resolveReady;
       let ready = new Promise((resolve) => {
         resolveReady = resolve;
         waiters.add(resolve);
       });
       send('location', { index, path: target.pathname + target.search + target.hash });
-      frame.src = target.href;
+      if (current?.href === target.href) appWindow.location.reload();
+      else appWindow.location.replace(target.href);
       try {
         await abortable(ready, signal);
       } finally {
@@ -224,12 +264,12 @@ export async function boot() {
     let executionDeadline;
     let budgetEnds;
     let pause = async (message = 'Inspect the application, then continue.') => {
-      if (phase === 'afterEach') throw new Error('app.pause() is available during setup or the test, before cleanup.');
+      if (phase === 'afterEach')
+        throw new Error('app.pause() is available during setup or the test, before cleanup.');
       controller.signal.throwIfAborted();
       if (debugResume) throw new Error('Await app.pause() before pausing again.');
       if (!settings.interactive)
         throw new Error('app.pause() requires --ui or --manual. Remove it from headless tests.');
-      if (phase === 'afterEach') throw new Error('app.pause() is available during setup or the test, before cleanup.');
       if (typeof message !== 'string') throw new Error('app.pause() needs a message string.');
       let remaining = Math.max(1, budgetEnds - performance.now());
       executionDeadline.removeEventListener('abort', executionExpired);
@@ -257,12 +297,13 @@ export async function boot() {
     });
     let contextFor = (signal) => {
       let app = createApp(
-        frame,
+        appWindow,
         () => state,
         signal,
         (path) => navigate(path, signal),
         (input, prepare, select) => operation(input, prepare, select, signal),
-        pause
+        pause,
+        Boolean(parent.__dynoController?.capabilities?.screenshot)
       );
       return Object.freeze({
         app,
@@ -302,6 +343,7 @@ export async function boot() {
     if (remaining <= 0) executionExpired();
     send('runtime-ready');
     try {
+      await navigate('/__dyno__/blank', controller.signal, true);
       for (let scope of test.scopes) {
         entered.push(scope);
         for (let hook of scope.beforeEach) {
@@ -321,7 +363,9 @@ export async function boot() {
       let cleanup = new AbortController();
       let cleanupDeadline = AbortSignal.timeout(settings.cleanupTimeout);
       let cleanupExpired = () => {
-        let error = new Error(`Cleanup exceeded ${settings.cleanupTimeout} ms. Remaining hooks were not invoked.`);
+        let error = new Error(
+          `Cleanup exceeded ${settings.cleanupTimeout} ms. Remaining hooks were not invoked.`
+        );
         kinds.set(error, 'cleanup');
         cleanup.abort(error);
         activeController.abort(error);
@@ -358,10 +402,10 @@ export async function boot() {
       drain.abort(ended);
       restoreConsole();
       try {
-        frame.contentWindow.__browserTestBridge?.stopOutput?.();
+        appWindow.__browserTestBridge?.stopOutput?.();
       } catch {}
       try {
-        let location = frame.contentWindow.location;
+        let location = appWindow.location;
         send('location', { index, path: location.pathname + location.search + location.hash });
       } catch {}
       collectingOutput = false;

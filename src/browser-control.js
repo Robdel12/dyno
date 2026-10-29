@@ -11,7 +11,34 @@ let sameContext = (left, right) =>
   ['executionId', 'documentId', 'revision', 'width', 'height'].every((key) => left[key] === right[key]);
 let commands = ['pause', 'continue', 'inspect', 'show-app', 'stop', 'rerun', 'pause-on-failure', 'viewport'];
 
-function appImage(bytes, metrics) {
+function screenshotOptions(input = {}) {
+  if (!input || typeof input !== 'object' || Array.isArray(input))
+    throw problem(400, 'Invalid screenshot options.');
+  let { fullPage = false, animations = 'allow', caret = 'initial', mask = [] } = input;
+  if (
+    typeof fullPage !== 'boolean' ||
+    !['allow', 'disabled'].includes(animations) ||
+    !['hide', 'initial'].includes(caret) ||
+    !Array.isArray(mask) ||
+    mask.length > 1000 ||
+    mask.some(
+      (rectangle) =>
+        !rectangle ||
+        !['x', 'y', 'width', 'height'].every((key) => Number.isFinite(rectangle[key])) ||
+        rectangle.width < 0 ||
+        rectangle.height < 0
+    )
+  )
+    throw problem(400, 'Screenshot options need a fullPage boolean, valid animations and caret, and mask rectangles.');
+  return Object.freeze({
+    fullPage,
+    animations,
+    caret,
+    mask: Object.freeze(mask.map(({ x, y, width, height }) => Object.freeze({ x, y, width, height })))
+  });
+}
+
+function appImage(bytes, metrics, options) {
   if (bytes.length > 50_000_000 || bytes.length < 24 || bytes.toString('hex', 0, 8) !== '89504e470d0a1a0a')
     throw problem(502, 'The browser did not return a supported PNG image.');
   let width = bytes.readUInt32BE(16),
@@ -19,18 +46,36 @@ function appImage(bytes, metrics) {
   if (width * height > 64_000_000)
     throw problem(422, 'Screenshot exceeds 64 million pixels. Use a smaller viewport or pixel ratio.');
   let pixelRatio = metrics.pixelRatio;
+  let expected = options.fullPage
+    ? { width: metrics.fullWidth, height: metrics.fullHeight }
+    : { width: metrics.hostWidth, height: metrics.hostHeight };
   if (
-    Math.abs(width - Math.round(metrics.hostWidth * pixelRatio)) > 1 ||
-    Math.abs(height - Math.round(metrics.hostHeight * pixelRatio)) > 1
+    Math.abs(width - Math.round(expected.width * pixelRatio)) > 1 ||
+    Math.abs(height - Math.round(expected.height * pixelRatio)) > 1
   )
-    throw problem(409, 'Screenshot dimensions do not match the browser viewport and pixel ratio.');
-  let target = { width: Math.round(metrics.width * pixelRatio), height: Math.round(metrics.height * pixelRatio) };
+    throw problem(409, 'Screenshot dimensions do not match the app document, viewport, and pixel ratio.');
+  let target = {
+    width: Math.round((options.fullPage ? metrics.fullWidth : metrics.width) * pixelRatio),
+    height: Math.round((options.fullPage ? metrics.fullHeight : metrics.height) * pixelRatio)
+  };
   if (target.width < 1 || target.height < 1 || target.width > width || target.height > height)
     throw problem(409, 'The app viewport does not fit in the captured browser.');
-  if (target.width === width && target.height === height) return { bytes, ...target, pixelRatio };
+  if (target.width === width && target.height === height && options.mask.length === 0)
+    return { bytes, ...target, pixelRatio };
   let source = PNG.sync.read(bytes);
   let image = new PNG(target);
   PNG.bitblt(source, image, 0, 0, target.width, target.height, 0, 0);
+  let color = Buffer.from([255, 0, 255, 255]);
+  for (let rectangle of options.mask) {
+    if (rectangle.width === 0 || rectangle.height === 0) continue;
+    let left = Math.max(0, Math.min(image.width, Math.floor(rectangle.x * pixelRatio)));
+    let top = Math.max(0, Math.min(image.height, Math.floor(rectangle.y * pixelRatio)));
+    let right = Math.max(0, Math.min(image.width, Math.ceil((rectangle.x + rectangle.width) * pixelRatio)));
+    let bottom = Math.max(0, Math.min(image.height, Math.ceil((rectangle.y + rectangle.height) * pixelRatio)));
+    if (right <= left || bottom <= top) continue;
+    for (let y = top; y < bottom; y++)
+      image.data.fill(color, (y * image.width + left) * 4, (y * image.width + right) * 4);
+  }
   return { bytes: PNG.sync.write(image), ...target, pixelRatio };
 }
 
@@ -113,7 +158,7 @@ export function createBrowserControl({ artifactsDir, onReplaced = () => {} }) {
         owned,
         identity: owned ? session.identity : null,
         previousRunId: replaced,
-        capabilities: owned ? session.capabilities : { screenshot: false, hostViewport: false }
+        capabilities: owned ? session.capabilities : { screenshot: false, fullPage: false, hostViewport: false }
       };
     },
     authorize,
@@ -302,6 +347,15 @@ export function createBrowserControl({ artifactsDir, onReplaced = () => {} }) {
         );
         return true;
       }
+      if (input.operation === 'activate') {
+        if (!connection.owned || !session?.capabilities.screenshot)
+          throw problem(422, 'Screenshots require an owned browser provider.');
+        if (!sameContext(contexts.get(input.runId), input.context) || !input.context.documentId)
+          throw problem(409, 'The screenshot document has changed.');
+        await session.activate();
+        send({});
+        return true;
+      }
       if (input.operation === 'resize') {
         if (!validViewport(input.viewport)) throw problem(400, 'Invalid app viewport.');
         if (connection.owned && session.capabilities.hostViewport)
@@ -310,6 +364,7 @@ export function createBrowserControl({ artifactsDir, onReplaced = () => {} }) {
         return true;
       }
       if (input.operation !== 'screenshot') throw problem(400, 'Unknown browser operation.');
+      let options = screenshotOptions(input.options);
       if (
         typeof input.name !== 'string' ||
         !input.name.trim() ||
@@ -359,6 +414,8 @@ export function createBrowserControl({ artifactsDir, onReplaced = () => {} }) {
         send(record.metadata);
         return true;
       }
+      if (options.fullPage && !session.capabilities.fullPage)
+        throw problem(422, 'Full-page screenshots are unavailable in this browser. Use a viewport screenshot.');
       if (
         [...records.values()].some(
           (item) => item.runId === input.runId && ['capturing', 'staged'].includes(item.status)
@@ -374,18 +431,24 @@ export function createBrowserControl({ artifactsDir, onReplaced = () => {} }) {
         !Number.isFinite(metrics.pixelRatio) ||
         metrics.pixelRatio <= 0 ||
         metrics.hostWidth < metrics.width ||
-        metrics.hostHeight < metrics.height
+        metrics.hostHeight < metrics.height ||
+        (options.fullPage &&
+          (!validViewport({ width: metrics.fullWidth, height: metrics.fullHeight }, Number.MAX_SAFE_INTEGER) ||
+            metrics.fullWidth < metrics.width ||
+            metrics.fullHeight < metrics.height))
       )
         throw problem(
           409,
           `App viewport ${input.context.width} × ${input.context.height} does not fit browser viewport ${metrics?.hostWidth} × ${metrics?.hostHeight}.`
         );
-      if (metrics.hostWidth * metrics.hostHeight * metrics.pixelRatio ** 2 > 64_000_000)
+      let imageWidth = options.fullPage ? metrics.fullWidth : metrics.hostWidth;
+      let imageHeight = options.fullPage ? metrics.fullHeight : metrics.hostHeight;
+      if (imageWidth * imageHeight * metrics.pixelRatio ** 2 > 64_000_000)
         throw problem(422, 'Screenshot exceeds 64 million pixels. Use a smaller viewport or pixel ratio.');
       records.set(id, record);
       let work = (async () => {
         try {
-          let image = appImage(await session.capture(record.controller.signal), metrics);
+          let image = appImage(await session.capture(options, record.controller.signal), metrics, options);
           if (!active(record)) throw problem(409, 'App navigated or the test stopped before screenshot completed.');
           await mkdir(artifactsDir, { recursive: true });
           await writeFile(record.partial, image.bytes, { flag: 'wx' });
@@ -401,7 +464,12 @@ export function createBrowserControl({ artifactsDir, onReplaced = () => {} }) {
             pixelRatio: image.pixelRatio,
             viewport: Object.freeze({ width: metrics.width, height: metrics.height }),
             browser: session.identity,
-            policy: Object.freeze({ animations: 'allow', caret: 'initial', scale: 'device' })
+            policy: Object.freeze({
+              fullPage: options.fullPage,
+              animations: options.animations,
+              caret: options.caret,
+              scale: 'device'
+            })
           });
           record = Object.freeze({ ...record, metadata, status: 'staged' });
           records.set(id, record);

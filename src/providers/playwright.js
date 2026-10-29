@@ -32,14 +32,18 @@ export async function open(plan, viewport, onExit) {
         build: plan.path ? 'custom' : ['chromium', 'firefox', 'webkit'].includes(plan.name) ? 'playwright' : 'installed'
       }),
       open: (url) => page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 }),
-      resize: (size) => page.setViewportSize(size),
-      capture: () =>
+      activate: () => page.bringToFront(),
+      resize: async (size) => {
+        await page.bringToFront();
+        await page.setViewportSize(size);
+      },
+      capture: ({ fullPage = false } = {}) =>
         page.screenshot({
           type: 'png',
           animations: 'allow',
           caret: 'initial',
           scale: 'device',
-          fullPage: false,
+          fullPage,
           timeout: 15000
         }),
       stop: () => {

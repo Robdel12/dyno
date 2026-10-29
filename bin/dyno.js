@@ -2,6 +2,7 @@
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { networkInterfaces } from 'node:os';
+import { readFile } from 'node:fs/promises';
 import metadata from '../package.json' with { type: 'json' };
 import { parseCLI, usage } from '../src/cli.js';
 import { loadConfig } from '../src/config.js';
@@ -45,7 +46,9 @@ async function main() {
       throw new Error('Choose chromium, firefox, or webkit. Install branded browsers through their vendor.');
     let executable;
     try {
-      executable = fileURLToPath(import.meta.resolve('playwright-core/cli'));
+      let packageURL = import.meta.resolve('playwright-core/package.json');
+      let provider = JSON.parse(await readFile(new URL(packageURL), 'utf8'));
+      executable = fileURLToPath(new URL(provider.bin['playwright-core'], packageURL));
     } catch {
       throw new Error('Install the optional provider first: npm install --save-dev playwright-core');
     }
@@ -276,6 +279,7 @@ async function main() {
       { ...config.webServer, env: { ...config.webServer.env, ...setup?.env, DYNO_URL: gateway.origin } },
       {
         signal: controller.signal,
+        onReady: (headers) => gateway.setDocumentPolicy(headers),
         output: (message) => process.stderr.write(`[app] ${message}`)
       }
     );

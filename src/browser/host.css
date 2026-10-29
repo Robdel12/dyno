@@ -1,9 +1,1 @@
-html,body{margin:0;width:100%;height:100%;overflow:hidden;background:white}
-#execution{position:absolute;left:0;top:0}
-#execution>iframe{display:block;width:100%;height:100%;border:0}
-#execution>iframe[hidden]{display:none}
-#reporter{position:fixed;inset:0;width:100%;height:100%;border:0;z-index:10;background:#17191b}
-#reporter[hidden],#inspect[hidden],#host-error[hidden]{display:none}
-#inspect{position:fixed;right:16px;bottom:16px;z-index:5;font:500 13px system-ui;background:#24272a;color:#f4f0e9;border:1px solid #59534b;border-radius:5px;padding:10px 14px;cursor:pointer}
-#inspect:focus-visible{outline:3px solid #d89d66;outline-offset:3px}
-#host-error{position:fixed;inset:24px auto auto 24px;max-width:60ch;font:16px/1.5 system-ui;background:white;color:#8b2424;padding:16px}
+html{font:16px/1.5 system-ui;color:#e9e6e0;background:#17191b}body{margin:0}main{max-width:40rem;margin:12vh auto;padding:24px}h1{font-size:24px}button{font:inherit;padding:8px 16px;cursor:pointer}#execution>iframe{display:none}[hidden]{display:none!important}#host-error{color:#ffb8a9}

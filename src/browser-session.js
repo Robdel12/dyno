@@ -96,7 +96,7 @@ export async function createBrowserSession(plan, { viewport, signal, onExit } = 
     let native;
     return Object.freeze({
       identity: Object.freeze({ name: plan.name, provider: 'native', build: 'installed' }),
-      capabilities: Object.freeze({ screenshot: false, hostViewport: false }),
+      capabilities: Object.freeze({ screenshot: false, fullPage: false, hostViewport: false }),
       open: async (url) => {
         native = await launchBrowser(url, { resolved: plan, signal, onExit });
       },
@@ -177,10 +177,16 @@ export async function createBrowserSession(plan, { viewport, signal, onExit } = 
     let identity = Object.freeze(await invoke('initialize', { plan: { ...plan, profile }, viewport }));
     return Object.freeze({
       identity,
-      capabilities: Object.freeze({ screenshot: true, hostViewport: true }),
+      capabilities: Object.freeze({
+        screenshot: true,
+        fullPage: plan.provider !== 'webdriver' || plan.name !== 'safari',
+        hostViewport: true
+      }),
       open: (url) => invoke('open', { url }),
+      activate: () => invoke('activate'),
       resize: (size, operationSignal) => invoke('resize', size, operationSignal),
-      capture: async (operationSignal) => Buffer.from(await invoke('capture', {}, operationSignal), 'base64'),
+      capture: async (options, operationSignal) =>
+        Buffer.from(await invoke('capture', options, operationSignal), 'base64'),
       stop,
       get logs() {
         return owned.logs;
