@@ -1,4 +1,5 @@
 import { getSuite } from './registry.js';
+import { failureRecord, failureOutcome } from '../failures.js';
 import { testDescriptor } from '../suite.js';
 import { createApp } from './app.js';
 import { createInteractor } from './interactor.js';
@@ -22,10 +23,25 @@ export async function boot() {
     }
     let index = Number(parameters.get('test'));
     let selectedId = parameters.get('id');
-    let test = tests.find(test => test.id === selectedId);
+    let test = tests.find((test) => test.id === selectedId);
     if (!test) throw new Error(`Test definition disappeared after discovery: ${selectedId}`);
     if (test.skipReason) throw new Error(`Test selection changed after discovery: ${test.skipReason}`);
     let controller = new AbortController();
+    let activeController = controller;
+    let failures = [];
+    let seen = new WeakSet();
+    let kinds = new WeakMap();
+    let phase = 'beforeEach';
+    let declaration = test.declaration;
+    let finished = false;
+    let ended = new Error('Test execution ended');
+    let recordFailure = (error, fallback = phase, location = declaration) => {
+      if (error && typeof error === 'object') {
+        if (seen.has(error)) return;
+        seen.add(error);
+      }
+      failures = [...failures, failureRecord(error, kinds.get(error) ?? fallback, location)];
+    };
     let outputStarted = performance.now();
     let output = [];
     let collectingOutput = true;
@@ -43,9 +59,25 @@ export async function boot() {
     document.body.append(frame);
     let state = Object.freeze({ readyDocument: null, readyId: null, expectedName: null });
     let waiters = new Set();
-    let fail = (error) => {
-      if (!controller.signal.aborted) controller.abort(error);
+    let fail = (error, kind = phase) => {
+      if (finished || error === ended || (error && typeof error === 'object' && seen.has(error))) return;
+      if (!error || typeof error !== 'object') error = new Error(String(error));
+      kinds.set(error, kind);
+      if (!activeController.signal.aborted) activeController.abort(error);
     };
+    window.__dynoRuntimeFailure = fail;
+    window.addEventListener('message', (event) => {
+      let message = event.data;
+      if (
+        event.source === parent &&
+        event.origin === location.origin &&
+        message?.channel === 'dyno' &&
+        message.runId === runId &&
+        message.executionId === executionId &&
+        message.kind === 'cancel'
+      )
+        fail(new Error(message.error.message), 'runtime');
+    });
     let checkpoint = () =>
       new Promise((resolve) => {
         let marker = `${runId}-${index}-completion`;
@@ -76,7 +108,7 @@ export async function boot() {
       if (message.kind === 'app-error') {
         let error = new Error(message.error.message);
         error.stack = message.error.stack ?? error.stack;
-        fail(error);
+        fail(error, 'app');
       }
       if (message.kind === 'app-ready' && frame.contentWindow.__browserTestBridge?.id === message.id) {
         state = Object.freeze({ ...state, readyDocument: frame.contentDocument, readyId: message.id });
@@ -88,30 +120,24 @@ export async function boot() {
             frame.contentWindow.location.search +
             frame.contentWindow.location.hash
         });
-        frame.contentWindow.addEventListener('error', (event) => fail(event.error ?? new Error(event.message)));
-        frame.contentWindow.addEventListener('unhandledrejection', (event) =>
-          fail(event.reason ?? new Error('Unhandled app rejection'))
-        );
         for (let resolve of waiters) resolve();
       }
     };
     window.addEventListener('message', receive);
-    window.addEventListener('error', (event) => fail(event.error ?? new Error(event.message)));
-    window.addEventListener('unhandledrejection', (event) => fail(event.reason ?? new Error('Unhandled rejection')));
-    let abortable = (promise) =>
+    let abortable = (promise, signal) =>
       new Promise((resolve, reject) => {
-        let aborted = () => reject(controller.signal.reason);
-        if (controller.signal.aborted) return aborted();
-        controller.signal.addEventListener('abort', aborted, { once: true });
+        let aborted = () => reject(signal.reason);
+        if (signal.aborted) aborted();
+        else signal.addEventListener('abort', aborted, { once: true });
         Promise.resolve(promise)
           .then(resolve, reject)
-          .finally(() => controller.signal.removeEventListener('abort', aborted));
+          .finally(() => signal.removeEventListener('abort', aborted));
       });
-    let navigate = async (path) => {
+    let navigate = async (path, signal) => {
       let target = new URL(path, location.origin);
       if (target.origin !== location.origin || target.pathname.startsWith('/__dyno__/'))
         throw new Error('app.goto requires an app path on the gateway origin.');
-      controller.signal.throwIfAborted();
+      signal.throwIfAborted();
       state = Object.freeze({
         readyDocument: null,
         readyId: null,
@@ -120,13 +146,17 @@ export async function boot() {
       send('context', { documentId: null });
       frame.name = state.expectedName;
       frame.contentWindow.name = state.expectedName;
-      let ready = new Promise((resolve) => waiters.add(resolve));
+      let resolveReady;
+      let ready = new Promise((resolve) => {
+        resolveReady = resolve;
+        waiters.add(resolve);
+      });
       send('location', { index, path: target.pathname + target.search + target.hash });
       frame.src = target.href;
       try {
-        await abortable(ready);
+        await abortable(ready, signal);
       } finally {
-        waiters.clear();
+        waiters.delete(resolveReady);
       }
     };
     let pending = new Map();
@@ -144,6 +174,7 @@ export async function boot() {
       let request = pending.get(message.requestId);
       if (!request) return;
       pending.delete(message.requestId);
+      request.detach();
       if (message.error)
         request.reject(Object.assign(new Error(message.error.message), { stack: message.error.stack }));
       else {
@@ -155,82 +186,153 @@ export async function boot() {
       }
     };
     window.addEventListener('message', receiveOperation);
-    controller.signal.addEventListener(
-      'abort',
-      () => {
-        for (let request of pending.values()) request.reject(controller.signal.reason);
-        pending.clear();
-      },
-      { once: true }
-    );
-    let operation = (input, prepare = () => ({}), select = (value) => value) => {
-      controller.signal.throwIfAborted();
+    let operation = (input, prepare = () => ({}), select = (value) => value, signal) => {
+      signal.throwIfAborted();
       let requestId = [...crypto.getRandomValues(new Uint32Array(4))].join('-');
-      let request = { ...Promise.withResolvers(), select };
+      let aborted = () => {
+        pending.delete(requestId);
+        send('operation-cancel', { requestId });
+        request.reject(signal.reason);
+      };
+      let request = {
+        ...Promise.withResolvers(),
+        select,
+        signal,
+        detach: () => signal.removeEventListener('abort', aborted)
+      };
       pending.set(requestId, request);
+      signal.addEventListener('abort', aborted, { once: true });
       Promise.resolve()
         .then(prepare)
         .then((prepared) => {
-          controller.signal.throwIfAborted();
+          signal.throwIfAborted();
           send('operation', { requestId, documentId: state.readyId, ...input, ...prepared });
         })
         .catch((error) => {
           pending.delete(requestId);
+          request.detach();
           request.reject(error);
         });
       return request.promise;
     };
-    let requireFinishedOperations = () => {
-      if (pending.size)
+    let requireFinishedOperations = (signal) => {
+      if ([...pending.values()].some((request) => request.signal === signal))
         throw new Error('Await app.screenshot() and app.setViewport() before finishing a test or hook.');
     };
-    let app = createApp(frame, () => state, controller.signal, navigate, operation);
-    let I = createInteractor(app, controller.signal, settings.expectTimeout);
-    let context = Object.freeze({ app, I, signal: controller.signal, fixtures: settings.fixtures });
+    let contextFor = (signal) => {
+      let app = createApp(
+        frame,
+        () => state,
+        signal,
+        (path) => navigate(path, signal),
+        (input, prepare, select) => operation(input, prepare, select, signal)
+      );
+      return Object.freeze({
+        app,
+        I: createInteractor(app, signal, settings.expectTimeout),
+        signal,
+        fixtures: settings.fixtures,
+        test: testDescriptor(test)
+      });
+    };
+    let invoke = async (run, context) => {
+      context.signal.throwIfAborted();
+      let result = run(context);
+      if (result && typeof result.next === 'function')
+        throw new Error('Test callbacks and hooks must use ordinary or async functions, not generators.');
+      await abortable(result, context.signal);
+      requireFinishedOperations(context.signal);
+      context.signal.throwIfAborted();
+    };
+    let entered = [];
+    let context = contextFor(controller.signal);
     let started = performance.now();
-    let outcome;
+    let remaining = Number(parameters.get('deadline')) - Date.now();
+    let executionDeadline = AbortSignal.timeout(Math.max(1, remaining));
+    let executionExpired = () => {
+      let error = new Error(
+        `Test exceeded ${test.timeout ?? settings.timeout} ms. Check blocked scripts, application startup, or unresolved test work.`
+      );
+      kinds.set(error, 'timeout');
+      controller.abort(error);
+    };
+    executionDeadline.addEventListener('abort', executionExpired, { once: true });
+    if (remaining <= 0) executionExpired();
+    send('runtime-ready');
     try {
-      for (let scope of test.scopes) for (let hook of scope.beforeEach) await abortable(hook.run(context));
-      await abortable(test.run(context));
-      requireFinishedOperations();
-      controller.signal.throwIfAborted();
-      outcome = { status: 'passed' };
-    } catch (error) {
-      outcome = { status: 'failed', error: { ...serialize(error), declaration: test.declaration } };
-    } finally {
-      for (let hook of [...test.scopes].reverse().flatMap((scope) => scope.afterEach)) {
-        try {
-          await abortable(hook.run(context));
-        } catch (error) {
-          outcome = { status: 'failed', error: { ...serialize(error), declaration: test.declaration } };
+      for (let scope of test.scopes) {
+        entered.push(scope);
+        for (let hook of scope.beforeEach) {
+          phase = 'beforeEach';
+          declaration = hook.declaration;
+          await invoke(hook.run, context);
         }
       }
-      try {
-        requireFinishedOperations();
-      } catch (error) {
-        if (outcome.status === 'passed')
-          outcome = { status: 'failed', error: { ...serialize(error), declaration: test.declaration } };
+      phase = 'test';
+      declaration = test.declaration;
+      await invoke(test.run, context);
+    } catch (error) {
+      recordFailure(error);
+    } finally {
+      executionDeadline.removeEventListener('abort', executionExpired);
+      controller.abort(ended);
+      let cleanup = new AbortController();
+      let cleanupDeadline = AbortSignal.timeout(settings.cleanupTimeout);
+      let cleanupExpired = () => {
+        let error = new Error(`Cleanup exceeded ${settings.cleanupTimeout} ms. Remaining hooks were not invoked.`);
+        kinds.set(error, 'cleanup');
+        cleanup.abort(error);
+        activeController.abort(error);
+      };
+      cleanupDeadline.addEventListener('abort', cleanupExpired, { once: true });
+      for (let scope of [...entered].reverse()) {
+        if (cleanup.signal.aborted) break;
+        for (let hook of scope.afterEach) {
+          if (cleanup.signal.aborted) break;
+          let hookController = new AbortController();
+          activeController = hookController;
+          let signal = AbortSignal.any([hookController.signal, cleanup.signal]);
+          phase = 'afterEach';
+          declaration = hook.declaration;
+          try {
+            await invoke(hook.run, contextFor(signal));
+          } catch (error) {
+            recordFailure(error);
+          } finally {
+            hookController.abort(ended);
+          }
+        }
       }
+      let drain = new AbortController();
+      activeController = drain;
+      try {
+        await abortable(checkpoint(), AbortSignal.any([cleanup.signal, drain.signal]));
+        if (drain.signal.aborted) throw drain.signal.reason;
+      } catch (error) {
+        recordFailure(error, 'cleanup');
+      }
+      cleanupDeadline.removeEventListener('abort', cleanupExpired);
+      finished = true;
+      drain.abort(ended);
       restoreConsole();
       try {
         frame.contentWindow.__browserTestBridge?.stopOutput?.();
       } catch {}
       try {
-        await checkpoint();
-        controller.signal.throwIfAborted();
-      } catch (error) {
-        if (outcome.status === 'passed')
-          outcome = { status: 'failed', error: { ...serialize(error), declaration: test.declaration } };
-      }
-      try {
         let location = frame.contentWindow.location;
         send('location', { index, path: location.pathname + location.search + location.hash });
       } catch {}
       collectingOutput = false;
-      controller.abort(new Error('Test finished'));
       waiters.clear();
     }
-    send('result', { index, testId: test.id, name: test.name, duration: performance.now() - started, ...outcome, output });
+    send('result', {
+      index,
+      testId: test.id,
+      name: test.name,
+      duration: performance.now() - started,
+      ...failureOutcome(failures),
+      output
+    });
   } catch (error) {
     send('fatal', { error: serialize(error) });
   }

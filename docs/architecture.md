@@ -27,6 +27,12 @@ The reporter owns its route, search, and filter. Embedded reporters receive chec
 
 Frames isolate documents, styles, and globals. They share origin storage and can access each other, so they aren't a security boundary against hostile code.
 
+## Failures and cleanup
+
+Execution and cleanup have separate abort signals. Finishing execution cancels its app APIs and pending capture requests. Only entered scopes clean up; ordinary hook failures are collected while later hooks continue within one cleanup budget. The result keeps the first failure and phase-tagged additional errors. The host gives the runtime one second to deliver that result after both budgets expire, then removes an unresponsive frame.
+
+Reporter Stop asks the runtime to cancel and finish bounded cleanup. Closing the browser or terminating the CLI can end it sooner; shared backend resources still belong in Node setup teardown.
+
 ## Browser providers
 
 [browser-session.js](../src/browser-session.js) exposes `open`, `resize`, `capture`, `stop`, identity, and capabilities. Native sessions only launch URLs. Playwright and WebDriver load in an owned worker when selected. The CLI removes disposable profiles and stops owned processes, including detached browsers left by a worker crash.

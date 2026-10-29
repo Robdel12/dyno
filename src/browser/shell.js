@@ -4,10 +4,14 @@ import { selectTests } from './suite-model.js';
 
 let root = '/__dyno__/';
 let id = () => [...crypto.getRandomValues(new Uint32Array(4))].join('-');
-let serialized = (error) => ({ message: error?.message ?? String(error), stack: error?.stack });
+let serialized = (error) => ({
+  message: error?.message ?? String(error),
+  stack: error?.stack,
+  phase: error?.phase ?? 'runtime'
+});
 let state = createExecution({ width: 1280, height: 800 });
 let controller = new AbortController();
-let runId, connectionKey, settings, resource, resume, stream;
+let runId, connectionKey, settings, resource, resume, stream, stoppingReason;
 let contextSync = Promise.resolve();
 let operationQueue = Promise.resolve();
 let reporter = document.getElementById('reporter');
@@ -93,10 +97,11 @@ let assertCurrent = (current, documentId, revision, metrics) => {
     throw new Error('App navigated or its viewport changed before screenshot completed. No attachment was accepted.');
   if (!reporter.hidden || !inspect.hidden) throw new Error('Close the reporter before taking a test screenshot.');
 };
-async function sizeViewport(viewport, current = resource, mode = 'fixed') {
+async function sizeViewport(viewport, current = resource, mode = 'fixed', signal) {
   current ??= null;
   let assertOwner = () => {
     controller.signal.throwIfAborted();
+    signal?.throwIfAborted();
     if ((resource ?? null) !== current || (current && !current.frame.isConnected))
       throw new Error('This inspection context has ended.');
   };
@@ -132,12 +137,16 @@ async function sizeViewport(viewport, current = resource, mode = 'fixed') {
 }
 async function operate(current, message) {
   let result;
+  let request = new AbortController();
+  let signal = AbortSignal.any([controller.signal, request.signal]);
+  current.operations.set(message.requestId, request);
   try {
-    controller.signal.throwIfAborted();
+    if (current.canceled.has(message.requestId)) request.abort(new Error('Operation cancelled.'));
+    signal.throwIfAborted();
     if (resource !== current || current.finished || message.executionId !== current.id)
       throw new Error('This test execution has ended.');
     if (message.operation === 'viewport') {
-      await sizeViewport(message.viewport, current);
+      await sizeViewport(message.viewport, current, 'fixed', signal);
       result = { viewport: state.viewport, revision: state.revision };
     } else if (message.operation === 'screenshot') {
       await contextSync;
@@ -167,17 +176,19 @@ async function operate(current, message) {
             context: context(current),
             metrics
           },
-          controller.signal
+          signal
         );
+        signal.throwIfAborted();
         assertCurrent(current, message.documentId, revision, metrics);
-        result =
-          staged.status === 'skipped' ? staged : await post('attachments/commit', { id: staged.id }, controller.signal);
+        result = staged.status === 'skipped' ? staged : await post('attachments/commit', { id: staged.id }, signal);
+        signal.throwIfAborted();
         assertCurrent(current, message.documentId, revision, metrics);
       } catch (error) {
         if (staged?.id) await post('attachments/discard', { id: staged.id }).catch(() => {});
         throw error;
       }
     } else throw new Error('Unknown app operation.');
+    signal.throwIfAborted();
     current.frame.contentWindow.postMessage(
       {
         channel: 'dyno',
@@ -201,6 +212,8 @@ async function operate(current, message) {
       },
       location.origin
     );
+  } finally {
+    current.operations.delete(message.requestId);
   }
 }
 let rerun = (ids) => {
@@ -212,8 +225,11 @@ let rerun = (ids) => {
   location.reload();
 };
 function command(input) {
-  if (input.command === 'stop') controller.abort(new Error('Run stopped from the reporter.'));
-  else if (input.command === 'pause') update({ type: 'pause.requested' });
+  if (input.command === 'stop') {
+    stoppingReason ??= new Error('Run stopped from the reporter.');
+    if (resource && !resource.finished && resource.ready) resource.cancel(stoppingReason);
+    else controller.abort(stoppingReason);
+  } else if (input.command === 'pause') update({ type: 'pause.requested' });
   else if (input.command === 'inspect') update({ type: 'reporter.requested' });
   else if (input.command === 'show-app') {
     update({ type: 'app.requested' });
@@ -281,13 +297,32 @@ async function runtime(mode, timeout, index, testId) {
       : `Test runtime: ${state.tests.find((test) => test.index === index)?.name}`;
   frame.hidden = mode === 'discover';
   frame.tabIndex = mode === 'discover' ? -1 : 0;
-  let current = { frame, id: id(), documentId: null, finished: false, remove: () => frame.remove() };
-  let deadline = AbortSignal.timeout(timeout);
+  let current = {
+    frame,
+    id: id(),
+    documentId: null,
+    finished: false,
+    ready: false,
+    operations: new Map(),
+    canceled: new Set(),
+    remove: () => frame.remove()
+  };
+  current.cancel = (error) =>
+    frame.contentWindow.postMessage(
+      { channel: 'dyno', kind: 'cancel', runId, executionId: current.id, error: serialized(error) },
+      location.origin
+    );
+  let executionDeadline = Date.now() + timeout;
+  let startup = AbortSignal.timeout(timeout);
+  // Allow the runtime to deliver its result after exhausting both execution and cleanup budgets.
+  let deadline = AbortSignal.timeout(Math.min(2147483647, timeout + (mode === 'test' ? settings.cleanupTimeout + 1000 : 0)));
   current.result = new Promise((resolve, reject) => {
     let finish = (error, value) => {
+      if (current.finished) return;
       current.finished = true;
       window.removeEventListener('message', receive);
       deadline.removeEventListener('abort', expired);
+      startup.removeEventListener('abort', startupExpired);
       controller.signal.removeEventListener('abort', aborted);
       error ? reject(error) : resolve(value);
     };
@@ -309,6 +344,15 @@ async function runtime(mode, timeout, index, testId) {
         current.documentId = message.documentId;
         void syncContext(current).catch(() => {});
       }
+      if (message.kind === 'runtime-ready') current.ready = true;
+      if (message.kind === 'operation-cancel') {
+        current.canceled.add(message.requestId);
+        current.operations.get(message.requestId)?.abort(new Error('Operation cancelled.'));
+        let cancellation = post('operations/cancel', { executionId: current.id, requestId: message.requestId }).catch(
+          () => {}
+        );
+        operationQueue = operationQueue.then(() => cancellation);
+      }
       if (message.kind === 'inspect') command({ command: 'inspect' });
       if (message.kind === 'operation') operationQueue = operationQueue.then(() => operate(current, message));
       if (message.kind === 'fatal') {
@@ -324,13 +368,20 @@ async function runtime(mode, timeout, index, testId) {
     };
     let expired = () =>
       finish(
-        new Error(
-          `${mode === 'discover' ? 'Test discovery' : 'Test'} exceeded ${timeout} ms. Check app startup, blocked scripts, or unresolved async work.`
+        Object.assign(
+          new Error(
+            `${mode === 'discover' ? 'Test discovery' : 'Test'} exceeded ${timeout} ms. Check app startup, blocked scripts, or unresolved async work. Cleanup did not finish within its budget.`
+          ),
+          { phase: 'timeout' }
         )
       );
+    let startupExpired = () => {
+      if (!current.ready) expired();
+    };
     let aborted = () => finish(controller.signal.reason);
     window.addEventListener('message', receive);
     deadline.addEventListener('abort', expired, { once: true });
+    startup.addEventListener('abort', startupExpired, { once: true });
     controller.signal.addEventListener('abort', aborted, { once: true });
     if (controller.signal.aborted) aborted();
   });
@@ -338,7 +389,7 @@ async function runtime(mode, timeout, index, testId) {
   resource?.remove();
   resource = current;
   await syncContext(current);
-  frame.src = `${root}runtime?run=${encodeURIComponent(runId)}&execution=${current.id}&mode=${mode}${index === undefined ? '' : `&test=${index}&id=${encodeURIComponent(testId)}`}`;
+  frame.src = `${root}runtime?run=${encodeURIComponent(runId)}&execution=${current.id}&mode=${mode}&deadline=${executionDeadline}${index === undefined ? '' : `&test=${index}&id=${encodeURIComponent(testId)}`}`;
   execution.append(frame);
   return current;
 }
@@ -419,7 +470,12 @@ try {
   }
   let selection = new URLSearchParams(location.search);
   if (!tests.length) throw new Error('No tests registered. Use test(name, async ({ app }) => …).');
-  tests = selectTests(tests, { ids: selection.getAll('id'), names: selection.getAll('test'), files: selection.getAll('file'), suites: selection.getAll('suite') });
+  tests = selectTests(tests, {
+    ids: selection.getAll('id'),
+    names: selection.getAll('test'),
+    files: selection.getAll('file'),
+    suites: selection.getAll('suite')
+  });
   await post('events', { type: 'start', tests, userAgent: navigator.userAgent });
   update({ type: 'started', tests });
   let started = performance.now();
@@ -453,8 +509,9 @@ try {
         output: state.tests.find((item) => item.index === test.index).output
       };
     }
+    await operationQueue;
     await syncContext(null);
-    let { status, error, duration, output = [] } = outcome;
+    let { status, error, additionalErrors = [], duration, output = [] } = outcome;
     let reported = await post('events', {
       type: 'test',
       executionId: runner.id,
@@ -464,6 +521,7 @@ try {
       status,
       duration,
       error,
+      additionalErrors,
       output
     });
     update({
@@ -472,11 +530,13 @@ try {
       outcome: {
         status,
         error: reported.error ?? error,
+        additionalErrors: reported.additionalErrors ?? additionalErrors,
         duration,
         output: Object.freeze(output),
         attachments: Object.freeze(reported.attachments ?? [])
       }
     });
+    if (stoppingReason) controller.abort(stoppingReason);
     controller.signal.throwIfAborted();
     if (
       state.interactive &&
