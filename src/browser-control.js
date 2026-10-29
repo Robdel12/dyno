@@ -191,7 +191,7 @@ export function createBrowserControl({ artifactsDir, onReplaced = () => {} }) {
         if (input.command === 'viewport' && !validViewport(input.viewport)) throw problem(400, 'Invalid app viewport.');
         if (
           input.command === 'rerun' &&
-          (!Array.isArray(input.names) || input.names.some((name) => typeof name !== 'string'))
+          (!Array.isArray(input.ids) || input.ids.some((name) => typeof name !== 'string'))
         )
           throw problem(400, 'Invalid test selection.');
         broadcast(input.runId, 'command', { ...input, id: randomUUID() });

@@ -5,7 +5,7 @@ import { once } from 'node:events';
 import { join } from 'node:path';
 import { connect } from 'node:net';
 import { readFile, chmod } from 'node:fs/promises';
-import { project } from '../helpers/project.js';
+import { project, reportPayload } from '../helpers/project.js';
 
 
 test('browser selection reaches a real browser and missing exact test names explain the filter', { timeout: 150000 }, async t => {
@@ -132,10 +132,10 @@ test('reporter size limits and origin-relative paths reject bad requests without
   });
   assert.equal(foreign, 400);
   let names = ['saves café ☕'];
-  let posted = await fetch(url + 'events', { method: 'POST', body: JSON.stringify({ runId, connectionKey, type: 'start', tests: names }) });
+  let posted = await fetch(url + 'events', { method: 'POST', body: JSON.stringify({ runId, connectionKey, ...reportPayload({ type: 'start', tests: names }) }) });
   assert.equal(posted.status, 200);
   let [run] = await (await fetch(url + 'results')).json();
-  assert.deepEqual(run.tests, names);
+  assert.deepEqual(run.tests.map(test => test.name), names);
 });
 
 test('a misconfigured browser executable reports its output and releases the owned app', { timeout: 15000 }, async t => {
@@ -172,7 +172,7 @@ test('another workflow', async ({app,I}) => { await app.goto('/'); await I.find(
   let session = fixture.run(['--ui']);
   let {url} = await session.waitForEvent('ready');
   let first = await session.waitForEvent('complete');
-  let rerun = runId => fetch(url+'control',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId,command:'rerun',names:['first visible workflow']})});
+  let rerun = runId => fetch(url+'control',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId,command:'rerun',ids:[JSON.stringify(['tests/browser/workflow.test.js','first visible workflow'])]})});
   assert.equal((await rerun(first.runId)).status,200);
   let second = await session.waitForEvent('complete', event => event.runId !== first.runId);
   assert.equal((await rerun(second.runId)).status,200);
@@ -181,8 +181,8 @@ test('another workflow', async ({app,I}) => { await app.goto('/'); await I.find(
   let runs = await (await fetch(url+'results')).json();
   assert.equal(runs.length,3);
   assert.ok(runs.every(run=>run.status==='completed'));
-  assert.deepEqual(runs[1].tests,['first visible workflow']);
-  assert.deepEqual(runs[2].tests,['first visible workflow']);
+  assert.deepEqual(runs[1].tests.map(test=>test.name),['first visible workflow']);
+  assert.deepEqual(runs[2].tests.map(test=>test.name),['first visible workflow']);
   assert.deepEqual(await (await fetch(new URL('/api/lifecycle',url))).json(),['visited','visited','visited']);
 });
 

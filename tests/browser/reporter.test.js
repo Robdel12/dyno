@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { project } from '../helpers/project.js';
+import { project, reportPayload } from '../helpers/project.js';
 
 let browser = process.env.DYNO_TEST_BROWSER ?? 'chrome';
 let visibleConfig = {
@@ -194,7 +194,7 @@ test('logs bounded output', async ({ app, I }) => {
   let { url } = await session.waitForEvent('ready');
   let { runId, connectionKey } = await (await fetch(url + 'capture', { method: 'POST' })).json();
   let post = (event) =>
-    fetch(url + 'events', { method: 'POST', body: JSON.stringify({ runId, connectionKey, ...event }) });
+    fetch(url + 'events', { method: 'POST', body: JSON.stringify({ runId, connectionKey, ...reportPayload(event) }) });
   assert.equal((await post({ type: 'start', tests: ['real reporter boundary'] })).status, 200);
   assert.equal(
     (

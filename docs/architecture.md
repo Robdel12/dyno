@@ -13,6 +13,10 @@ Node gateway → optional provider → browser window and screenshots
 
 The gateway forwards app requests and WebSocket upgrades to the app server. It adds a small script for errors and document readiness. The test bundle stays in the execution frame. See the [guide](guide.md#app-server-integration) for cookies, redirects, and CSP behavior.
 
+## Test definitions
+
+The bundled entry loads test modules sequentially through the registration boundary. Each file gets its own scope, including when module evaluation awaits an import. `describe` callbacks register synchronously. [suite.js](../src/suite.js) builds immutable trees and compiles inherited hooks, focus/skip decisions, and stable file/suite/name IDs into an execution plan. Only serializable test descriptors cross into the host and gateway; callbacks remain in the test runtime.
+
 ## State and frames
 
 [execution.js](../src/browser/execution.js) contains pure transitions over immutable state. [shell.js](../src/browser/shell.js) applies DOM and network effects. Frame handles, promises, and abort controllers stay outside that state.

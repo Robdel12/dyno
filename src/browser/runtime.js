@@ -1,27 +1,30 @@
 import { getSuite } from './registry.js';
+import { testDescriptor } from '../suite.js';
 import { createApp } from './app.js';
 import { createInteractor } from './interactor.js';
 import { captureConsole } from './console.js';
 
 let serialize = (error) => ({ message: error?.message ?? String(error), stack: error?.stack });
 export async function boot() {
-  let suite = getSuite();
   let parameters = new URLSearchParams(location.search);
   let runId = parameters.get('run');
   let executionId = parameters.get('execution');
   let send = (kind, data = {}) =>
     parent.postMessage({ channel: 'dyno', runId, executionId, kind, ...data }, location.origin);
   try {
-    if (parameters.get('mode') === 'discover') {
-      send('discovered', { tests: suite.tests.map(({ name, timeout }, index) => ({ name, timeout, index })) });
-      return;
-    }
-    let index = Number(parameters.get('test'));
-    let test = suite.tests[index];
-    if (!test) throw new Error(`Unknown test index ${index}`);
     let settings = await fetch(`/__dyno__/settings?run=${encodeURIComponent(runId)}`).then((response) =>
       response.json()
     );
+    let tests = getSuite({ forbidOnly: settings.forbidOnly });
+    if (parameters.get('mode') === 'discover') {
+      send('discovered', { tests: tests.map(testDescriptor) });
+      return;
+    }
+    let index = Number(parameters.get('test'));
+    let selectedId = parameters.get('id');
+    let test = tests.find(test => test.id === selectedId);
+    if (!test) throw new Error(`Test definition disappeared after discovery: ${selectedId}`);
+    if (test.skipReason) throw new Error(`Test selection changed after discovery: ${test.skipReason}`);
     let controller = new AbortController();
     let outputStarted = performance.now();
     let output = [];
@@ -187,7 +190,7 @@ export async function boot() {
     let started = performance.now();
     let outcome;
     try {
-      for (let hook of suite.beforeEach) await abortable(hook(context));
+      for (let scope of test.scopes) for (let hook of scope.beforeEach) await abortable(hook.run(context));
       await abortable(test.run(context));
       requireFinishedOperations();
       controller.signal.throwIfAborted();
@@ -195,9 +198,9 @@ export async function boot() {
     } catch (error) {
       outcome = { status: 'failed', error: { ...serialize(error), declaration: test.declaration } };
     } finally {
-      for (let hook of suite.afterEach) {
+      for (let hook of [...test.scopes].reverse().flatMap((scope) => scope.afterEach)) {
         try {
-          await abortable(hook(context));
+          await abortable(hook.run(context));
         } catch (error) {
           outcome = { status: 'failed', error: { ...serialize(error), declaration: test.declaration } };
         }
@@ -227,7 +230,7 @@ export async function boot() {
       controller.abort(new Error('Test finished'));
       waiters.clear();
     }
-    send('result', { index, name: test.name, duration: performance.now() - started, ...outcome, output });
+    send('result', { index, testId: test.id, name: test.name, duration: performance.now() - started, ...outcome, output });
   } catch (error) {
     send('fatal', { error: serialize(error) });
   }

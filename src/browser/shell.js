@@ -1,5 +1,6 @@
 import { createExecution, transition } from './execution.js';
 import { normalizeViewport } from './viewport.js';
+import { selectTests } from './suite-model.js';
 
 let root = '/__dyno__/';
 let id = () => [...crypto.getRandomValues(new Uint32Array(4))].join('-');
@@ -202,11 +203,11 @@ async function operate(current, message) {
     );
   }
 }
-let rerun = (names) => {
+let rerun = (ids) => {
   let url = new URL(location.href);
   url.search = '';
   url.hash = '';
-  for (let name of names) url.searchParams.append('test', name);
+  for (let id of ids) url.searchParams.append('id', id);
   history.replaceState(null, '', url);
   location.reload();
 };
@@ -223,7 +224,7 @@ function command(input) {
     operationQueue = operationQueue.then(() => {
       if (resume === continuation && state.phase === 'resuming') continuation?.();
     });
-  } else if (input.command === 'rerun') rerun(input.names);
+  } else if (input.command === 'rerun') rerun(input.ids);
   else if (input.command === 'pause-on-failure') {
     update({ type: 'preferences.changed', pauseOnFailure: Boolean(input.value) });
     try {
@@ -272,7 +273,7 @@ window.addEventListener('pagehide', () => {
     );
 });
 
-async function runtime(mode, timeout, index) {
+async function runtime(mode, timeout, index, testId) {
   let frame = document.createElement('iframe');
   frame.title =
     mode === 'discover'
@@ -316,7 +317,10 @@ async function runtime(mode, timeout, index) {
         finish(error);
       }
       if (mode === 'discover' && message.kind === 'discovered') finish(null, message.tests);
-      if (mode !== 'discover' && message.kind === 'result') finish(null, message);
+      if (mode !== 'discover' && message.kind === 'result') {
+        if (message.testId !== testId) finish(new Error('The runtime reported a different test identity.'));
+        else finish(null, message);
+      }
     };
     let expired = () =>
       finish(
@@ -334,7 +338,7 @@ async function runtime(mode, timeout, index) {
   resource?.remove();
   resource = current;
   await syncContext(current);
-  frame.src = `${root}runtime?run=${encodeURIComponent(runId)}&execution=${current.id}&mode=${mode}${index === undefined ? '' : `&test=${index}`}`;
+  frame.src = `${root}runtime?run=${encodeURIComponent(runId)}&execution=${current.id}&mode=${mode}${index === undefined ? '' : `&test=${index}&id=${encodeURIComponent(testId)}`}`;
   execution.append(frame);
   return current;
 }
@@ -413,19 +417,20 @@ try {
     discovery.remove();
     resource = undefined;
   }
-  let selected = new URLSearchParams(location.search).getAll('test');
-  if (selected.length) tests = tests.filter((test) => selected.includes(test.name));
-  if (!tests.length)
-    throw new Error(
-      selected.length
-        ? `No test named "${selected.join('", "')}". --test uses an exact name.`
-        : 'No tests registered. Use test(name, async ({ app }) => …).'
-    );
-  await post('events', { type: 'start', tests: tests.map((test) => test.name), userAgent: navigator.userAgent });
+  let selection = new URLSearchParams(location.search);
+  if (!tests.length) throw new Error('No tests registered. Use test(name, async ({ app }) => …).');
+  tests = selectTests(tests, { ids: selection.getAll('id'), names: selection.getAll('test'), files: selection.getAll('file'), suites: selection.getAll('suite') });
+  await post('events', { type: 'start', tests, userAgent: navigator.userAgent });
   update({ type: 'started', tests });
   let started = performance.now();
   for (let [position, test] of tests.entries()) {
     controller.signal.throwIfAborted();
+    if (test.skipReason) {
+      let outcome = { status: 'skipped', skipReason: test.skipReason, duration: 0, output: [] };
+      await post('events', { type: 'test', testId: test.id, index: position, name: test.name, ...outcome });
+      update({ type: 'test.finished', index: test.index, outcome });
+      continue;
+    }
     resource?.remove();
     resource = undefined;
     await sizeViewport(
@@ -434,7 +439,7 @@ try {
       null,
       viewportMode
     );
-    let runner = await runtime('test', test.timeout ?? settings.timeout, test.index);
+    let runner = await runtime('test', test.timeout ?? settings.timeout, test.index, test.id);
     update({ type: 'test.started', index: test.index });
     let outcome;
     try {
@@ -453,6 +458,7 @@ try {
     let reported = await post('events', {
       type: 'test',
       executionId: runner.id,
+      testId: test.id,
       index: position,
       name: test.name,
       status,
@@ -480,8 +486,9 @@ try {
       await paused();
   }
   let failed = state.tests.filter((test) => test.status === 'failed').length;
+  let skipped = state.tests.filter((test) => test.status === 'skipped').length;
   let duration = performance.now() - started;
-  await post('events', { type: 'complete', passed: tests.length - failed, failed, duration });
+  await post('events', { type: 'complete', passed: tests.length - failed - skipped, failed, skipped, duration });
   update({ type: 'completed', duration });
 } catch (error) {
   update({ type: 'failed', stopped: controller.signal.aborted, error: error.message });

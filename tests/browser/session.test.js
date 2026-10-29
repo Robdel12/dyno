@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { chmod } from 'node:fs/promises';
 import { join } from 'node:path';
 import { resolveBrowser } from '../../src/launcher.js';
-import { project } from '../helpers/project.js';
+import { project, reportPayload } from '../helpers/project.js';
 
 test(
   'the launched browser owns CLI completion even when a manual browser finishes first',
@@ -34,7 +34,7 @@ let [code]=await once(browser,'exit');process.exitCode=code??1;
       fetch(url + 'events', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ runId: manual.runId, connectionKey: manual.connectionKey, ...event })
+        body: JSON.stringify({ runId: manual.runId, connectionKey: manual.connectionKey, ...reportPayload(event) })
       });
     assert.equal((await post({ type: 'start', tests: ['manual companion'] })).status, 200);
     await post({ type: 'test', index: 0, name: 'manual companion', status: 'passed' });

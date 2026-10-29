@@ -41,7 +41,7 @@ export async function createGateway(config, bundle, { fixtures = {}, onEvent = (
   } });
   let origin;
   let allowedHosts;
-  let settings = { timeout: config.timeout, expectTimeout: config.expectTimeout, files: bundle.files, fixtures, interactive, appURL: config.webServer.url, viewport: config.viewport, managedViewport: defaultViewport };
+  let settings = { forbidOnly: config.forbidOnly, timeout: config.timeout, expectTimeout: config.expectTimeout, files: bundle.files, fixtures, interactive, appURL: config.webServer.url, viewport: config.viewport, managedViewport: defaultViewport };
   let server = http.createServer({ requestTimeout: 15000, headersTimeout: 10000 }, async (request, response) => {
     try {
       if (!allowedHosts.has(request.headers.host?.toLowerCase())) { response.writeHead(421); response.end('Unrecognized Dyno gateway host.'); return; }
@@ -62,6 +62,7 @@ export async function createGateway(config, bundle, { fixtures = {}, onEvent = (
       if (await control.handle(route, url, request, response)) return;
       if (route === 'runtime' && request.method === 'GET') return send('text/html; charset=utf-8', page('Test runtime', '<script src="/__dyno__/guard.js"></script>', `suite.js?run=${encodeURIComponent(url.searchParams.get('run'))}`));
       if (['reporter.css', 'runtime.css', 'host.css', 'reporter.js', 'reporter-client.js', 'execution.js', 'viewport.js', 'shell.js', 'guard.js'].includes(route)) return send(route.endsWith('.css') ? 'text/css' : 'text/javascript', await readFile(new URL(`./browser/${route}`, import.meta.url), 'utf8'));
+      if (route === 'suite-model.js') return send('text/javascript', await readFile(new URL('./suite.js', import.meta.url), 'utf8'));
       if (['suite.js', 'suite.js.map'].includes(route)) {
         let run = url.searchParams.get('run');
         let snapshot = bundles.get(run);

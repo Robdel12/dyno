@@ -89,6 +89,38 @@ Frames don't reset cookies, localStorage, IndexedDB, service workers, or databas
 
 Dyno's [Interactor adapter](../src/browser/interactor.js) uses public extension APIs to create events in the app's window and check focus against its document. It doesn't replace browser globals or modify the package. Import `Interactor` from `dyno` to add your own actions and assertions.
 
+## Suites and selection
+
+Use `describe(name, callback)` to group tests. Its callback is synchronous; put async work in hooks or tests. Top-level hooks belong to their file. Nested `beforeEach` hooks run from the file inward, and `afterEach` hooks run from the inner suite outward.
+
+```js
+import { describe, test, beforeEach } from 'dyno';
+
+describe('Authentication', () => {
+  beforeEach(async ({ app }) => {
+    await app.goto('/login');
+  });
+
+  test('opens registration', async ({ I }) => {
+    await I.click('Create account');
+    await I.find('Start testing UI changes').visible();
+  });
+});
+```
+
+Names must be unique within a suite; different files and suites can reuse a short name. Each test has a stable ID based on its file, suite path, and name. Adding another test doesn't change that ID.
+
+`test.skip('later')` and `describe.skip` report skipped tests without executing their hooks or bodies. `test.only` and `describe.only` select focused tests locally. `forbidOnly` defaults to true when `CI` is set, so committed focus markers fail clearly.
+
+```sh
+dyno --suite Authentication
+dyno --file login.test.js
+dyno --test 'Authentication › opens registration'
+dyno --id '<ID from test discovery/results>'
+```
+
+File, suite, and ID selectors can repeat; different selector kinds narrow each other. A short `--test` name that matches multiple tests explains how to disambiguate it. Reporter reruns use stable IDs and rebuild before execution. JSON start events include descriptors with `id`, `file`, `suites`, `name`, and the index within that bundle; outcomes include `testId`.
+
 ## Viewport sizing
 
 Native and manual runs fill the actual browser viewport and follow its resize events. Managed runs default to 1280 × 800 CSS pixels. Set `viewport` in config for fixed dimensions, or await `app.setViewport({ width: 390, height: 844 })` within a test. The next test restores its default size.
@@ -171,6 +203,7 @@ Paths are relative to the config file unless noted. See `dyno --help` for CLI ov
 | `webServer.timeout` | `30000` | App startup deadline |
 | `webServer.reuseExistingServer` | `false` | Reuse a responding server |
 | `setup` | None | Node setup module |
+| `forbidOnly` | Whether `CI` is set | Reject focused test/suite definitions |
 
 ### Node setup
 

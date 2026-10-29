@@ -13,7 +13,8 @@ function keys(input, allowed, label) {
 }
 
 export function normalizeConfig(input, file, overrides = {}) {
-  keys(input, ['testDir', 'testMatch', 'timeout', 'runTimeout', 'expectTimeout', 'host', 'port', 'browser', 'viewport', 'artifactsDir', 'webServer', 'setup'], 'config');
+  keys(input, ['testDir', 'testMatch', 'timeout', 'runTimeout', 'expectTimeout', 'host', 'port', 'browser', 'viewport', 'artifactsDir', 'webServer', 'setup', 'forbidOnly'], 'config');
+  if (input.forbidOnly !== undefined && typeof input.forbidOnly !== 'boolean') throw new Error('forbidOnly must be a boolean.');
   let root = dirname(file);
   let webServer = input.webServer;
   keys(webServer, ['url', 'command', 'cwd', 'env', 'ready', 'timeout', 'reuseExistingServer'], 'webServer');
@@ -48,7 +49,7 @@ export function normalizeConfig(input, file, overrides = {}) {
   if (browser.args !== undefined && (!Array.isArray(browser.args) || browser.args.some(arg => typeof arg !== 'string'))) throw new Error('browser.args must be an array of strings.');
   if (browser.args?.some(arg => /^(--?(user-data-dir|profile|profilemanager|no-remote|new-instance)|-P)(=|$)/i.test(arg))) throw new Error('Dyno owns the browser profile. Remove profile and instance flags from browser.args.');
   let config = {
-    root, file, testDir: resolve(root, input.testDir ?? 'tests/browser'),
+    root, file, forbidOnly: input.forbidOnly ?? Boolean(process.env.CI), testDir: resolve(root, input.testDir ?? 'tests/browser'),
     testMatch: input.testMatch ?? '**/*.test.{js,jsx,ts,tsx}',
     timeout: input.timeout ?? 10000, runTimeout: input.runTimeout ?? 60000,
     expectTimeout: input.expectTimeout ?? Math.min(2000, Math.floor((input.timeout ?? 10000) / 2)),
