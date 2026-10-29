@@ -248,11 +248,26 @@ function command(input) {
     } catch {}
   } else if (input.command === 'viewport' && ['paused', 'completed'].includes(state.phase)) {
     let current = resource;
-    operationQueue = operationQueue
-      .then(() => sizeViewport(input.viewport, current))
-      .catch((error) => console.error(error));
+    operationQueue = operationQueue.then(() => sizeViewport(input.viewport, current));
+    let work = operationQueue;
+    operationQueue = work.catch(() => {});
+    return work;
   }
 }
+let dispatchCommand = async (input) => {
+  let error;
+  try {
+    await command(input);
+  } catch (failure) {
+    error = serialized(failure);
+  }
+  let result = { requestId: input.requestId, error };
+  reporter.contentWindow?.postMessage(
+    { channel: 'dyno-reporter', kind: 'command-result', runId, ...result },
+    location.origin
+  );
+  if (input.requestId) await post('command-result', result).catch(() => {});
+};
 window.addEventListener('message', (event) => {
   if (
     event.origin !== location.origin ||
@@ -265,7 +280,7 @@ window.addEventListener('message', (event) => {
     if (!reporter.hidden)
       reporter.contentWindow.postMessage({ channel: 'dyno-reporter', kind: 'focus', runId }, location.origin);
   }
-  if (event.data.kind === 'command' && event.data.runId === runId) command(event.data);
+  if (event.data.kind === 'command' && event.data.runId === runId) void dispatchCommand(event.data);
 });
 window.addEventListener('resize', () => {
   if (controller.signal.aborted) return;
@@ -315,7 +330,9 @@ async function runtime(mode, timeout, index, testId) {
   let executionDeadline = Date.now() + timeout;
   let startup = AbortSignal.timeout(timeout);
   // Allow the runtime to deliver its result after exhausting both execution and cleanup budgets.
-  let deadline = AbortSignal.timeout(Math.min(2147483647, timeout + (mode === 'test' ? settings.cleanupTimeout + 1000 : 0)));
+  let deadline = AbortSignal.timeout(
+    Math.min(2147483647, timeout + (mode === 'test' ? settings.cleanupTimeout + 1000 : 0))
+  );
   current.result = new Promise((resolve, reject) => {
     let finish = (error, value) => {
       if (current.finished) return;
@@ -459,7 +476,7 @@ try {
   });
   reporter.src = `${root}reporter?run=${encodeURIComponent(runId)}&embedded=1`;
   stream = new EventSource(root + `stream?run=${encodeURIComponent(runId)}&role=host`);
-  stream.addEventListener('command', (event) => command(JSON.parse(event.data)));
+  stream.addEventListener('command', (event) => void dispatchCommand(JSON.parse(event.data)));
   let discovery = await runtime('discover', settings.timeout);
   let tests;
   try {

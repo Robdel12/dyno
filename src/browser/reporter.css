@@ -73,7 +73,7 @@ kbd { color: #717c86; font-size: 12px; }
 .list-heading { display: flex; justify-content: space-between; padding: 0 20px 12px 41px; color: var(--muted); font-size: 12px; }
 #test-count { margin-left: 6px; color: #73808b; }
 #results { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
-#results li { border-bottom: 1px solid var(--line); }
+.suite-tests > li { border-bottom: 1px solid var(--line); }
 .test-select { display: grid; grid-template-columns: 20px minmax(0,1fr) auto 14px; align-items: center; column-gap: 12px; min-height: 76px; padding: 18px 20px 18px 9px; text-decoration: none; }
 .test-select:hover { background: #ffffff04; }
 .test-symbol { font-size: 16px; color: var(--muted); text-align: center; }
@@ -176,3 +176,17 @@ kbd { color: #717c86; font-size: 12px; }
 .screenshot{margin:24px 0}
 .screenshot img{display:block;max-width:100%;height:auto;border:1px solid var(--line)}
 .screenshot figcaption{margin-top:8px;color:var(--muted);font-size:13px}
+
+.connection{display:flex;justify-content:space-between;gap:16px;color:var(--muted);font-size:12px;margin-bottom:28px}
+#connection-state[data-connection=reconnecting],#connection-state[data-connection=closed]{color:var(--yellow)}
+.command-notice{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:24px;color:var(--yellow)}
+.file-group{margin:24px 0 36px}
+.group-heading{display:flex;align-items:baseline;gap:16px;padding:12px 0;min-width:0}
+.group-heading h2{font:13px/1.6 ui-monospace,SFMono-Regular,Consolas,monospace;overflow-wrap:anywhere}
+.group-heading button{margin-left:auto;font-size:12px;min-height:36px}
+.group-count{color:var(--muted);font-size:12px;white-space:nowrap}
+.suite-heading{padding-top:16px;padding-bottom:0}
+.suite-heading h3{font-size:13px;font-weight:550;overflow-wrap:anywhere}
+.suite-tests{list-style:none;padding:0;margin:0}
+.selected-context{color:var(--muted);font-size:12px;overflow-wrap:anywhere;margin-top:24px}
+@media(max-width:640px){.connection{flex-direction:column;gap:4px}.group-heading{flex-wrap:wrap;gap:4px 12px}.group-heading h2{flex-basis:100%}.suite-heading h3{flex-basis:auto;flex:1}.group-count{font-size:11px}.run-actions{gap:5px}.toolbar{padding-inline:12px}.brand{font-size:20px}.brand svg{width:23px}.filters{gap:18px}.file-group{margin-bottom:24px}}

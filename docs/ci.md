@@ -30,3 +30,5 @@ Each test job uploads `output.log` and `results.xml` under its own artifact name
 Shared actions in `.github/actions` install Node/dependencies and run/report a suite. Official actions are pinned to commit SHAs. The workflow has read-only repository access, doesn't persist checkout credentials, and uses ordinary pull-request events for contributions from forks.
 
 Linux jobs supply a D-Bus session. `.github/scripts/install-edge.sh` installs the official Edge package and fixes the hosted image's sandbox configuration. Playwright jobs explicitly install the engine matching the locked dependency version; browser downloads aren't cached. See [browser setup](browsers.md) for known limits.
+
+WebDriver jobs prepare the matching driver before tests start, then run Selenium Manager offline. Driver downloads have their own setup deadline and cannot consume the framework's browser startup budget.

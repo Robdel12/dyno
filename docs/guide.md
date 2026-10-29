@@ -52,7 +52,7 @@ Exit codes are 0 for passing tests, 1 for failures, 130 for SIGINT, and 143 for 
 
 In UI mode, the app fills its own frame. Press **Ctrl+Shift+D** in the app to request inspection. Dyno finishes the current test before opening the reporter overlay. You can also set the host URL fragment to `#reporter`.
 
-The overview has search and status filters. Open a test's Output route for failures, source excerpts, console messages, and screenshots. Its Application route lets you return to the actual app and choose a viewport. Reporter navigation never moves or scales the app.
+The overview groups files and suites, with search and status filters saved in its URL. Run one test, a suite, a file, or failed tests. Stable test links still point to the same test after definitions are reordered. Connection and command states stay visible; failed commands offer Try again. Open a test's Output route for failures, source excerpts, console messages, and screenshots. Its Application route lets you return to the actual app and choose a viewport. Reporter navigation never moves or scales the app.
 
 **Run options** includes Pause on failure. Continue closes the overlay before starting the next test. Stop ends execution and leaves the last app inspectable. Only that last app is retained; rerun an earlier test to inspect it again. Pausing doesn't freeze the app's timers or requests.
 

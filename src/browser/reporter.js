@@ -3,14 +3,54 @@ export function duration(value) {
   return value < 1000 ? `${Math.round(value)} ms` : `${(value / 1000).toFixed(2)} s`;
 }
 
+let filters = ['all', 'failed', 'passed', 'skipped', 'pending'];
 export function reporterRoute(hash) {
-  if (!hash || hash === '#/') return Object.freeze({ page: 'overview' });
-  let match = /^#\/tests\/(0|[1-9]\d*)\/(output|app)$/.exec(hash);
-  return Object.freeze(match ? { page: 'test', index: Number(match[1]), tab: match[2] } : { page: 'missing' });
+  let [path, search = ''] = (hash || '#/').split('?');
+  let params = new URLSearchParams(search);
+  let view = {
+    query: params.get('q') ?? '',
+    filter: filters.includes(params.get('status')) ? params.get('status') : 'all'
+  };
+  if (!path || path === '#/') return Object.freeze({ ...view, page: 'overview' });
+  let match = /^#\/tests\/([^/]+)\/(output|app)$/.exec(path);
+  try {
+    return Object.freeze(
+      match ? { ...view, page: 'test', id: decodeURIComponent(match[1]), tab: match[2] } : { ...view, page: 'missing' }
+    );
+  } catch {
+    return Object.freeze({ ...view, page: 'missing' });
+  }
 }
-
+export function reporterHref(route) {
+  let path = route.page === 'test' ? `#/tests/${encodeURIComponent(route.id)}/${route.tab ?? 'output'}` : '#/';
+  let params = new URLSearchParams();
+  if (route.query) params.set('q', route.query);
+  if (route.filter && route.filter !== 'all') params.set('status', route.filter);
+  return path + (params.size ? '?' + params.toString() : '');
+}
 export function selectedTest(state) {
-  return state.tests.find((test) => test.index === state.route.index);
+  return state.tests.find((test) => test.id === state.route.id);
+}
+export function reporterGroups(tests) {
+  let files = [...new Set(tests.map((test) => test.file))];
+  return Object.freeze(
+    files.map((file) => {
+      let entries = tests.filter((test) => test.file === file);
+      let paths = [...new Set(entries.map((test) => JSON.stringify(test.suites)))];
+      return Object.freeze({
+        file,
+        tests: Object.freeze(entries),
+        suites: Object.freeze(
+          paths.map((path) =>
+            Object.freeze({
+              path: Object.freeze(JSON.parse(path)),
+              tests: Object.freeze(entries.filter((test) => JSON.stringify(test.suites) === path))
+            })
+          )
+        )
+      });
+    })
+  );
 }
 
 export function testOutput(test) {
@@ -56,6 +96,8 @@ export function createReporter(actions) {
     : 'Show the application in the test browser; this observer stays open';
   write(get('show-app'), actions.embedded ? 'Show application' : 'Show app in test browser');
   let rows = new Map();
+  let groups = new Map();
+  let suites = new Map();
   let outputKey;
   let outputTest;
   let outputStatus;
@@ -68,6 +110,7 @@ export function createReporter(actions) {
   });
   get('rerun').addEventListener('click', () => (view === 'test' ? actions.runSelected() : actions.rerun([])));
   get('run-failed').addEventListener('click', actions.runFailed);
+  get('retry-command').addEventListener('click', actions.retry);
   let closeOptions = () => {
     let options = get('run-options');
     if (options.open) {
@@ -144,12 +187,12 @@ export function createReporter(actions) {
       fatal
     ]);
     if (key === outputKey) return;
-    let append = outputTest === test?.index && outputStatus === test?.status && test?.status === 'running';
-    if (outputTest !== test?.index) {
+    let append = outputTest === test?.id && outputStatus === test?.status && test?.status === 'running';
+    if (outputTest !== test?.id) {
       write(get('copy-status'), '');
       write(get('copy-output'), 'Copy output');
     }
-    outputTest = test?.index;
+    outputTest = test?.id;
     outputStatus = test?.status;
     outputKey = key;
     let container = get('output');
@@ -169,7 +212,7 @@ export function createReporter(actions) {
     for (let failureError of [error, ...(test?.additionalErrors ?? [])].filter(Boolean)) {
       let error = failureError;
       let failure = element('div', 'failure');
-      if (error.phase) failure.append(element('p', 'failure-location', error.phase));
+      if (error.phase) failure.append(element('p', 'failure-location', ({test:'Test',beforeEach:'Setup · beforeEach',afterEach:'Cleanup · afterEach',app:'Application',timeout:'Test timeout',cleanup:'Cleanup timeout',runtime:'Test runtime'})[error.phase] ?? error.phase));
       failure.append(element('h2', '', error.message));
       if (error.source) {
         let source = error.source;
@@ -248,6 +291,42 @@ export function createReporter(actions) {
     let passed = state.tests.filter((test) => test.status === 'passed').length;
     let failed = state.tests.filter((test) => test.status === 'failed').length;
     let total = state.tests.length;
+    let href = (patch) => reporterHref({ ...state.route, ...patch });
+    for (let id of [
+      'rerun',
+      'run-failed',
+      'pause',
+      'continue',
+      'stop',
+      'viewport',
+      'close-reporter',
+      'show-app',
+      'pause-on-failure'
+    ])
+      get(id).disabled = false;
+    let unavailable = state.connection !== 'connected' || state.command?.status === 'pending';
+    get('command-notice').hidden = !state.command || state.command.status === 'idle';
+    write(
+      get('command-status'),
+      state.command?.status === 'pending' ? `Sending ${state.command.name}…` : (state.command?.message ?? '')
+    );
+    get('retry-command').hidden = state.command?.status !== 'failed';
+    get('retry-command').disabled = state.connection !== 'connected';
+    write(
+      get('connection-state'),
+      state.connection === 'connected'
+        ? 'Connected to test browser'
+        : state.connection === 'closed'
+          ? 'Test browser disconnected. Reopen its execution URL.'
+          : 'Connecting to test browser…'
+    );
+    get('connection-state').dataset.connection = state.connection;
+    write(
+      get('capabilities'),
+      state.capabilities?.screenshot ? 'Screenshots available' : 'Screenshots unavailable · URL-only browser'
+    );
+    for (let link of document.querySelectorAll('.back-link,.brand')) link.href = href({ page: 'overview' });
+    if (get('test-search').value !== state.route.query) get('test-search').value = state.route.query;
     let skipped = state.tests.filter((test) => test.status === 'skipped').length;
     let active = ['running', 'pausing', 'resuming'].includes(state.phase);
     let test = selectedTest(state);
@@ -312,7 +391,11 @@ export function createReporter(actions) {
     write(get('pause'), state.phase === 'pausing' ? 'Keep running' : 'Pause after this test');
     get('pause-on-failure').checked = state.pauseOnFailure;
     get('pause-banner').hidden = state.phase !== 'paused';
-    get('inspect-paused').href = `#/tests/${state.current}/app`;
+    get('inspect-paused').href = href({
+      page: 'test',
+      id: state.tests.find((test) => test.index === state.current)?.id,
+      tab: 'app'
+    });
     get('inspect-paused').hidden = appView && test.index === state.current;
     get('viewport').disabled = active;
     let viewport = state.viewport ?? { width: 1280, height: 800 };
@@ -327,14 +410,68 @@ export function createReporter(actions) {
     }
     get('viewport').value = size;
     for (let button of document.querySelectorAll('[data-filter]'))
-      button.setAttribute('aria-pressed', String(button.dataset.filter === state.filter));
+      button.setAttribute('aria-pressed', String(button.dataset.filter === state.route.filter));
+    for (let group of reporterGroups(state.tests)) {
+      let fileGroup = groups.get(group.file);
+      if (!fileGroup) {
+        let node = element('section', 'file-group');
+        let heading = element('header', 'group-heading');
+        let title = element('h2', '', group.file);
+        let count = element('span', 'group-count');
+        let run = element('button', 'text-button', 'Run file');
+        run.setAttribute('aria-label', `Run file ${group.file}`);
+        run.addEventListener('click', () => actions.runScope({ file: group.file }));
+        heading.append(title, count, run);
+        node.append(heading);
+        get('results').append(node);
+        fileGroup = { node, count, run };
+        groups.set(group.file, fileGroup);
+      }
+      let failedCount = group.tests.filter((test) => test.status === 'failed').length;
+      write(fileGroup.count, `${group.tests.length} ${group.tests.length === 1 ? 'test' : 'tests'}${failedCount ? ` · ${failedCount} failed` : ''}`);
+      fileGroup.run.disabled = active || unavailable;
+      let fileVisible = false;
+      for (let suite of group.suites) {
+        let key = JSON.stringify([group.file, ...suite.path]);
+        let suiteGroup = suites.get(key);
+        if (!suiteGroup) {
+          let node = element('section', 'suite-group');
+          if (suite.path.length || group.suites.length > 1) {
+            let heading = element('header', 'group-heading suite-heading');
+            heading.append(element('h3', '', suite.path.join(' › ') || 'File tests'));
+            let run = element('button', 'text-button', 'Run suite');
+            run.hidden = !suite.path.length;
+            run.setAttribute('aria-label', `Run suite ${suite.path.join(' › ')} in ${group.file}`);
+            run.addEventListener('click', () => actions.runScope({ file: group.file, suites: suite.path }));
+            heading.append(run);
+            node.append(heading);
+          }
+          let list = element('ol', 'suite-tests');
+          node.append(list);
+          fileGroup.node.append(node);
+          suiteGroup = { node, list };
+          suites.set(key, suiteGroup);
+        }
+        for (let run of suiteGroup.node.querySelectorAll('button')) run.disabled = active || unavailable;
+        let matches = suite.tests.some(
+          (test) =>
+            `${test.file} ${test.suites.join(' ')} ${test.name}`
+              .toLowerCase()
+              .includes(state.route.query.toLowerCase()) &&
+            (state.route.filter === 'all' || test.status === state.route.filter)
+        );
+        suiteGroup.node.hidden = !matches;
+        fileVisible ||= matches;
+      }
+      fileGroup.node.hidden = !fileVisible;
+    }
     let visible = 0;
     for (let item of state.tests) {
-      let row = rows.get(item.index);
+      let row = rows.get(item.id);
       if (!row) {
         let node = element('li');
         let select = element('a', 'test-select');
-        select.href = `#/tests/${item.index}/output`;
+        node.dataset.testId = item.id;
         let symbol = element('span', 'test-symbol');
         symbol.setAttribute('aria-hidden', 'true');
         let label = element('span', 'test-name', item.name);
@@ -345,10 +482,12 @@ export function createReporter(actions) {
         arrow.setAttribute('aria-hidden', 'true');
         select.append(symbol, label, time, arrow);
         node.append(select);
-        get('results').append(node);
+        suites.get(JSON.stringify([item.file, ...item.suites])).list.append(node);
         row = { node, select, symbol, error, time };
-        rows.set(item.index, row);
+        rows.set(item.id, row);
       }
+      row.select.href = href({ page: 'test', id: item.id, tab: 'output' });
+      row.select.title = [item.file, ...item.suites, item.name].join(' › ');
       row.node.dataset.status = item.status;
       row.select.setAttribute('aria-label', `${names[item.status]}: ${item.name}`);
       write(row.symbol, symbols[item.status]);
@@ -359,8 +498,8 @@ export function createReporter(actions) {
       row.error.hidden = !item.error;
       write(row.error, item.error?.message ?? '');
       row.node.hidden = !(
-        item.name.toLowerCase().includes(state.query.toLowerCase()) &&
-        (state.filter === 'all' || item.status === state.filter)
+        `${item.file} ${item.suites.join(' ')} ${item.name}`.toLowerCase().includes(state.route.query.toLowerCase()) &&
+        (state.route.filter === 'all' || item.status === state.route.filter)
       );
       if (!row.node.hidden) visible++;
     }
@@ -371,14 +510,15 @@ export function createReporter(actions) {
     write(get('app-host'), state.appHost);
     get('standalone-reporter').hidden = !actions.embedded;
     get('standalone-reporter').href = `/__dyno__/reporter?run=${encodeURIComponent(state.runId)}${location.hash}`;
+    write(get('selected-context'), test ? [test.file, ...test.suites].join(' › ') : '');
     write(get('selected-name'), test?.name ?? 'Loading test…');
     write(
       get('selected-status'),
       test ? `${names[test.status]}${duration(test.duration) ? ` · ${duration(test.duration)}` : ''}` : ''
     );
     get('selected-status').dataset.status = test?.status ?? 'pending';
-    get('output-tab').href = `#/tests/${test?.index}/output`;
-    get('app-tab').href = `#/tests/${test?.index}/app`;
+    get('output-tab').href = href({ page: 'test', id: test?.id, tab: 'output' });
+    get('app-tab').href = href({ page: 'test', id: test?.id, tab: 'app' });
     for (let [tab, id] of [
       ['output', 'output-tab'],
       ['app', 'app-tab']
@@ -411,6 +551,19 @@ export function createReporter(actions) {
       test?.path ? `${location.origin}${test.path}` : state.appHost || 'Your app will appear here'
     );
     write(get('preview-caption'), hasApp ? `${state.viewport.width} × ${state.viewport.height} app viewport` : '');
-    write(get('connection-state'), titles[state.phase]);
+    for (let id of [
+      'rerun',
+      'run-failed',
+      'pause',
+      'continue',
+      'stop',
+      'viewport',
+      'close-reporter',
+      'show-app',
+      'pause-on-failure'
+    ])
+      get(id).disabled ||= unavailable;
+    get('rerun').disabled ||= active;
+    get('run-failed').disabled = active || unavailable;
   };
 }

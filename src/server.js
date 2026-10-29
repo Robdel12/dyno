@@ -106,6 +106,7 @@ export async function createGateway(
         [
           'view',
           'control',
+          'command-result',
           'context',
           'operations',
           'operations/cancel',
