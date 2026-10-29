@@ -368,3 +368,35 @@ test('rejects a changed capture surface', async ({ app, I }) => {
   );
   await assert.rejects(readdir(join(fixture.directory, '.dyno/artifacts')), { code: 'ENOENT' });
 });
+
+test('a timed-out capture is discarded before cleanup releases its staged response', managedOptions, async (t) => {
+  let fixture = await project(t, {
+    config: { browser },
+    source: `
+afterEach(async ({app}) => {
+  await app.request('/api/release-capture', {method:'POST'});
+  for (let registration of await navigator.serviceWorker.getRegistrations()) await registration.unregister();
+});
+test('capture timeout', async ({app}) => {
+  await app.goto('/visual');
+  let controlled = realm => realm.navigator.serviceWorker.controller ? Promise.resolve() : new Promise(resolve => realm.navigator.serviceWorker.addEventListener('controllerchange',resolve,{once:true}));
+  let ready = Promise.all([controlled(window), controlled(window.top)]);
+  await navigator.serviceWorker.register('/capture-gate.js',{scope:'/'});
+  await navigator.serviceWorker.ready; await ready;
+  let capture = app.screenshot('navigation race');
+  capture.catch(() => {});
+  await app.request('/api/capture-staged');
+  await capture;
+}, {timeout:3000});
+test('recovers after capture cancellation',async ({app,I}) => {await app.goto('/other'); await I.find('Other page').visible();});`
+  });
+  let result = await fixture.run().completion;
+  assert.equal(result.summary?.failed, 1, result.stdout + result.stderr);
+  assert.equal(result.summary?.passed, 1, result.stdout + result.stderr);
+  assert.equal(result.events.find((event) => event.type === 'test').error.phase, 'timeout');
+  assert.equal(
+    result.events.some((event) => event.type === 'attachment'),
+    false
+  );
+  assert.deepEqual(await readdir(join(fixture.directory, '.dyno/artifacts')), []);
+});

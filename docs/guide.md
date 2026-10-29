@@ -83,7 +83,7 @@ Text selectors find visible text, placeholders, and related label controls. `$(.
 - `app.request('/api/path', fetchOptions)` makes a same-origin request with the browser session and returns a standard `Response`.
 - `app.document` and `app.window` expose the app's document and window. Await navigation before direct access; use `I.assert` callbacks for changing state.
 
-Each test gets fresh test and app documents and globals. Queries use the current document after navigation. A timeout removes the test frame so late work can't run into the next test.
+Each test gets fresh test and app documents and globals. Queries use the current document after navigation. Execution timeout cancels the test APIs. Entered scopes still get their `afterEach` hooks, from the inside out, with fresh APIs and a separate `cleanupTimeout` budget (5 seconds by default). A failed cleanup hook does not hide the original error or prevent later cleanup within that budget. Dyno then replaces the frame before the next test.
 
 Frames don't reset cookies, localStorage, IndexedDB, service workers, or database records. Use hooks to reset sessions and fixtures. Node setup teardown should clean up shared resources even if a browser test times out before `afterEach` finishes.
 

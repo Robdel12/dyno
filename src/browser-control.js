@@ -41,7 +41,8 @@ export function createBrowserControl({ artifactsDir, onReplaced = () => {} }) {
     views = new Map(),
     streams = new Map(),
     records = new Map(),
-    requests = new Set();
+    requests = new Set(),
+    canceled = new Set();
   let pending = new Set();
   let closed = false;
   let track = async (work) => {
@@ -136,6 +137,7 @@ export function createBrowserControl({ artifactsDir, onReplaced = () => {} }) {
       views.delete(runId);
       for (let record of records.values())
         if (record.runId === runId && record.status === 'accepted') records.delete(record.id);
+      for (let key of canceled) if (key.startsWith(`${runId}:`)) canceled.delete(key);
       for (let key of requests) if (key.startsWith(`${runId}:`)) requests.delete(key);
       for (let { response } of streams.get(runId) ?? []) response.end();
       streams.delete(runId);
@@ -173,7 +175,15 @@ export function createBrowserControl({ artifactsDir, onReplaced = () => {} }) {
         return true;
       }
       if (
-        !['view', 'control', 'context', 'operations', 'attachments/commit', 'attachments/discard'].includes(route) ||
+        ![
+          'view',
+          'control',
+          'context',
+          'operations',
+          'operations/cancel',
+          'attachments/commit',
+          'attachments/discard'
+        ].includes(route) ||
         request.method !== 'POST'
       )
         return false;
@@ -220,6 +230,23 @@ export function createBrowserControl({ artifactsDir, onReplaced = () => {} }) {
             throw problem(400, 'Invalid execution context.');
           contexts.set(input.runId, Object.freeze({ ...input.context }));
         } else contexts.delete(input.runId);
+        send({});
+        return true;
+      }
+      if (route === 'operations/cancel') {
+        if (typeof input.executionId !== 'string' || typeof input.requestId !== 'string')
+          throw problem(400, 'Invalid operation cancellation.');
+        canceled.add(`${input.runId}:${input.executionId}:${input.requestId}`);
+        await Promise.all(
+          [...records.values()]
+            .filter(
+              (record) =>
+                record.runId === input.runId &&
+                record.context.executionId === input.executionId &&
+                record.requestId === input.requestId
+            )
+            .map((record) => track(discard(record, true)))
+        );
         send({});
         return true;
       }
@@ -272,6 +299,8 @@ export function createBrowserControl({ artifactsDir, onReplaced = () => {} }) {
         !input.context.documentId
       )
         throw problem(409, 'Screenshot document or viewport is stale.');
+      if (canceled.has(`${input.runId}:${input.context.executionId}:${input.requestId}`))
+        throw problem(409, 'Screenshot request was cancelled.');
       let key = `${input.runId}:${input.requestId}`;
       if (requests.has(key)) throw problem(409, 'Duplicate screenshot request.');
       requests.add(key);
@@ -279,6 +308,7 @@ export function createBrowserControl({ artifactsDir, onReplaced = () => {} }) {
       let record = Object.freeze({
         id,
         runId: input.runId,
+        requestId: input.requestId,
         context: Object.freeze({ ...input.context }),
         controller: new AbortController(),
         status: 'capturing',
