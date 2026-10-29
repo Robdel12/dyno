@@ -98,8 +98,17 @@ let server = http.createServer(async (request, response) => {
       <section id="personal"><label>Name<input></label><output>Unchanged</output></section>
       <section id="work"><label>Name<input></label><label>Seats<input type="number"></label><label>Notes<textarea></textarea></label><output>Unchanged</output></section>
       <label>Photos<input type="file" multiple></label><p id="uploads">No photos</p>
+      <label>Published name<input readonly value="Published contact"></label>
+      <section id="transparent" style="opacity:0"><p>Private note</p></section>
+      <section style="opacity:.2"><button style="opacity:.2">Faint control</button></section>
+      <div id="shadow" style="opacity:0"></div><button id="reveal">Reveal note</button>
       <p id="below" style="margin-top:200vh">Below the fold</p>
       <script>
+        document.querySelector('#shadow').attachShadow({mode:'open'}).innerHTML = '<p>Shadow note</p>';
+        document.querySelector('#reveal').onclick = () => {
+          document.querySelector('#transparent').style.opacity = '1';
+          document.querySelector('#shadow').style.opacity = '1';
+        };
         for(let section of document.querySelectorAll('section')) section.addEventListener('input', event => {
           section.querySelector('output').textContent = event instanceof Event ? event.target.value : 'Wrong event realm';
         });
