@@ -14,6 +14,7 @@ export interface Config {
   host?: string;
   viewport?: Viewport;
   artifactsDir?: string;
+  reportDir?: string;
   setup?: string;
   browser?: {
     name?: 'chrome' | 'chromium' | 'edge' | 'firefox' | 'safari' | 'webkit';

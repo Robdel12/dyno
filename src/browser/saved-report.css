@@ -1,0 +1,18 @@
+.saved-report { max-width: 1000px; margin: auto; padding: 32px 20px; }
+.saved-report h1 { margin: 20px 0; }
+.saved-report p { margin: 12px 0; color: var(--muted); overflow-wrap: anywhere; }
+.saved-test { border-bottom: 1px solid var(--line); padding: 18px 0; }
+.saved-test > summary { cursor: pointer; overflow-wrap: anywhere; line-height: 1.8; }
+.saved-status { color: var(--muted); font-size: 12px; margin-right: 12px; }
+.saved-test[data-status=failed] .saved-status { color: var(--red); }
+.saved-test[data-status=passed] .saved-status { color: var(--green); }
+.saved-output { padding: 20px 0; }
+.saved-report pre { white-space: pre-wrap; overflow-wrap: anywhere; max-width: 100%; padding: 16px; }
+.saved-report .test-time { float: right; }
+.saved-report input { width: 100%; padding: 10px; color: var(--text); background: var(--surface); border: 1px solid var(--line); margin: 16px 0; }
+@media(max-width:640px) {
+  .saved-report { padding-top: 24px; }
+  .saved-test > summary { position:relative; padding-right:52px; }
+  .saved-report .test-time { position:absolute; right:0; top:2px; padding:0; }
+  .saved-report pre { padding:12px; font-size:11px; }
+}

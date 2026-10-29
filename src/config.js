@@ -31,7 +31,8 @@ export function normalizeConfig(input, file, overrides = {}) {
       'webServer',
       'setup',
       'forbidOnly',
-      'cleanupTimeout'
+      'cleanupTimeout',
+      'reportDir'
     ],
     'config'
   );
@@ -94,6 +95,7 @@ export function normalizeConfig(input, file, overrides = {}) {
     keys(input.viewport, ['width', 'height'], 'viewport');
     viewport = normalizeViewport(input.viewport);
   }
+  if (input.reportDir !== undefined && !text(input.reportDir)) throw new Error('reportDir must be a non-empty path.');
   if (input.artifactsDir !== undefined && !text(input.artifactsDir))
     throw new Error('artifactsDir must be a non-empty path.');
   let path = overrides.browserPath ?? browser.path;
@@ -129,6 +131,7 @@ export function normalizeConfig(input, file, overrides = {}) {
       args: Object.freeze([...(browser.args ?? [])])
     }),
     viewport,
+    reportDir: resolve(root, overrides.reportDir ?? input.reportDir ?? '.dyno/reports'),
     artifactsDir: resolve(root, input.artifactsDir ?? '.dyno/artifacts'),
     webServer: Object.freeze({
       ...webServer,

@@ -33,7 +33,7 @@ async function reporterInput(request, limit = 1_000_000) {
 export async function createGateway(
   config,
   bundle,
-  { fixtures = {}, onEvent = () => {}, rebuild, interactive = false } = {}
+  { fixtures = {}, onEvent = () => {}, onRun = async () => {}, onError = () => {}, rebuild, interactive = false } = {}
 ) {
   let shell = page(
     'Dyno',
@@ -50,6 +50,23 @@ export async function createGateway(
   let runs = new Map();
   let bundles = new Map();
   let sockets = new Set();
+  let stopping = false;
+  let requireOpen = () => {
+    if (stopping) throw Object.assign(new Error('Dyno is shutting down.'), { status: 503 });
+  };
+  let pendingReports = new Set();
+  let persist = (run) => {
+    let work = Promise.resolve().then(() => onRun(run));
+    pendingReports.add(work);
+    work.then(
+      () => pendingReports.delete(work),
+      () => pendingReports.delete(work)
+    );
+    return work.catch((error) => {
+      onError(error);
+      throw error;
+    });
+  };
   let control = createBrowserControl({
     artifactsDir: config.artifactsDir,
     onReplaced: (runId) => {
@@ -61,6 +78,7 @@ export async function createGateway(
           error: { message: 'Browser left the test run before completion.' }
         });
         runs.set(runId, run);
+        void persist(run).catch(() => {});
         onEvent(event);
       }
     }
@@ -81,6 +99,7 @@ export async function createGateway(
   };
   let server = http.createServer({ requestTimeout: 15000, headersTimeout: 10000 }, async (request, response) => {
     try {
+      if (request.method !== 'GET') requireOpen();
       if (!allowedHosts.has(request.headers.host?.toLowerCase())) {
         response.writeHead(421);
         response.end('Unrecognized Dyno gateway host.');
@@ -118,6 +137,7 @@ export async function createGateway(
         if (request.headers.origin && request.headers.origin !== `http://${request.headers.host}`)
           throw new Error('Browser commands must be same-origin.');
         let input = await reporterInput(request, route === 'view' ? 8_000_000 : 1_000_000);
+        requireOpen();
         if (!input || typeof input !== 'object' || Array.isArray(input))
           throw new Error('Browser commands must be objects.');
         if (await control.handle(route, url, request, response, input)) return;
@@ -177,7 +197,9 @@ export async function createGateway(
           let joining = await reporterInput(request);
           if (!joining || typeof joining !== 'object' || Array.isArray(joining))
             throw new Error('Browser join must be an object.');
+          requireOpen();
           let snapshot = rebuild ? await rebuild() : bundle;
+          requireOpen();
           while (runs.size >= 20) {
             let finished = [...runs.values()].find((run) => ['completed', 'failed'].includes(run.status));
             if (!finished) {
@@ -193,7 +215,7 @@ export async function createGateway(
             bundles.delete(finished.runId);
           }
           let runId = randomUUID();
-          runs.set(runId, createRun(runId));
+          runs.set(runId, Object.freeze({ ...createRun(runId), startedAt: new Date().toISOString() }));
           bundles.set(runId, snapshot);
           let joined = control.join(runId, joining.launchKey, joining.previous);
           onEvent({ type: 'capture', runId, owned: joined.owned, previousRunId: joined.previousRunId });
@@ -202,6 +224,7 @@ export async function createGateway(
         let input = await reporterInput(request);
         if (!input || typeof input !== 'object' || Array.isArray(input))
           throw new Error('Reporter event must be an object.');
+        requireOpen();
         control.authorize(input);
         let { connectionKey, ...eventInput } = input;
         if (input.type === 'test')
@@ -230,6 +253,7 @@ export async function createGateway(
         // Publish only attachments that survived those checks and persistence.
         for (let attachment of event.attachments ?? [])
           onEvent({ type: 'attachment', runId: run.runId, executionId: event.executionId, attachment });
+        if (['complete', 'fatal'].includes(event.type)) await persist(run);
         send(
           'application/json',
           JSON.stringify({
@@ -294,14 +318,37 @@ export async function createGateway(
     attachSession: control.attach,
     reload: control.reload,
     notify: control.notify,
-    close() {
-      closing ??= control.close().then(
-        () =>
-          new Promise((resolve) => {
-            server.close(resolve);
-            for (let socket of sockets) socket.destroy();
-          })
-      );
+    close({ error } = {}) {
+      stopping = true;
+      closing ??= (async () => {
+        let failures = [];
+        for (let previous of runs.values()) {
+          if (['completed', 'failed'].includes(previous.status)) continue;
+          let { run } = acceptEvent(previous, {
+            runId: previous.runId,
+            type: 'fatal',
+            error: {
+              phase: 'runtime',
+              message: `Dyno stopped before the browser run completed.${error ? ' ' + error.message : ''}`,
+              ...(error?.stack ? { stack: error.stack } : {})
+            }
+          });
+          runs.set(run.runId, run);
+          try {
+            await persist(run);
+          } catch (error) {
+            failures.push(error);
+          }
+        }
+        let pending = await Promise.allSettled([...pendingReports]);
+        failures.push(...pending.filter((result) => result.status === 'rejected').map((result) => result.reason));
+        await control.close();
+        await new Promise((resolve) => {
+          server.close(resolve);
+          for (let socket of sockets) socket.destroy();
+        });
+        if (failures.length) throw new AggregateError(failures, 'Could not save interrupted Dyno reports.');
+      })();
       return closing;
     }
   };

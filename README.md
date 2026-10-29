@@ -22,6 +22,7 @@ The app fills the browser. Press **Ctrl+Shift+D** to open the reporter after the
 ```sh
 npm install --save-dev github:Robdel12/dyno
 npx dyno init
+npx dyno doctor
 ```
 
 Set your app's command and URL in `dyno.config.js`, then write a test:
@@ -37,7 +38,7 @@ test('saves a contact', async ({ app, I }) => {
 });
 ```
 
-Run `npx dyno` for a headless run, `npx dyno --ui` to inspect the app, or `npx dyno --manual` to open the URL yourself. Tests and the app get fresh JavaScript contexts for each test. Storage and database cleanup stay explicit.
+Run `npx dyno` for a headless run, `npx dyno --ui` to inspect the app, or `npx dyno --manual` to open the URL yourself. Tests and the app get fresh JavaScript contexts for each test. Storage and database cleanup stay explicit. Use `--watch` to rerun test and helper edits. Each run also saves an HTML report you can open after Dyno stops.
 
 ## Screenshots
 

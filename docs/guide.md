@@ -75,6 +75,8 @@ The package includes types for tests, hooks, config, fixtures, and app APIs. Bro
 Extend `Fixtures` in your project to type values returned by Node setup:
 
 ```ts
+import 'dyno';
+
 declare module 'dyno' {
   interface Fixtures { contactId: string }
 }
@@ -179,6 +181,18 @@ Reported images remain on disk after cleanup. Interrupted runs discard images th
 
 Screenshots are attachments, without baseline comparison. They record a rendered frame during the request; they don't freeze other app work. Playwright capture leaves animations and the caret enabled. Use Interactor to wait for the state you want first.
 
+## Saved reports
+
+Each browser run saves `.dyno/reports/<run-id>/` with `run.json`, `junit.xml`, and `index.html`. Set `reportDir` or pass `--report-dir path` to choose another folder. The CLI prints the HTML path; JSON output includes a `report-saved` event.
+
+Open `index.html` directly in a browser after Dyno stops. It includes searchable files/suites, failures, source excerpts, console output, and screenshots copied into `images/`. Copy the whole run folder to share it. A source image removed before saving appears as Screenshot unavailable.
+
+Run JSON uses `schemaVersion: 1`. It contains stable test descriptors, outcomes, summary counts, and relative image paths. A run is `completed` or `interrupted`; a test without an accepted result is `not-run`. Primary and additional failures retain their phase and source context. JUnit includes an error case for interruption, so an unfinished run cannot look green to CI.
+
+Completed runs save before completion is reported. SIGINT, SIGTERM, browser loss, and app failures save accepted results before shutdown. A force kill or machine failure cannot flush results. Storage failures fail the CLI; partially written run folders never become published reports. Old reports stay until you remove them.
+
+Reports include your test output and source excerpts. Dyno does not save its config, fixtures, connection keys, or launch tokens in them.
+
 ## App server integration
 
 Dyno serves the runner at `/__dyno__/` and forwards other paths to `webServer.url`, including WebSocket upgrades. The app keeps its normal routes, relative assets, and API calls. Its own server still handles hot reload.
@@ -216,6 +230,7 @@ Paths are relative to the config file unless noted. See `dyno --help` for CLI ov
 | `browser.provider` | `native` | `native`, `playwright`, or `webdriver` |
 | `browser.deviceScaleFactor` | `1` | Playwright pixel ratio: 1, 2, or 3 |
 | `viewport` | Browser size; managed: 1280 × 800 | Fixed app layout dimensions |
+| `reportDir` | `.dyno/reports` | Saved JSON, JUnit, HTML, and copied images per browser run |
 | `artifactsDir` | `.dyno/artifacts` | PNG output directory |
 | `webServer.url` | Required | HTTP(S) origin without a path |
 | `webServer.command` | None | App startup command |
