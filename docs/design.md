@@ -5,7 +5,8 @@ The app gets the screen while tests run. The reporter helps you find a failure, 
 ## Layout and behavior
 
 - Group tests by file and suite on the overview. Keep summary, search, filters, and scoped reruns there.
-- Give each test separate Output and Application routes. Put details on those routes instead of adding panels to the overview.
+- Give each test separate Output, Timings, and Application routes. Put details on those routes instead of adding panels to the overview.
+- Keep slowest tests in a collapsed overview section. Put phases and inclusive operation timings on the test’s Timings route.
 - Show failure text and source context before stack details. Keep console output and screenshots together.
 - Use Show app to reveal the actual tested app. Don't replace it with a scaled preview or move it when navigating the reporter.
 - Open inspection at a test boundary. Keep pause, continue, stop, and rerun actions clear about what happens next.

@@ -1,3 +1,4 @@
+import { timingText } from './timing-format.js';
 import { createReporter, selectedTest, testOutput, reporterRoute, reporterHref } from './reporter.js';
 
 let parameters = new URLSearchParams(location.search);
@@ -91,7 +92,7 @@ let render = createReporter({
   viewport: (viewport) => command('viewport', { viewport }),
   showApp: () => command('show-app'),
   close: () => command('show-app'),
-  copy: () => testOutput(selectedTest(state))
+  copy: () => state.route.tab === 'timings' ? timingText(selectedTest(state)?.timings) : testOutput(selectedTest(state))
 });
 render(state);
 window.addEventListener('hashchange', () => {

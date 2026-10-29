@@ -1,9 +1,11 @@
 import { validFailure, snapshotFailure } from './failures.js';
 import { testId, testDescriptor } from './suite.js';
+import { validTimings, snapshotTimings, performanceSummary } from './browser/timings.js';
 
 function snapshotEvent(event) {
   return Object.freeze({
     ...event,
+    ...(event.timings ? { timings: snapshotTimings(event.timings) } : {}),
     ...(event.attachments
       ? { attachments: Object.freeze(event.attachments.map((attachment) => Object.freeze({ ...attachment }))) }
       : {}),
@@ -36,6 +38,9 @@ export function acceptEvent(run, input) {
     (typeof input.duration !== 'number' || !Number.isFinite(input.duration) || input.duration < 0)
   )
     throw new Error('Event duration must be a non-negative number.');
+  if (input.timings !== undefined && (!validTimings(input.timings) || input.type !== 'test' ||
+    input.duration === undefined || Math.abs(input.duration - input.timings.duration) > 0.01))
+    throw new Error('Invalid test timings.');
   if (input.error !== undefined && !validFailure(input.error))
     throw new Error('An event error requires a message and a valid phase/stack.');
   if (
@@ -117,7 +122,7 @@ export function acceptEvent(run, input) {
       throw new Error('Run completed before all tests reported.');
     let failed = run.outcomes.filter((outcome) => outcome.status === 'failed').length;
     let skipped = run.outcomes.filter((outcome) => outcome.status === 'skipped').length;
-    let event = snapshotEvent({ ...input, failed, skipped, passed: run.outcomes.length - failed - skipped });
+    let event = snapshotEvent({ ...input, failed, skipped, passed: run.outcomes.length - failed - skipped, performance: performanceSummary(run.outcomes, input.duration) });
     return { run: Object.freeze({ ...run, status: 'completed', summary: event }), event };
   }
   if (input.type === 'fatal') {

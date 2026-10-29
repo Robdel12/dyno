@@ -1,3 +1,6 @@
+import { slowestTests } from './timings.js';
+import { timingDuration, timingLabels, timingPhases, timingOperations, timingText } from './timing-format.js';
+
 export function duration(value) {
   if (value === undefined || value === null) return '';
   return value < 1000 ? `${Math.round(value)} ms` : `${(value / 1000).toFixed(2)} s`;
@@ -12,7 +15,7 @@ export function reporterRoute(hash) {
     filter: filters.includes(params.get('status')) ? params.get('status') : 'all'
   };
   if (!path || path === '#/') return Object.freeze({ ...view, page: 'overview' });
-  let match = /^#\/tests\/([^/]+)\/(output|app)$/.exec(path);
+  let match = /^#\/tests\/([^/]+)\/(output|app|timings)$/.exec(path);
   try {
     return Object.freeze(
       match ? { ...view, page: 'test', id: decodeURIComponent(match[1]), tab: match[2] } : { ...view, page: 'missing' }
@@ -63,6 +66,7 @@ export function testOutput(test) {
     test.error?.source
       ? `${test.error.source.file}:${test.error.source.line}:${test.error.source.column}\n${test.error.source.code}`
       : '',
+    ...(test.timings ? [timingText(test.timings)] : []),
     ...test.output.map((entry) => `[${duration(entry.elapsed)}] ${entry.source} ${entry.level}: ${entry.text}`)
   ]
     .filter(Boolean)
@@ -302,6 +306,48 @@ export function createReporter(actions) {
     else if (!append) container.scrollTop = 0;
   }
 
+  let timingKey;
+  let slowKey;
+  function renderTimings(test) {
+    let key = test?.timings ?? `${test?.id}:${test?.status}`;
+    if (timingKey === key && get('timings').childElementCount) return;
+    timingKey = key;
+    let container = get('timings');
+    if (!test?.timings) {
+      container.replaceChildren(element('p', 'output-empty', test?.status === 'running'
+        ? 'Timing details appear when this test finishes.' : 'Timing details are unavailable for this test.'));
+      return;
+    }
+    let timings = test.timings;
+    let phases = element('dl', 'timing-phases');
+    for (let entry of timingPhases(timings)) {
+      let group = element('div');
+      group.append(element('dt', '', entry.name), element('dd', '', timingDuration(entry.duration)));
+      phases.append(group);
+    }
+    let table = element('table', 'timings-table');
+    table.setAttribute('aria-label', 'Hooks, operations, and steps, slowest first');
+    let heading = element('tr');
+    for (let label of ['Work', 'Started', 'Duration']) {
+      let cell = element('th', '', label); cell.scope = 'col'; heading.append(cell);
+    }
+    let head = element('thead'); head.append(heading); table.append(head);
+    let body = element('tbody');
+    for (let entry of timingOperations(timings)) {
+      let row = element('tr');
+      let name = element('td');
+      name.append(element('strong', '', entry.name), element('span', 'timing-kind',
+        `${timingLabels[entry.kind]} · ${entry.phase ?? 'test'} · ${entry.status}`));
+      row.append(name, element('td', '', timingDuration(entry.start)), element('td', '', timingDuration(entry.duration)));
+      body.append(row);
+    }
+    table.append(body);
+    container.replaceChildren(element('h2', '', 'Phases'), phases,
+      element('p', 'output-notice', 'Times include waiting. Steps can contain operations and overlap; do not add these rows together. Debug pauses are included.'),
+      element('h2', '', 'Hooks, operations, and steps'), body.childElementCount ? table : element('p', '', 'No app operations or named steps were recorded.'));
+    if (timings.truncated) container.append(element('p', 'output-notice', `${timings.truncated} additional timings were not recorded.`));
+  }
+
   return function render(state) {
     let passed = state.tests.filter((test) => test.status === 'passed').length;
     let failed = state.tests.filter((test) => test.status === 'failed').length;
@@ -349,9 +395,11 @@ export function createReporter(actions) {
     let overview = view === 'overview';
     let detail = view === 'test';
     let appView = detail && state.route.tab === 'app';
+    let timingView = detail && state.route.tab === 'timings';
     get('overview').hidden = !overview;
     get('test-heading').hidden = !detail;
-    get('output-panel').hidden = !detail || appView;
+    get('output-panel').hidden = !detail || appView || timingView;
+    get('timing-panel').hidden = !timingView;
     get('not-found').hidden = view !== 'missing';
     get('app-panel').dataset.active = String(appView);
     get('app-panel').setAttribute('aria-hidden', String(!appView));
@@ -395,6 +443,19 @@ export function createReporter(actions) {
     get('failed-summary').dataset.failed = String(failed > 0);
     write(get('test-count'), String(total));
     write(get('run-duration'), duration(state.duration));
+    let slow = slowestTests(state.tests);
+    get('slow-tests').hidden = !slow.length;
+    let key = JSON.stringify([state.route.query, state.route.filter, slow.map(test => [test.id, test.duration])]);
+    if (key !== slowKey) {
+      slowKey = key;
+      get('slow-test-list').replaceChildren(...slow.map(test => {
+        let row = element('li');
+        let link = element('a', '', [test.file, ...test.suites, test.name].join(' › '));
+        link.href = href({ page: 'test', id: test.id, tab: 'timings' });
+        row.append(link, element('span', '', timingDuration(test.duration)));
+        return row;
+      }));
+    }
     get('progress').max = Math.max(total, 1);
     get('progress').value = passed + failed + skipped;
     get('progress').hidden = !active && state.phase !== 'discovering';
@@ -541,20 +602,24 @@ export function createReporter(actions) {
     );
     get('selected-status').dataset.status = test?.status ?? 'pending';
     get('output-tab').href = href({ page: 'test', id: test?.id, tab: 'output' });
+    get('timings-tab').href = href({ page: 'test', id: test?.id, tab: 'timings' });
     get('app-tab').href = href({ page: 'test', id: test?.id, tab: 'app' });
     for (let [tab, id] of [
       ['output', 'output-tab'],
+      ['timings', 'timings-tab'],
       ['app', 'app-tab']
     ]) {
       if (detail && state.route.tab === tab) get(id).setAttribute('aria-current', 'page');
       else get(id).removeAttribute('aria-current');
     }
     get('copy-output').hidden = appView;
+    write(get('copy-output'), timingView ? 'Copy timings' : 'Copy output');
     get('copy-output').disabled = !test || !navigator.clipboard?.writeText;
     get('copy-output').title = navigator.clipboard
-      ? 'Copy this test’s result and console output'
+      ? timingView ? 'Copy this test’s timings' : 'Copy this test’s result and console output'
       : 'Clipboard access needs a secure browser origin';
-    if (detail && !appView) renderOutput(test, state.error);
+    if (timingView) renderTimings(test);
+    if (detail && !appView && !timingView) renderOutput(test, state.error);
     let hasApp = state.hasApp && test?.index === state.current;
     get('show-app').hidden = !hasApp;
     get('close-reporter').disabled = !state.hasApp;

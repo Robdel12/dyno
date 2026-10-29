@@ -184,6 +184,8 @@ export async function createGateway(
             'runtime.css',
             'host.css',
             'reporter.js',
+            'timings.js',
+            'timing-format.js',
             'reporter-client.js',
             'execution.js',
             'viewport.js',

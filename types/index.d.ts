@@ -65,12 +65,27 @@ export interface TestDescriptor {
 export interface Fixtures {
   [name: string]: unknown;
 }
+export interface TimingEntry {
+  readonly id: number;
+  readonly kind: 'reset' | 'beforeEach' | 'test' | 'afterEach' | 'drain' | 'navigation' | 'request' | 'screenshot' | 'viewport' | 'pause' | 'step' | 'lifecycle';
+  readonly name: string;
+  readonly start: number;
+  readonly duration: number;
+  readonly status: 'running' | 'passed' | 'failed' | 'cancelled';
+  readonly phase?: 'reset' | 'beforeEach' | 'test' | 'afterEach' | 'drain';
+}
+export interface Timings {
+  readonly duration: number;
+  readonly truncated: number;
+  readonly entries: readonly TimingEntry[];
+}
 export interface TestContext {
   readonly app: Application;
   readonly I: BrowserInteractor;
   readonly fixtures: Fixtures;
   readonly signal: AbortSignal;
   readonly test: TestDescriptor;
+  readonly step: <T>(name: string, work: () => T | PromiseLike<T>) => Promise<T>;
 }
 export type TestCallback = (context: TestContext) => void | PromiseLike<unknown>;
 export interface TestOptions {

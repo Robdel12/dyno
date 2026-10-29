@@ -52,6 +52,9 @@ test('starts the next test with configured dimensions', async ({ app, I }) => {
     let result = await fixture.run().completion;
     assert.equal(result.code, 0, result.stdout + result.stderr);
     assert.equal(result.summary?.passed, 2);
+    let measured = result.events.filter(event => event.type === 'test').flatMap(test => test.timings?.entries ?? []);
+    assert.ok(measured.some(entry => entry.kind === 'screenshot' && entry.status === 'passed'));
+    assert.ok(measured.some(entry => entry.kind === 'viewport' && entry.status === 'passed'));
     let attachments = result.events
       .filter((event) => event.type === 'attachment')
       .map((event) => event.attachment);

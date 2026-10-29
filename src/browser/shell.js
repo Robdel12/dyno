@@ -610,7 +610,7 @@ try {
     }
     await operationQueue;
     await syncContext(null);
-    let { status, error, additionalErrors = [], duration, output = [] } = outcome;
+    let { status, error, additionalErrors = [], duration, output = [], timings } = outcome;
     let reported = await post('events', {
       type: 'test',
       executionId: runner.id,
@@ -619,6 +619,7 @@ try {
       name: test.name,
       status,
       duration,
+      timings,
       error,
       additionalErrors,
       output,
@@ -631,6 +632,7 @@ try {
         error: reported.error ?? error,
         additionalErrors: reported.additionalErrors ?? additionalErrors,
         duration,
+        timings,
         output: Object.freeze(output),
         attachments: Object.freeze(reported.attachments ?? []),
       },

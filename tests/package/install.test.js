@@ -136,8 +136,13 @@ test(
   beforeEach(({app})=>app.request('/api/reset',{method:'POST'}));
   describe('Contacts',()=>{
     beforeEach(async({app})=>{await app.goto('/');});afterEach(async({signal})=>{signal.throwIfAborted();});
-    test('saves',async({app,I,fixtures,test})=>{
+    test('saves',async({app,I,fixtures,test,step})=>{
       let id:string=fixtures.contactId;let file:string=test.file;
+      let saved:string=await step('Save contact',async()=> 'saved');
+      // @ts-expect-error step labels must be strings
+      await step(123,()=>{});
+      // @ts-expect-error step callbacks are required
+      await step('Save');
       await app.setViewport({width:390,height:844});await app.pause(id);
       await I.click('Save');let response:Response=await app.request('/api');
       let image=await app.screenshot('saved',{optional:true});

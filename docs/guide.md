@@ -190,11 +190,44 @@ Capture options are `fullPage` (default `false`), `mask` (an array of app `Eleme
 
 Screenshots are attachments, without baseline comparison. They record a rendered frame during the request; they don't freeze other app work. Animation suppression finishes finite animations and suspends infinite ones before measuring the document and masks. Temporary styles are removed and suspended animations restart afterward. Use Interactor to wait for the state you want first.
 
+## Find slow work
+
+Timings are always recorded. Open **Slowest tests** in the reporter, then a test’s **Timings** tab. It separates fresh-document setup, hooks, the body, and queued errors. Individual hooks keep their function name and execution order. Navigation, requests, screenshots, viewport changes, and debug pauses have their own intervals.
+
+Name meaningful work around your Interactor page objects:
+
+```js
+test('saves a contact', async ({ app, I, step }) => {
+  await app.goto('/contacts/new');
+  let contact = await step('Save contact', async () => {
+    await I.type('Robert').into('$(input[name=name])');
+    await I.click('Save');
+    await I.find('$([role=status])').text('Contact saved');
+    return 'Robert';
+  });
+});
+```
+
+`step(name, callback)` returns the callback’s value and preserves its error. Use it in hooks too. Await it before finishing a test or hook. Interactor still owns interaction and convergence; timings do not wrap its polling loop or change assertion behavior.
+
+For agents, `--json` test events and saved `run.json` tests include `timings: { duration, entries, truncated }`. Each entry has `id`, `kind`, `name`, `start`, `duration`, and `status` (`passed`, `failed`, or `cancelled`), with `phase` on operations and steps. All numbers are milliseconds from that test runtime’s monotonic clock. `performance.slowestTests` ranks up to five tests and their slowest work. `outsideTestsDuration` measures browser-run time outside accepted test runtimes, including frame startup, reporting, and any between-test inspection.
+
+Each saved run also has `session.json`. It measures CLI config, bundling, project setup, app-server readiness, browser startup/results, and cleanup on a separate clock. Its status is `running` until the CLI closes its resources; shutdown atomically finalizes it and emits a `session-timing` JSON event. Watch and manual runs share one session across their browser runs. The final report write itself is outside the measured wall time. These fields are separate from the browser-run duration.
+
+```sh
+jq '.performance.slowestTests' .dyno/reports/<run-id>/run.json
+jq '.timings.entries | sort_by(-.duration)' .dyno/reports/<run-id>/session.json
+```
+
+Intervals include waiting. A step can contain a request or another step, and parallel work overlaps. Do not add inclusive rows together. Debugging time is included and marked as a pause. Request timing ends when response headers arrive; reading the body belongs to the surrounding step. This measures test execution, not application CPU time.
+
+Each test retains up to 500 entries; `truncated` counts omitted intervals. An interrupted runtime that cannot report has no timings, rather than invented zeros. Dyno records request methods and paths, without query strings, bodies, or headers. Step and screenshot names appear in reports, so keep secrets out of those labels.
+
 ## Saved reports
 
-Each browser run saves `.dyno/reports/<run-id>/` with `run.json`, `junit.xml`, and `index.html`. Set `reportDir` or pass `--report-dir path` to choose another folder. The CLI prints the HTML path; JSON output includes a `report-saved` event.
+Each browser run saves `.dyno/reports/<run-id>/` with `run.json`, `junit.xml`, `index.html`, and `session.json`. Set `reportDir` or pass `--report-dir path` to choose another folder. The CLI prints the HTML path; JSON output includes a `report-saved` event.
 
-Open `index.html` directly in a browser after Dyno stops. It includes searchable files/suites, failures, source excerpts, console output, and screenshots copied into `images/`. Copy the whole run folder to share it. A source image removed before saving appears as Screenshot unavailable.
+Open `index.html` directly in a browser after Dyno stops. It includes searchable files/suites, failures, source excerpts, console output, timings, and screenshots copied into `images/`. Copy the whole run folder to share it. A source image removed before saving appears as Screenshot unavailable.
 
 Run JSON uses `schemaVersion: 1`. It contains stable test descriptors, outcomes, summary counts, and relative image paths. A run is `completed` or `interrupted`; a test without an accepted result is `not-run`. Primary and additional failures retain their phase and source context. JUnit includes an error case for interruption, so an unfinished run cannot look green to CI.
 

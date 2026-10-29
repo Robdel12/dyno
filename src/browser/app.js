@@ -172,14 +172,15 @@ function maskRectangles(elements, document, policy, metrics) {
   });
 }
 
-export function createApp(appWindow, readState, signal, navigate, operation, pause, supportsCapture) {
+export function createApp(appWindow, readState, signal, navigate, operation, pause, supportsCapture, measure) {
   let captures = Promise.resolve();
   return Object.freeze({
-    goto: navigate,
-    pause,
+    goto: (path) => measure('navigation', new URL(path, location.origin).pathname, () => navigate(path)),
+    pause: (message) => measure('pause', 'Debug pause', () => pause(message)),
     setViewport: (viewport) =>
-      operation({ operation: 'viewport', viewport }, undefined, (result) => Object.freeze(result.viewport)),
-    screenshot: (name, options = {}) => {
+      measure('viewport', `${viewport?.width} × ${viewport?.height}`, () =>
+        operation({ operation: 'viewport', viewport }, undefined, (result) => Object.freeze(result.viewport))),
+    screenshot: (name, options = {}) => measure('screenshot', name, () => {
       let policy = capturePolicy(options);
       let previous = captures;
       let restore = () => {};
@@ -253,7 +254,7 @@ export function createApp(appWindow, readState, signal, navigate, operation, pau
       let result = captured.finally(() => restore());
       captures = result.catch(() => {});
       return result;
-    },
+    }),
     get document() {
       signal.throwIfAborted();
       try {
@@ -279,7 +280,8 @@ export function createApp(appWindow, readState, signal, navigate, operation, pau
     request: (path, init = {}) => {
       let url = new URL(path, location.origin);
       if (url.origin !== location.origin) throw new Error('app.request requires a same-origin path.');
-      return fetch(url, { ...init, credentials: 'same-origin', signal });
+      return measure('request', `${init.method ?? 'GET'} ${url.pathname}`, () =>
+        fetch(url, { ...init, credentials: 'same-origin', signal }));
     }
   });
 }
