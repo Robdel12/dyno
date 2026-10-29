@@ -53,7 +53,7 @@ function appImage(bytes, metrics, options) {
     Math.abs(width - Math.round(expected.width * pixelRatio)) > 1 ||
     Math.abs(height - Math.round(expected.height * pixelRatio)) > 1
   )
-    throw problem(409, 'Screenshot dimensions do not match the app document, viewport, and pixel ratio.');
+    throw problem(409, `Screenshot dimensions do not match the app document, viewport, and pixel ratio: expected ${Math.round(expected.width * pixelRatio)} × ${Math.round(expected.height * pixelRatio)}, received ${width} × ${height}.`);
   let target = {
     width: Math.round((options.fullPage ? metrics.fullWidth : metrics.width) * pixelRatio),
     height: Math.round((options.fullPage ? metrics.fullHeight : metrics.height) * pixelRatio)

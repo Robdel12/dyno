@@ -52,6 +52,7 @@ test('starts the next test with configured dimensions', async ({ app, I }) => {
     let result = await fixture.run().completion;
     assert.equal(result.code, 0, result.stdout + result.stderr);
     assert.equal(result.summary?.passed, 2);
+    assert.equal(result.events.find(event => event.type === 'browser-stopped')?.graceful, true, result.stdout + result.stderr);
     let measured = result.events.filter(event => event.type === 'test').flatMap(test => test.timings?.entries ?? []);
     assert.ok(measured.some(entry => entry.kind === 'screenshot' && entry.status === 'passed'));
     assert.ok(measured.some(entry => entry.kind === 'viewport' && entry.status === 'passed'));
@@ -275,6 +276,7 @@ test('waits for a provider failure', async ({ app }) => {
 });
 `,
     });
+    let priorProfiles = new Set(await readdir(tmpdir()));
     let session = fixture.run();
     await session.waitForEvent('start');
     let { stdout } = await exec('ps', ['-axo', 'pid=,ppid=,command=']);
@@ -286,14 +288,18 @@ test('waits for a provider failure', async ({ app }) => {
           Number(parent) === session.child.pid && command.join(' ').endsWith('/src/providers/worker.js'),
       );
     assert.ok(worker, 'Expected an owned provider worker');
+    let ownedProfiles = (await readdir(tmpdir())).filter(name => name.startsWith(`dyno-${provider}-${session.child.pid}-`) && !priorProfiles.has(name));
+    assert.equal(ownedProfiles.length, 1, 'Expected one new provider profile');
     process.kill(Number(worker[0]), 'SIGKILL');
     let result = await session.completion;
     assert.equal(result.code, 1, result.stdout + result.stderr);
     assert.match(result.stderr, /disconnected/);
+    assert.deepEqual(result.events.filter(event => event.type === 'error' && event.phase === 'cleanup'), [], result.stdout + result.stderr);
+    assert.equal(result.events.find(event => event.type === 'browser-stopped')?.graceful, false);
     await assert.rejects(fetch('http://127.0.0.1:' + fixture.port));
     let profiles = await readdir(tmpdir());
     assert.equal(
-      profiles.some((name) => name.startsWith(`dyno-${provider}-${session.child.pid}-`)),
+      profiles.some((name) => ownedProfiles.includes(name)),
       false,
       'Provider profile survived crash cleanup',
     );
@@ -319,6 +325,7 @@ test('waits for capture acknowledgement', async ({ app }) => {
 });
 `,
     });
+    let priorProfiles = new Set(await readdir(tmpdir()));
     let session = fixture.run();
     let { url } = await session.waitForEvent('ready');
     await fetch(new URL('/api/capture-committed', url), { signal: t.signal });
@@ -331,7 +338,7 @@ test('waits for capture acknowledgement', async ({ app }) => {
     );
     assert.deepEqual(await readdir(join(fixture.directory, '.dyno/artifacts')), []);
     assert.equal(
-      (await readdir(tmpdir())).some((name) => name.startsWith(`dyno-${provider}-${session.child.pid}-`)),
+      (await readdir(tmpdir())).some((name) => !priorProfiles.has(name) && name.startsWith(`dyno-${provider}-${session.child.pid}-`)),
       false,
     );
   },

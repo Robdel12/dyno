@@ -88,9 +88,11 @@ async function main() {
   }
   let sessionTimings = createTimings();
   let sessionId = randomUUID();
+  let browserCleanup;
   let sessionStartedAt = new Date().toISOString();
   let sessionSnapshot = (status, timings = sessionTimings.snapshot()) => Object.freeze({
-    schemaVersion: 1, sessionId, startedAt: sessionStartedAt, status, timings
+    schemaVersion: 1, sessionId, startedAt: sessionStartedAt, status, timings,
+    ...(browserCleanup ? { browserCleanup } : {})
   });
   let measure = (name, work) => sessionTimings.measure('lifecycle', name, work);
   let config = await measure('Load config', () => loadConfig(options.config, {
@@ -125,6 +127,7 @@ async function main() {
   process.once('SIGINT', interrupt);
   process.once('SIGTERM', terminate);
   let cleanups = createCleanup();
+  let cleanup = (name, work) => cleanups.add(() => measure(name, work));
   let { promise: finished, resolve: complete, reject: failed } = Promise.withResolvers();
   finished.catch(() => {});
   let activeRun;
@@ -243,7 +246,14 @@ async function main() {
           onExit: failed
         }))
       : null;
-    if (browser) cleanups.add(browser.stop);
+    if (browser) cleanup('Stop browser', async () => {
+      let result = await browser.stop();
+      if (browserPlan.provider !== 'native') {
+        browserCleanup = result;
+        if (json) emit({ type: 'browser-stopped', sessionId, ...result });
+        else if (!result.graceful) log('Browser required forced cleanup. See session.json for timings.');
+      }
+    });
     launchKey = browser ? randomUUID() : null;
     let setup;
     if (config.setup) {
@@ -252,7 +262,7 @@ async function main() {
         if (typeof module.default !== 'function') throw new Error('setup must export a function.');
         return module.default({ config, signal: controller.signal });
       });
-      if (typeof setup?.teardown === 'function') cleanups.add(setup.teardown);
+      if (typeof setup?.teardown === 'function') cleanup('Project teardown', setup.teardown);
     }
     controller.signal.throwIfAborted();
     gateway = await measure('Start gateway', () => createGateway(config, bundle, {
@@ -266,7 +276,7 @@ async function main() {
       },
       rebuild: persistent ? () => buildSuite(config) : null
     }));
-    cleanups.add(() => gateway.close({ error: endingError }));
+    cleanup('Save reports and close gateway', () => gateway.close({ error: endingError }));
     if (options.watch) {
       watcher = createTestWatcher({
         root: config.root,
@@ -286,7 +296,7 @@ async function main() {
           void rebuildWatch();
         }
       });
-      cleanups.add(() => watcher.close());
+      cleanup('Stop watching', () => watcher.close());
       watcher.track(bundle.inputs);
       watchEvent({ status: 'watching', message: 'Watching tests and imported project helpers.' });
     }
@@ -300,7 +310,7 @@ async function main() {
         output: (message) => process.stderr.write(`[app] ${message}`)
       }
     ));
-    cleanups.add(() => appServer.stop());
+    cleanup('Stop app server', () => appServer.stop());
     let appExited = () => failed(appServer.failure ?? new Error('App server stopped.'));
     appServer.child?.once('exit', appExited);
     cleanups.add(async () => appServer.child?.removeListener('exit', appExited));
