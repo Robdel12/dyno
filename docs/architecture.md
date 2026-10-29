@@ -2,6 +2,8 @@
 
 Node manages processes, bundles, and output. The browser executes tests and Interactor actions. A driver is optional.
 
+The exported `Interactor` and each test's `I` use the same app-aware class. Its public Interactor extension points supply app-realm events/files, form replacement, rendered assertions, and dynamic scopes. Scopes create independent contexts with the same assertion settings and signal; they resolve their roots again after navigation. Interactor.js still owns selectors, chaining, retries, and stability checks. Apps keep domain page objects and fixture I/O.
+
 ```text
 Original app window
 └─ reporter iframe: inspection overlay

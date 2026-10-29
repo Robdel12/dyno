@@ -149,6 +149,15 @@ test(
       if(image.status==='captured'){let path:string=image.path;}else{let reason:string=image.reason;}
       let document:Document=app.document;let window:Window=app.window;
       let custom=new Interactor({root:()=>document.body});await custom.find('Saved').visible();
+      let form=I.scope('$(form)');
+      await form.find('Name').then.fill('Robert');
+      await form.find('Name').then.fill(12);
+      await form.find('Saved').rendered();await form.find('Hidden').not.rendered();
+      await form.find('Photos').then.upload({name:'photo.png',bytes:new Uint8Array([1,2]),type:'image/png'});
+      // @ts-expect-error uploads require named file bytes
+      await form.upload({name:'photo.png'});
+      // @ts-expect-error fill accepts strings or numbers
+      await form.fill({text:'Robert'});
       // @ts-expect-error a screenshot name is required
       await app.screenshot();
       // @ts-expect-error viewport dimensions are numbers

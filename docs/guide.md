@@ -111,7 +111,22 @@ Each test gets fresh test and app documents and globals. Queries use the current
 
 Fresh documents don't reset cookies, localStorage, IndexedDB, service workers, or database records. Use hooks to reset sessions and fixtures. Node setup teardown should clean up shared resources even if a browser test times out before `afterEach` finishes. Dyno's private window binding survives `sessionStorage.clear()`; avoid changing `window.name` during a run.
 
-Dyno's [Interactor adapter](../src/browser/interactor.js) uses public extension APIs to create events in the app's window and check focus against its document. It doesn't replace browser globals or modify the package. Import `Interactor` from `dyno` to add your own actions and assertions.
+Dyno exports its app-aware `Interactor` class. `I` uses that same class; custom actions and assertions registered on it work in tests and scopes. Its adapter creates events and files in the app's window without modifying browser globals or Interactor.js.
+
+```js
+import { Interactor } from 'dyno';
+
+let contact = I.scope('$(form)');
+await contact.find('Email').then.fill('rob@example.com');
+await contact.find('Photos').then.upload({ name: 'note.txt', bytes: 'Storm notes', type: 'text/plain' });
+await contact.find('Saved').rendered();
+```
+
+`scope(selector)` returns another Interactor rooted in that element. Scopes resolve against the current app document, even after navigation, and retain the assertion settings and cancellation signal. Nest them for page objects. A missing scope fails instead of searching elsewhere.
+
+`fill(value)` replaces an input or textarea value, including empty strings and number inputs, and sends input/change events. Use upstream `type()` and `press()` when individual keys matter. `upload(...files)` sets a file input's selection and sends input/change events; each file needs `name` and `bytes`, with an optional MIME `type`. Pass no files to clear it. Load fixture bytes through your project's setup or `app.request`.
+
+`rendered()` checks that content has layout and is displayed, including below the fold. It doesn't scroll or require viewport visibility; use `visible()` for that. Both keep Interactor's normal retries and stability settings. Upstream text/CSS selectors, `find(...).times(count)`, `not.overflows('x')`, option clicks, and custom selector functions work directly. Keep page objects focused on your app's workflows.
 
 ## Suites and selection
 
