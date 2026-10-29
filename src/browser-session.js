@@ -110,7 +110,6 @@ export async function createBrowserSession(plan, { viewport, signal, onExit } = 
   let owned = startProcess(process.execPath, {
     shell: false,
     ipc: true,
-    signal,
     args: [fileURLToPath(new URL('./providers/worker.js', import.meta.url))],
     env: { SE_AVOID_BROWSER_DOWNLOAD: 'true', SE_TIMEOUT: '25' }
   });
@@ -138,7 +137,7 @@ export async function createBrowserSession(plan, { viewport, signal, onExit } = 
     requests.set(id, request);
     let deadline = AbortSignal.any([
       AbortSignal.timeout(method === 'initialize' || method === 'open' ? 35000 : method === 'stop' ? 3000 : 15000),
-      ...(signal ? [signal] : []),
+      ...(signal && method !== 'stop' ? [signal] : []),
       ...(operationSignal ? [operationSignal] : [])
     ]);
     let abort = () => {
@@ -160,8 +159,12 @@ export async function createBrowserSession(plan, { viewport, signal, onExit } = 
   };
   let stop = () =>
     (stopping ??= (async () => {
+      let graceful = false;
       try {
-        if (owned.child.connected) await invoke('stop');
+        if (owned.child.connected) {
+          await invoke('stop');
+          graceful = true;
+        }
       } catch {
       } finally {
         try {
@@ -171,6 +174,7 @@ export async function createBrowserSession(plan, { viewport, signal, onExit } = 
           await rm(profile, { recursive: true, force: true, maxRetries: 3 });
         }
       }
+      return Object.freeze({ graceful });
     })());
   try {
     await owned.ready;

@@ -63,7 +63,7 @@ test('inspects the timings', async ({app,I}) => {
   let session = JSON.parse(await readFile(saved.session, 'utf8'));
   assert.ok(validTimings(session.timings));
   assert.equal(session.status, 'failed');
-  for (let name of ['Project setup','Bundle tests','App server ready','Browser results','Cleanup'])
+  for (let name of ['Project setup','Bundle tests','App server ready','Browser results','Cleanup','Stop browser','Stop app server','Project teardown','Save reports and close gateway'])
     assert.ok(session.timings.entries.some(entry => entry.name === name && entry.status === 'passed'), name);
   assert.deepEqual(result.events.find(event => event.type === 'session-timing').timings, session.timings);
   assert.doesNotMatch(JSON.stringify(contact.timings), /never-record-this/);
