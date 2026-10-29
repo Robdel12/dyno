@@ -29,8 +29,8 @@ let element = (tag, className, text) => {
   if (text !== undefined) node.textContent = text;
   return node;
 };
-let symbols = { pending: '○', running: '◌', passed: '✓', failed: '×', stopped: '■' };
-let names = { pending: 'Pending', running: 'Running', passed: 'Passed', failed: 'Failed', stopped: 'Stopped' };
+let symbols = { pending: '○', running: '◌', passed: '✓', failed: '×', stopped: '■', skipped: '−' };
+let names = { pending: 'Pending', running: 'Running', passed: 'Passed', failed: 'Failed', stopped: 'Stopped', skipped: 'Skipped' };
 
 export function createReporter(actions) {
   let get = id => document.getElementById(id);
@@ -137,6 +137,7 @@ export function createReporter(actions) {
       content.push(element('h2', 'console-heading', 'Console'), logs);
       if (test.output.length === 100) content.push(element('p', 'output-notice', 'Showing the first 100 console messages for this test.'));
     } else if (!error) content.push(element('p', 'output-empty', test?.status === 'running' ? 'Waiting for console output…' : test ? 'No console output for this test.' : 'Select a test to see its output.'));
+    if (test?.status === 'skipped') content.push(element('p', 'output-notice', `Skipped: ${test.skipReason}`));
     for (let attachment of test?.attachments ?? []) {
       let figure = element('figure', 'screenshot');
       if (attachment.status === 'captured') {
@@ -155,6 +156,7 @@ export function createReporter(actions) {
     let passed = state.tests.filter(test => test.status === 'passed').length;
     let failed = state.tests.filter(test => test.status === 'failed').length;
     let total = state.tests.length;
+    let skipped = state.tests.filter(test => test.status === 'skipped').length;
     let active = ['running', 'pausing', 'resuming'].includes(state.phase);
     let test = selectedTest(state);
     view = !total || state.route.page === 'overview' ? 'overview' : test ? 'test' : 'missing';
@@ -170,7 +172,7 @@ export function createReporter(actions) {
     let titles = {
       connecting: 'Connecting to your app…', discovering: 'Discovering tests…',
       running: `Running ${Math.min(passed + failed + 1, total)} of ${total} tests`, pausing: 'Pausing after this test…', paused: 'Paused for inspection', resuming: 'Continuing tests…',
-      completed: failed ? `${failed} ${failed === 1 ? 'test' : 'tests'} failed` : 'All tests passed',
+      completed: failed ? `${failed} ${failed === 1 ? 'test' : 'tests'} failed` : skipped ? 'Run complete' : 'All tests passed',
       stopped: 'Run stopped', error: 'The run could not finish'
     };
     document.title = `${test?.name ?? (view === 'missing' ? 'Test not found' : titles[state.phase])} — Dyno`;
@@ -178,10 +180,10 @@ export function createReporter(actions) {
     get('run-indicator').dataset.phase = state.phase;
     get('run-indicator').dataset.failed = String(failed > 0);
     write(get('run-meta'), state.error ?? `${state.files.length} test ${state.files.length === 1 ? 'file' : 'files'} · ${state.appHost || location.host}`);
-    write(get('passed-count'), String(passed)); write(get('failed-count'), String(failed)); write(get('pending-count'), String(total - passed - failed));
+    write(get('passed-count'), String(passed)); write(get('failed-count'), String(failed)); write(get('pending-count'), String(total - passed - failed - skipped)); write(get('skipped-count'), String(skipped)); get('skipped-summary').hidden = skipped === 0;
     get('failed-summary').dataset.failed = String(failed > 0);
     write(get('test-count'), String(total)); write(get('run-duration'), duration(state.duration));
-    get('progress').max = Math.max(total, 1); get('progress').value = passed + failed;
+    get('progress').max = Math.max(total, 1); get('progress').value = passed + failed + skipped;
     get('progress').hidden = !active && state.phase !== 'discovering';
     get('rerun').disabled = detail ? !test : !total && state.phase !== 'error';
     write(get('rerun'), detail ? 'Run test' : 'Run all');

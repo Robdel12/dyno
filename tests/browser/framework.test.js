@@ -4,7 +4,7 @@ import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { project, repository } from '../helpers/project.js';
+import { project, repository, reportPayload } from '../helpers/project.js';
 
 let fixtureServer = join(repository, 'tests/fixtures/app-server.js');
 
@@ -173,7 +173,7 @@ test('manual capture rebuilds changed tests, freezes active bundles, rejects dup
     assert.match(firstBundle, /original workflow/);
     assert.doesNotMatch(firstBundle, /edited workflow/);
     assert.match(secondBundle, /edited workflow/);
-    let post = event => fetch(url + 'events', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ runId: second.runId, connectionKey: second.connectionKey, ...event }) });
+    let post = event => fetch(url + 'events', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ runId: second.runId, connectionKey: second.connectionKey, ...reportPayload(event) }) });
     assert.equal((await post({ type: 'start', tests: ['edited workflow'] })).status, 200);
     assert.equal((await post({ type: 'test', index: 0, name: 'edited workflow', status: 'passed' })).status, 200);
     assert.equal((await post({ type: 'test', index: 0, name: 'edited workflow', status: 'passed' })).status, 400);

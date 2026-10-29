@@ -12,6 +12,7 @@ import { installedBrowsers } from '../src/launcher.js';
 import { resolveSession, createBrowserSession } from '../src/browser-session.js';
 import { createCleanup } from '../src/cleanup.js';
 import { defaultViewport } from '../src/browser/viewport.js';
+import { testTitle } from '../src/suite.js';
 import { initializeProject } from '../src/init.js';
 
 let json = process.argv.slice(2).includes('--json');
@@ -74,10 +75,10 @@ async function main() {
     else if (event.type === 'capture' && persistent) console.log(`Reporter: ${event.reporterURL}`);
     else if (event.type === 'start') console.log(`\nRunning ${event.tests.length} browser tests`);
     else if (event.type === 'test') {
-      console.log(`${event.status === 'passed' ? '✓' : '✗'} ${event.name}${event.duration === undefined ? '' : ` (${Math.round(event.duration)} ms)`}`);
+      console.log(`${event.status === 'passed' ? '✓' : event.status === 'skipped' ? '−' : '✗'} ${testTitle(event)}${event.duration === undefined ? '' : ` (${Math.round(event.duration)} ms)`}`);
       if (event.error) log(event.error.stack ?? event.error.message);
     } else if (event.type === 'attachment') console.log(event.attachment.status === 'captured' ? `Screenshot: ${event.attachment.path}` : `Image skipped: ${event.attachment.name} (${event.attachment.reason})`);
-    else if (event.type === 'complete') console.log(`\n${event.passed} passed, ${event.failed} failed (${Math.round(event.duration)} ms)`);
+    else if (event.type === 'complete') console.log(`\n${event.passed} passed, ${event.failed} failed, ${event.skipped} skipped (${Math.round(event.duration)} ms)`);
     else if (event.type === 'fatal') log(`Browser run failed: ${event.error?.message ?? 'Unknown error'}`);
     if (event.runId === activeRun && !persistent) {
       if (event.type === 'complete') complete(event);
@@ -115,6 +116,7 @@ async function main() {
     controller.signal.throwIfAborted();
     let captureURL = new URL(gateway.url);
     if (options.test) captureURL.searchParams.set('test', options.test);
+    for (let key of ['id', 'file', 'suite']) for (let value of options[key] ?? []) captureURL.searchParams.append(key, value);
     let browserInfo = browserPlan ? { ...browser.identity, path: browserPlan.path, isolated: browserPlan.isolated } : null;
     json ? emit({ type: 'ready', url: captureURL.href, appURL: config.webServer.url, files: bundle.files, browser: browserInfo }) : console.log(`\nDyno: ${captureURL.href}\nApp: ${config.webServer.url}\n${bundle.files.length} test file(s) bundled`);
     if (!browserPlan?.isolated && browserPlan) log('Safari opens in your existing browser session. Its tabs and storage remain yours to manage.');

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, readFile, rm, writeFile, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { project, exec, repository } from '../helpers/project.js';
+import { project, exec, repository, reportPayload } from '../helpers/project.js';
 
 function outcomes(result, passed, failed) {
   assert.equal(result.code, failed ? 1 : 0, result.stderr + result.stdout);
@@ -89,7 +89,7 @@ test('manual browsers have independent runs and malformed or stale reports canno
   let first = await capture();
   let second = await capture();
   assert.notEqual(first.runId, second.runId);
-  let post = (runId, event) => fetch(url + 'events', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({runId, connectionKey:[first,second].find(run=>run.runId===runId)?.connectionKey, ...event}) });
+  let post = (runId, event) => fetch(url + 'events', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({runId, connectionKey:[first,second].find(run=>run.runId===runId)?.connectionKey, ...reportPayload(event)}) });
   assert.equal((await fetch(url + 'capture', {method:'POST', headers:{Origin:'https://foreign.example'}})).status, 400);
   assert.equal((await post(first.runId, {type:'start', tests:['first']})).status, 200);
   assert.equal((await post(second.runId, {type:'start', tests:['second']})).status, 200);

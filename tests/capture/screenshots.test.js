@@ -177,7 +177,7 @@ test('keeps managed capture bound to this browser', async ({ app, I }) => {
       runId: joined.runId,
       connectionKey: joined.connectionKey,
       type: 'start',
-      tests: ['manual companion']
+      tests: [{ id: JSON.stringify(['manual', 'manual companion']), name: 'manual companion', file: 'manual', suites: [], index: 0, skipReason: null }]
     })
   });
   await app.request('/__dyno__/events', {
@@ -189,6 +189,7 @@ test('keeps managed capture bound to this browser', async ({ app, I }) => {
       type: 'test',
       index: 0,
       name: 'manual companion',
+      testId: JSON.stringify(['manual', 'manual companion']),
       status: 'passed'
     })
   });

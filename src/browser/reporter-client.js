@@ -39,12 +39,12 @@ let update = (patch) => {
 };
 let render = createReporter({
   embedded,
-  rerun: (names) => command('rerun', { names }),
+  rerun: (ids) => command('rerun', { ids }),
   runFailed: () =>
-    command('rerun', { names: state.tests.filter((test) => test.status === 'failed').map((test) => test.name) }),
+    command('rerun', { ids: state.tests.filter((test) => test.status === 'failed').map((test) => test.id) }),
   runSelected: () => {
     let test = selectedTest(state);
-    if (test) command('rerun', { names: [test.name] });
+    if (test) command('rerun', { ids: [test.id] });
   },
   search: (query) => update({ query }),
   filter: (filter) => update({ filter }),
