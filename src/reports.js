@@ -1,11 +1,13 @@
 import { mkdir, mkdtemp, readFile, writeFile, copyFile, rename, rm } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { createReport, missingImages } from './report-model.js';
 import { junitReport, htmlReport } from './report-format.js';
 
 export function createReportWriter(directory, { redact = (value) => value } = {}) {
   let writes = new WeakMap();
-  let save = async (run) => {
+  let saved = new Set();
+  let save = async (run, session) => {
     let report = createReport(run);
     let staging;
     let target = join(directory, run.runId);
@@ -35,10 +37,13 @@ export function createReportWriter(directory, { redact = (value) => value } = {}
       await Promise.all([
         writeFile(join(staging, 'run.json'), redact(JSON.stringify(report, null, 2) + '\n')),
         writeFile(join(staging, 'junit.xml'), redact(junitReport(report))),
-        writeFile(join(staging, 'index.html'), redact(htmlReport(report, css)))
+        writeFile(join(staging, 'index.html'), redact(htmlReport(report, css, { session: Boolean(session) }))),
+        ...(session ? [writeFile(join(staging, 'session.json'), redact(JSON.stringify(session, null, 2) + '\n'))] : [])
       ]);
       await rename(staging, target);
+      if (session) saved.add(target);
       return Object.freeze({
+        ...(session ? { session: join(target, 'session.json') } : {}),
         runId: run.runId,
         directory: target,
         json: join(target, 'run.json'),
@@ -62,11 +67,20 @@ export function createReportWriter(directory, { redact = (value) => value } = {}
     }
   };
   return Object.freeze({
-    save(run) {
+    async finishSession(session) {
+      for (let directory of saved) {
+        let temporary = join(directory, `.session-${randomUUID()}.json`);
+        try {
+          await writeFile(temporary, redact(JSON.stringify(session, null, 2) + '\n'));
+          await rename(temporary, join(directory, 'session.json'));
+        } finally { await rm(temporary, { force: true }); }
+      }
+    },
+    save(run, session) {
       if (!writes.has(run))
         writes.set(
           run,
-          save(run).catch((error) => {
+          save(run, session).catch((error) => {
             writes.delete(run);
             throw error;
           })

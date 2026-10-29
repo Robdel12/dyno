@@ -76,3 +76,9 @@ The real browser workflows in [tests](../tests) cover image pixels, resizing, na
 The gateway owns accepted run snapshots. On completion or interruption, a pure report model selects public result fields; formatters produce versioned JSON, JUnit, and standalone HTML. The writer copies accepted images into a temporary run folder and renames it into place after all files finish. Missing source images become explicit unavailable attachments.
 
 Shutdown closes admission before waiting for pending writes. Joins already rebundling must recheck admission before creating a run. The CLI waits for report persistence before releasing the gateway. Saved HTML needs neither a driver nor a running server.
+
+## Timings
+
+The runtime records bounded monotonic intervals around phases, app operations, and named steps. Interactor runs unchanged. Abort ends pending measurements, and immutable snapshots cross the existing result boundary; the gateway validates bounds and drops unknown fields. Inclusive intervals may overlap, so rankings do not add them together.
+
+CLI lifecycle intervals use a separate session clock. Each report saves a running session snapshot; shutdown finalizes session.json atomically after resource cleanup. Browser-run and CLI wall times remain distinct. No per-poll messages or driver commands are added.

@@ -1,4 +1,5 @@
 import { testDescriptor } from './suite.js';
+import { snapshotTimings, performanceSummary } from './browser/timings.js';
 
 let freeze = (value) => Object.freeze(value);
 let errorSnapshot = (error) =>
@@ -27,6 +28,7 @@ export function createReport(run) {
       suites: freeze([...test.suites]),
       status: outcome?.status ?? 'not-run',
       duration: outcome?.duration ?? 0,
+      ...(outcome?.timings ? { timings: snapshotTimings(outcome.timings) } : {}),
       ...(outcome?.skipReason ? { skipReason: outcome.skipReason } : {}),
       ...(outcome?.error ? { error: errorSnapshot(outcome.error) } : {}),
       additionalErrors: freeze((outcome?.additionalErrors ?? []).map(errorSnapshot)),
@@ -71,6 +73,7 @@ export function createReport(run) {
       duration: run.summary?.duration ?? tests.reduce((sum, test) => sum + test.duration, 0)
     }),
     ...(run.error ? { error: errorSnapshot(run.error) } : {}),
+    performance: performanceSummary(tests, run.summary?.duration),
     tests: freeze(tests)
   });
 }

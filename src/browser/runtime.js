@@ -4,6 +4,7 @@ import { testDescriptor } from '../suite.js';
 import { createApp } from './app.js';
 import { createInteractor } from './interactor.js';
 import { captureConsole } from './console.js';
+import { createTimings } from './timings.js';
 
 let serialize = (error) => ({ message: error?.message ?? String(error), stack: error?.stack });
 export async function boot() {
@@ -26,6 +27,8 @@ export async function boot() {
     let test = tests.find((test) => test.id === selectedId);
     if (!test) throw new Error(`Test definition disappeared after discovery: ${selectedId}`);
     if (test.skipReason) throw new Error(`Test selection changed after discovery: ${test.skipReason}`);
+    let timings = createTimings();
+    let steps = new Set();
     let controller = new AbortController();
     let activeController = controller;
     let failures = [];
@@ -40,7 +43,9 @@ export async function boot() {
         if (seen.has(error)) return;
         seen.add(error);
       }
-      failures = [...failures, failureRecord(error, kinds.get(error) ?? fallback, location)];
+      let failurePhase = kinds.get(error) ?? fallback;
+      failurePhase = failurePhase === 'reset' ? 'beforeEach' : failurePhase === 'drain' ? 'cleanup' : failurePhase;
+      failures = [...failures, failureRecord(error, failurePhase, location)];
     };
     let outputStarted = performance.now();
     let output = [];
@@ -256,6 +261,8 @@ export async function boot() {
       return request.promise;
     };
     let requireFinishedOperations = (signal) => {
+      if ([...steps].some(step => step.signal === signal))
+        throw new Error('Await step() before finishing a test or hook.');
       if (debugResume) throw new Error('Await app.pause() before finishing the test.');
       if ([...pending.values()].some((request) => request.signal === signal))
         throw new Error('Await app.screenshot() and app.setViewport() before finishing a test or hook.');
@@ -303,10 +310,27 @@ export async function boot() {
         (path) => navigate(path, signal),
         (input, prepare, select) => operation(input, prepare, select, signal),
         pause,
-        Boolean(parent.__dynoController?.capabilities?.screenshot)
+        Boolean(parent.__dynoController?.capabilities?.screenshot),
+        (kind, name, work) => timings.measure(kind, name, work, { signal, phase })
       );
+      let step = (name, work) => {
+        signal.throwIfAborted();
+        if (typeof name !== 'string' || !name.trim() || name.length > 200 || typeof work !== 'function')
+          throw new Error('step() needs a name (1–200 characters) and a callback.');
+        let running = { signal };
+        steps.add(running);
+        let result = timings.measure('step', name, () => {
+          let value = work();
+          if (value && typeof value.next === 'function')
+            throw new Error('step() callbacks must use ordinary or async functions, not generators.');
+          return value;
+        }, { signal, phase });
+        result.then(() => steps.delete(running), () => steps.delete(running));
+        return result;
+      };
       return Object.freeze({
         app,
+        step,
         I: createInteractor(app, signal, settings.expectTimeout),
         signal,
         fixtures: settings.fixtures,
@@ -323,8 +347,9 @@ export async function boot() {
       context.signal.throwIfAborted();
     };
     let entered = [];
+    let beforeEachNumber = 0;
+    let afterEachNumber = 0;
     let context = contextFor(controller.signal);
-    let started = performance.now();
     let remaining = Number(parameters.get('deadline')) - Date.now();
 
     let executionExpired = () => {
@@ -343,18 +368,19 @@ export async function boot() {
     if (remaining <= 0) executionExpired();
     send('runtime-ready');
     try {
-      await navigate('/__dyno__/blank', controller.signal, true);
+      phase = 'reset';
+      await timings.measure('reset', 'Fresh app document', () => navigate('/__dyno__/blank', controller.signal, true), { signal: controller.signal });
       for (let scope of test.scopes) {
         entered.push(scope);
         for (let hook of scope.beforeEach) {
           phase = 'beforeEach';
           declaration = hook.declaration;
-          await invoke(hook.run, context);
+          await timings.measure('beforeEach', `${hook.run.name || 'beforeEach'} #${++beforeEachNumber}`, () => invoke(hook.run, context), { signal: controller.signal, phase });
         }
       }
       phase = 'test';
       declaration = test.declaration;
-      await invoke(test.run, context);
+      await timings.measure('test', 'Test body', () => invoke(test.run, context), { signal: controller.signal });
     } catch (error) {
       recordFailure(error);
     } finally {
@@ -381,7 +407,7 @@ export async function boot() {
           phase = 'afterEach';
           declaration = hook.declaration;
           try {
-            await invoke(hook.run, contextFor(signal));
+            await timings.measure('afterEach', `${hook.run.name || 'afterEach'} #${++afterEachNumber}`, () => invoke(hook.run, contextFor(signal)), { signal, phase });
           } catch (error) {
             recordFailure(error);
           } finally {
@@ -392,7 +418,8 @@ export async function boot() {
       let drain = new AbortController();
       activeController = drain;
       try {
-        await abortable(checkpoint(), AbortSignal.any([cleanup.signal, drain.signal]));
+        phase = 'drain';
+        await timings.measure('drain', 'Deliver queued app errors', () => checkpoint(), { signal: AbortSignal.any([cleanup.signal, drain.signal]) });
         if (drain.signal.aborted) throw drain.signal.reason;
       } catch (error) {
         recordFailure(error, 'cleanup');
@@ -411,11 +438,13 @@ export async function boot() {
       collectingOutput = false;
       waiters.clear();
     }
+    let measured = timings.end();
     send('result', {
       index,
       testId: test.id,
       name: test.name,
-      duration: performance.now() - started,
+      duration: measured.duration,
+      timings: measured,
       ...failureOutcome(failures),
       output
     });

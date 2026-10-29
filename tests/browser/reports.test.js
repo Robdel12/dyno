@@ -69,6 +69,10 @@ test('interrupt saves completed outcomes and honestly marks tests without result
   assert.match(xml, /errors="1"/);
   assert.match(xml, /name="Run interrupted"/);
   assert.equal(result.events.at(-1).type, 'stopped');
+  let sessionTiming = JSON.parse(await readFile(saved.session, 'utf8'));
+  assert.equal(sessionTiming.status, 'interrupted');
+  assert.ok(sessionTiming.timings.entries.some(entry => entry.name === 'Cleanup' && entry.status === 'passed'));
+  assert.ok(!sessionTiming.timings.entries.some(entry => entry.status === 'running'));
   assert.ok((await readdir(join(fixture.directory, '.dyno/reports'))).every((name) => !name.startsWith('.')));
 });
 

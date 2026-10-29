@@ -18,6 +18,8 @@ import { createTestWatcher, createWatchState, watchTransition } from '../src/wat
 import { createReportWriter } from '../src/reports.js';
 import { diagnose } from '../src/doctor.js';
 import { initializeProject } from '../src/init.js';
+import { createTimings } from '../src/browser/timings.js';
+import { timingDuration, slowWorkLabel } from '../src/browser/timing-format.js';
 
 let json = process.argv.slice(2).includes('--json');
 let outputClosed = false;
@@ -84,14 +86,21 @@ async function main() {
     json ? emit({ type: 'initialized', message }) : console.log(message);
     return;
   }
-  let config = await loadConfig(options.config, {
+  let sessionTimings = createTimings();
+  let sessionId = randomUUID();
+  let sessionStartedAt = new Date().toISOString();
+  let sessionSnapshot = (status, timings = sessionTimings.snapshot()) => Object.freeze({
+    schemaVersion: 1, sessionId, startedAt: sessionStartedAt, status, timings
+  });
+  let measure = (name, work) => sessionTimings.measure('lifecycle', name, work);
+  let config = await measure('Load config', () => loadConfig(options.config, {
     port: options.port === undefined ? undefined : Number(options.port),
     host: options.host,
     browser: options.browser,
     browserPath: options['browser-path'],
     provider: options.provider,
     reportDir: options['report-dir']
-  });
+  }));
   if (options.command === 'doctor') {
     let result = await diagnose(config, { manual: options.manual });
     if (json) emit({ type: 'diagnosis', ...result });
@@ -103,7 +112,7 @@ async function main() {
     process.exitCode = result.ok ? 0 : 1;
     return;
   }
-  let browserPlan = options.manual ? null : await resolveSession(config.browser, { headless: !options.ui });
+  let browserPlan = options.manual ? null : await measure('Resolve browser', () => resolveSession(config.browser, { headless: !options.ui }));
   let controller = new AbortController();
   let interruptCode;
   let endingError;
@@ -173,8 +182,10 @@ async function main() {
   let writer = createReportWriter(config.reportDir, {
     redact: (value) => (launchKey ? value.replaceAll(launchKey, '[private launch]') : value)
   });
+  let savedRuns = 0;
   let saveRun = async (run) => {
-    let result = await writer.save(run);
+    let result = await writer.save(run, sessionSnapshot('running'));
+    savedRuns++;
     if (json) emit({ type: 'report-saved', ...result });
     else console.log(`Report: ${result.html}`);
   };
@@ -206,11 +217,15 @@ async function main() {
           ? `Screenshot: ${event.attachment.path}`
           : `Image skipped: ${event.attachment.name} (${event.attachment.reason})`
       );
-    else if (event.type === 'complete')
+    else if (event.type === 'complete') {
       console.log(
         `\n${event.passed} passed, ${event.failed} failed, ${event.skipped} skipped (${Math.round(event.duration)} ms)`
       );
-    else if (event.type === 'fatal') log(`Browser run failed: ${event.error?.message ?? 'Unknown error'}`);
+      for (let test of event.performance?.slowestTests.slice(0, 3) ?? []) {
+        let work = slowWorkLabel({ entries: test.slowestWork });
+        console.log(`Slow: ${testTitle(test)} · ${timingDuration(test.duration)}${work ? ` · ${work}` : ''}`);
+      }
+    } else if (event.type === 'fatal') log(`Browser run failed: ${event.error?.message ?? 'Unknown error'}`);
     if (event.runId === activeRun && !persistent) {
       if (event.type === 'complete') complete(event);
       if (event.type === 'fatal') failed(new Error(event.error?.message ?? 'Browser runtime failed.'));
@@ -219,26 +234,28 @@ async function main() {
   let aborted = () => failed(controller.signal.reason);
   controller.signal.addEventListener('abort', aborted, { once: true });
   try {
-    let bundle = await buildSuite(config);
+    let bundle = await measure('Bundle tests', () => buildSuite(config));
     controller.signal.throwIfAborted();
     let browser = browserPlan
-      ? await createBrowserSession(browserPlan, {
+      ? await measure('Prepare browser', () => createBrowserSession(browserPlan, {
           viewport: config.viewport ?? defaultViewport,
           signal: controller.signal,
           onExit: failed
-        })
+        }))
       : null;
     if (browser) cleanups.add(browser.stop);
     launchKey = browser ? randomUUID() : null;
     let setup;
     if (config.setup) {
-      let module = await import(pathToFileURL(config.setup).href);
-      if (typeof module.default !== 'function') throw new Error('setup must export a function.');
-      setup = await module.default({ config, signal: controller.signal });
+      setup = await measure('Project setup', async () => {
+        let module = await import(pathToFileURL(config.setup).href);
+        if (typeof module.default !== 'function') throw new Error('setup must export a function.');
+        return module.default({ config, signal: controller.signal });
+      });
       if (typeof setup?.teardown === 'function') cleanups.add(setup.teardown);
     }
     controller.signal.throwIfAborted();
-    gateway = await createGateway(config, bundle, {
+    gateway = await measure('Start gateway', () => createGateway(config, bundle, {
       fixtures: setup?.fixtures,
       interactive: Boolean(options.ui || options.manual),
       onEvent: report,
@@ -248,7 +265,7 @@ async function main() {
         failed(error);
       },
       rebuild: persistent ? () => buildSuite(config) : null
-    });
+    }));
     cleanups.add(() => gateway.close({ error: endingError }));
     if (options.watch) {
       watcher = createTestWatcher({
@@ -275,14 +292,14 @@ async function main() {
     }
     reporterAddress = gateway.origin + '/__dyno__/reporter';
     if (browser) gateway.attachSession(browser, launchKey);
-    let appServer = await startWebServer(
+    let appServer = await measure('App server ready', () => startWebServer(
       { ...config.webServer, env: { ...config.webServer.env, ...setup?.env, DYNO_URL: gateway.origin } },
       {
         signal: controller.signal,
         onReady: (headers) => gateway.setDocumentPolicy(headers),
         output: (message) => process.stderr.write(`[app] ${message}`)
       }
-    );
+    ));
     cleanups.add(() => appServer.stop());
     let appExited = () => failed(appServer.failure ?? new Error('App server stopped.'));
     appServer.child?.once('exit', appExited);
@@ -327,9 +344,9 @@ async function main() {
       if (browserPlan) {
         let ownedURL = new URL(captureURL);
         ownedURL.hash = new URLSearchParams({ launch: launchKey }).toString();
-        await browser.open(ownedURL.href);
+        await measure('Open browser', () => browser.open(ownedURL.href));
       }
-      let summary = await finished;
+      let summary = await sessionTimings.measure('lifecycle', 'Browser results', () => finished, { signal: controller.signal });
       process.exitCode = summary.failed ? 1 : 0;
     } finally {
       deadline?.removeEventListener('abort', expired);
@@ -345,12 +362,21 @@ async function main() {
     }
   } finally {
     controller.abort(new Error('Dyno is shutting down.'));
-    for (let error of await cleanups.run()) {
+    for (let error of await measure('Cleanup', () => cleanups.run())) {
       json
         ? emit({ type: 'error', phase: 'cleanup', message: error.message })
         : log(`Cleanup failed: ${error.message}`);
       process.exitCode = 1;
     }
+    let session = sessionSnapshot(interruptCode ? 'interrupted' : endingError || process.exitCode ? 'failed' : 'completed', sessionTimings.end());
+    try { await writer.finishSession(session); }
+    catch (error) {
+      process.exitCode = 1;
+      session = Object.freeze({ ...session, status: 'failed' });
+      json ? emit({ type: 'error', phase: 'report', message: error.message }) : log(error.message);
+    }
+    if (json) emit({ type: 'session-timing', ...session });
+    else console.log(`Session: ${timingDuration(session.timings.duration)} through cleanup.${savedRuns ? ' Details: session.json beside the saved report.' : ''}`);
     if (interruptCode && json) emit({ type: 'stopped', signal: interruptCode === 130 ? 'SIGINT' : 'SIGTERM' });
     process.removeListener('SIGINT', interrupt);
     process.removeListener('SIGTERM', terminate);

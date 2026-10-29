@@ -1,4 +1,6 @@
 import { testTitle } from './suite.js';
+import { timingPhases, timingOperations, timingDuration, timingLabels } from './browser/timing-format.js';
+import { slowestTests } from './browser/timings.js';
 
 let clean = (value) => String(value ?? '').replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]/g, '�');
 export let escapeMarkup = (value) =>
@@ -60,6 +62,16 @@ function imageMarkup(image) {
     <figcaption>${x(image.name)} · ${image.width} × ${image.height} · ${x(image.browser.name)}</figcaption>
   </figure>`;
 }
+function timingMarkup(timings) {
+  if (!timings) return '';
+  let x = escapeMarkup;
+  return `<details class="saved-timings"><summary>Timings</summary>
+    <dl class="timing-phases">${timingPhases(timings).map(entry => `<div><dt>${x(entry.name)}</dt><dd>${x(timingDuration(entry.duration))}</dd></div>`).join('')}</dl>
+    <p>Times include waiting. Steps and operations can overlap; do not add these rows together. Debug pauses are included.</p>
+    <table class="timings-table"><caption>Hooks, operations, and steps, slowest first</caption><thead><tr><th scope="col">Work</th><th scope="col">Started</th><th scope="col">Duration</th></tr></thead>
+    <tbody>${timingOperations(timings).map(entry => `<tr><td><strong>${x(entry.name)}</strong><span class="timing-kind">${x(timingLabels[entry.kind])} · ${x(entry.phase ?? 'test')} · ${x(entry.status)}</span></td><td>${x(timingDuration(entry.start))}</td><td>${x(timingDuration(entry.duration))}</td></tr>`).join('')}</tbody></table>
+    ${timings.truncated ? `<p>${timings.truncated} additional timings were not recorded.</p>` : ''}</details>`;
+}
 function testMarkup(test) {
   let x = escapeMarkup;
   let note =
@@ -68,17 +80,18 @@ function testMarkup(test) {
       : test.status === 'not-run'
         ? 'Run ended before this test reported.'
         : '';
-  return `<details class="saved-test" data-test data-file="${x(test.file)}" data-status="${x(test.status)}" ${test.status === 'failed' ? 'open' : ''}>
+  return `<details id="test-${test.index}" class="saved-test" data-test data-file="${x(test.file)}" data-status="${x(test.status)}" ${test.status === 'failed' ? 'open' : ''}>
     <summary><span class="saved-status">${x(test.status === 'not-run' ? 'not run' : test.status)}</span><span class="saved-name">${x(testTitle(test))}</span><span class="test-time">${Math.round(test.duration)} ms</span></summary>
     <div class="saved-output">
       ${errors(test).map(errorMarkup).join('')}
       ${note ? `<p>${x(note)}</p>` : ''}
+      ${timingMarkup(test.timings)}
       ${test.output.length ? `<h2>Console</h2><pre>${x(consoleText(test))}</pre>` : ''}
       ${test.attachments.map(imageMarkup).join('')}
     </div>
   </details>`;
 }
-export function htmlReport(report, css) {
+export function htmlReport(report, css, { session = false } = {}) {
   let x = escapeMarkup;
   let files = [...new Set(report.tests.map((test) => test.file))];
   let title =
@@ -87,11 +100,12 @@ export function htmlReport(report, css) {
     <meta charset="utf-8"><meta name="viewport" content="width=device-width">
     <title>Dyno · ${x(report.status)}</title><style>${css}</style>
   </head><body><main class="saved-report">
-    <a href="run.json">Run JSON</a> · <a href="junit.xml">JUnit</a>
+    <a href="run.json">Run JSON</a> · <a href="junit.xml">JUnit</a>${session ? ' · <a href="session.json">Session timings</a>' : ''}
     <h1>${title}</h1>
     <p>${report.summary.passed} passed · ${report.summary.failed} failed · ${report.summary.skipped} skipped · ${report.summary.notRun} not run</p>
     <p>Saved report · ${x(report.runId)}${report.startedAt ? ` · ${x(report.startedAt)}` : ''}</p>
     ${report.error ? errorMarkup(report.error) : ''}
+    ${slowestTests(report.tests).length ? `<details class="run-info"><summary>Slowest tests</summary><ol class="slow-test-list">${slowestTests(report.tests).map(test => `<li><a href="#test-${test.index}">${x(testTitle(test))}</a><span>${x(timingDuration(test.duration))}</span></li>`).join('')}</ol></details>` : ''}
     <label>Filter tests<input type="search" id="search" placeholder="Search files, suites, and test output"></label>
     <p id="empty" hidden>No tests match this filter.</p>
     ${files

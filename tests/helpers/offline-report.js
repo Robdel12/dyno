@@ -7,7 +7,7 @@ import { build } from 'esbuild';
 import { createBrowserSession, resolveSession } from '../../src/browser-session.js';
 import { repository } from './project.js';
 
-export async function inspectOfflineReport(t, path, browser, { images = 0 } = {}) {
+export async function inspectOfflineReport(t, path, browser, { images = 0, timings = false } = {}) {
   let result = Promise.withResolvers();
   let server = createServer(async (request, response) => {
     let chunks = [];
@@ -45,6 +45,12 @@ export async function inspectOfflineReport(t, path, browser, { images = 0 } = {}
       }
       await UI.assert(()=>[...document.images].every(image=>image.complete && image.naturalWidth>0),'Offline PNG did not load');
       await UI.assert(()=>!window.injectedReportCode && !document.querySelector('script[data-untrusted]'),'Report content executed as HTML');
+      ${timings ? `step='timings';
+      await UI.click('$(.saved-test summary)');
+      await UI.click('$(.saved-test .saved-timings summary)');
+      await UI.find('$(.saved-test .saved-timings)').contains('Save <contact>');
+      await UI.find('$(.saved-test .saved-timings)').contains('Setup hook');
+      await UI.assert(()=>!document.querySelector('contact'),'Timing content executed as markup');` : ''}
       step='search';
       await UI.type('no matching test phrase').into('$(#search)');
       await UI.find('No tests match this filter.').visible();

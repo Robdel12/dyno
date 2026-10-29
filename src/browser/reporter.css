@@ -192,3 +192,24 @@ kbd { color: #717c86; font-size: 12px; }
 @media(max-width:640px){.connection{flex-direction:column;gap:4px}.group-heading{flex-wrap:wrap;gap:4px 12px}.group-heading h2{flex-basis:100%}.suite-heading h3{flex-basis:auto;flex:1}.group-count{font-size:11px}.run-actions{gap:5px}.toolbar{padding-inline:12px}.brand{font-size:20px}.brand svg{width:23px}.filters{gap:18px}.file-group{margin-bottom:24px}}
 
 .watch-status{color:var(--yellow);font-size:13px;margin-bottom:24px}
+
+/* Timings share the reporter's quiet rows and numeric alignment. */
+.timing-phases { display:flex; flex-wrap:wrap; gap:20px 32px; margin:20px 0; }
+.timing-phases dt { color:var(--muted); font-size:12px; }
+.timing-phases dd { margin:6px 0 0; font-variant-numeric:tabular-nums; }
+.timings-table { width:100%; border-collapse:collapse; margin-top:16px; table-layout:fixed; }
+.timings-table th, .timings-table td { text-align:right; padding:12px 0 12px 16px; vertical-align:top; font-variant-numeric:tabular-nums; }
+.timings-table th { color:var(--muted); font-size:12px; font-weight:500; }
+.timings-table tr { border-bottom:1px solid var(--line); }
+.timings-table th:first-child, .timings-table td:first-child { text-align:left; width:60%; padding-left:0; overflow-wrap:anywhere; }
+.timings-table strong { font-size:13px; font-weight:500; }
+.timing-kind { display:block; color:var(--muted); font-size:11px; margin-top:6px; }
+.slow-test-list { list-style:none; padding:0; }
+.slow-test-list li { display:flex; justify-content:space-between; align-items:baseline; gap:24px; padding:8px 0; }
+.slow-test-list a { overflow-wrap:anywhere; }
+.slow-test-list span { color:var(--muted); white-space:nowrap; font-variant-numeric:tabular-nums; }
+@media(max-width:640px) {
+  .timings-table th:first-child, .timings-table td:first-child { width:50%; }
+  .timings-table th, .timings-table td { padding-left:8px; font-size:11px; }
+  .timing-phases { gap:16px 24px; }
+}
