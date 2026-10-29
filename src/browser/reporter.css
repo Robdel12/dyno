@@ -190,3 +190,5 @@ kbd { color: #717c86; font-size: 12px; }
 .suite-tests{list-style:none;padding:0;margin:0}
 .selected-context{color:var(--muted);font-size:12px;overflow-wrap:anywhere;margin-top:24px}
 @media(max-width:640px){.connection{flex-direction:column;gap:4px}.group-heading{flex-wrap:wrap;gap:4px 12px}.group-heading h2{flex-basis:100%}.suite-heading h3{flex-basis:auto;flex:1}.group-count{font-size:11px}.run-actions{gap:5px}.toolbar{padding-inline:12px}.brand{font-size:20px}.brand svg{width:23px}.filters{gap:18px}.file-group{margin-bottom:24px}}
+
+.watch-status{color:var(--yellow);font-size:13px;margin-bottom:24px}

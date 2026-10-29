@@ -13,6 +13,8 @@ import { resolveSession, createBrowserSession } from '../src/browser-session.js'
 import { createCleanup } from '../src/cleanup.js';
 import { defaultViewport } from '../src/browser/viewport.js';
 import { testTitle } from '../src/suite.js';
+import { createTestWatcher, createWatchState, watchTransition } from '../src/watch.js';
+import { diagnose } from '../src/doctor.js';
 import { initializeProject } from '../src/init.js';
 
 let json = process.argv.slice(2).includes('--json');
@@ -85,6 +87,17 @@ async function main() {
     browserPath: options['browser-path'],
     provider: options.provider
   });
+  if (options.command === 'doctor') {
+    let result = await diagnose(config, { manual: options.manual });
+    if (json) emit({ type: 'diagnosis', ...result });
+    else
+      for (let check of result.checks)
+        console.log(
+          `${check.status === 'passed' ? '✓' : check.status === 'failed' ? '✗' : '−'} ${check.name}: ${check.message}`
+        );
+    process.exitCode = result.ok ? 0 : 1;
+    return;
+  }
   let browserPlan = options.manual ? null : await resolveSession(config.browser, { headless: !options.ui });
   let controller = new AbortController();
   let interruptCode;
@@ -100,13 +113,70 @@ async function main() {
   let { promise: finished, resolve: complete, reject: failed } = Promise.withResolvers();
   finished.catch(() => {});
   let activeRun;
+  let watcher, gateway;
+  let watching = createWatchState();
+  let watchEvent = (event) => {
+    if (json) emit({ type: 'watch', ...event });
+    else log(`Watch: ${event.message ?? event.status}`);
+    if (activeRun) gateway?.notify(activeRun, 'watch', event);
+  };
+  let rebuildWatch = async () => {
+    if (
+      !watcher ||
+      watching.run !== 'idle' ||
+      watching.build !== 'idle' ||
+      watching.revision === watching.published ||
+      controller.signal.aborted
+    )
+      return;
+    watching = watchTransition(watching, { type: 'building' });
+    let attempted = watching.revision;
+    try {
+      do {
+        let revision = watching.revision;
+        attempted = revision;
+        watchEvent({ status: 'building', revision });
+        let updated = await buildSuite(config);
+        controller.signal.throwIfAborted();
+        watcher.track(updated.inputs);
+        watching = watchTransition(watching, { type: 'built', revision });
+        if (watching.revision !== revision) watching = watchTransition(watching, { type: 'building' });
+      } while (watching.build === 'building');
+      if (controller.signal.aborted) return;
+      if (watching.run === 'running') {
+        watchEvent({ status: 'queued', message: 'Test edits queued until this run finishes.' });
+        return;
+      }
+      watching = watchTransition(watching, { type: 'scheduled', revision: attempted });
+      if (activeRun) {
+        watching = watchTransition(watching, { type: 'running' });
+        gateway.reload(activeRun);
+      }
+      watchEvent({
+        status: 'watching',
+        message: activeRun ? 'Running updated tests' : 'Tests updated. Open the test browser URL.'
+      });
+    } catch (error) {
+      watching = watchTransition(watching, { type: 'failed', revision: attempted });
+      watchEvent({ status: 'error', message: error.message });
+      void rebuildWatch();
+    }
+  };
   let launchKey;
   let reporterAddress;
-  let persistent = options.ui || options.manual;
+  let persistent = options.ui || options.manual || options.watch;
   let report = (event) => {
     if (event.type === 'capture')
       event = { ...event, reporterURL: `${reporterAddress}?run=${encodeURIComponent(event.runId)}` };
-    if (event.type === 'capture' && (event.owned || (!browserPlan && !activeRun))) activeRun = event.runId;
+    if (event.type === 'capture' && (event.owned || event.previousRunId === activeRun || (!browserPlan && !activeRun)))
+      activeRun = event.runId;
+    if (options.watch && event.runId === activeRun) {
+      if (event.type === 'capture') watching = watchTransition(watching, { type: 'running' });
+      if (['complete', 'fatal'].includes(event.type)) {
+        watching = watchTransition(watching, { type: 'finished' });
+        void rebuildWatch();
+      }
+    }
     if (json) emit(event);
     else if (event.type === 'capture' && persistent) console.log(`Reporter: ${event.reporterURL}`);
     else if (event.type === 'start') console.log(`\nRunning ${event.tests.length} browser tests`);
@@ -154,15 +224,37 @@ async function main() {
       if (typeof setup?.teardown === 'function') cleanups.add(setup.teardown);
     }
     controller.signal.throwIfAborted();
-    let gateway = await createGateway(config, bundle, {
+    gateway = await createGateway(config, bundle, {
       fixtures: setup?.fixtures,
-      interactive: Boolean(persistent),
+      interactive: Boolean(options.ui || options.manual),
       onEvent: report,
       rebuild: persistent ? () => buildSuite(config) : null
     });
+    cleanups.add(() => gateway.close());
+    if (options.watch) {
+      watcher = createTestWatcher({
+        root: config.root,
+        testDir: config.testDir,
+        onError: (error) => {
+          watchEvent({ status: 'error', message: error.message });
+          failed(error);
+        },
+        onChange: () => {
+          watching = watchTransition(watching, { type: 'changed' });
+          watchEvent({
+            status: watching.run === 'running' ? 'queued' : 'changed',
+            revision: watching.revision,
+            message: watching.run === 'running' ? 'Test edits queued until this run finishes.' : 'Test files changed.'
+          });
+          void rebuildWatch();
+        }
+      });
+      cleanups.add(() => watcher.close());
+      watcher.track(bundle.inputs);
+      watchEvent({ status: 'watching', message: 'Watching tests and imported project helpers.' });
+    }
     reporterAddress = gateway.origin + '/__dyno__/reporter';
     if (browser) gateway.attachSession(browser, launchKey);
-    cleanups.add(() => gateway.close());
     let appServer = await startWebServer(
       { ...config.webServer, env: { ...config.webServer.env, ...setup?.env, DYNO_URL: gateway.origin } },
       {
@@ -231,6 +323,7 @@ async function main() {
       throw failure;
     }
   } finally {
+    controller.abort(new Error('Dyno is shutting down.'));
     for (let error of await cleanups.run()) {
       json
         ? emit({ type: 'error', phase: 'cleanup', message: error.message })

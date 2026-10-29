@@ -41,6 +41,12 @@ Each launched browser has a private launch token. Each browser that joins gets i
 
 `app.setViewport` changes app-frame dimensions locally. Managed providers also make room in the browser window. WebDriver window dimensions include browser chrome, so the host measures the actual viewport and allows one correction. A size that still won't fit fails clearly.
 
+## Editing tests
+
+`doctor` validates config, bundling, browser prerequisites, and the app URL without acquiring processes. Test watches use filesystem events for the test directory and imported project helpers. Immutable watch state tracks builds and browser runs independently. Edits during either stay queued; the next run gets the latest source. Config and Node setup changes require restart.
+
+`app.pause()` uses a browser message, without a driver. It suspends the execution deadline and host watchdog while retaining the test and app. Continue hides the reporter before resuming the remaining budget. Cleanup cannot pause, and headless runs reject the call.
+
 ## Saving a screenshot
 
 1. The runtime waits for app fonts and sends the execution, document, and request IDs.

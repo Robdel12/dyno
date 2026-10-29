@@ -55,6 +55,15 @@ export function transition(state, event) {
         ? { ...state, phase: state.phase === 'pausing' ? 'running' : 'pausing' }
         : state;
       break;
+    case 'watch.changed':
+      next = { ...state, watch: event.watch };
+      break;
+    case 'debug.paused':
+      next = { ...state, phase: 'debugging', presentation: 'reporter', debugMessage: event.message };
+      break;
+    case 'debug.continued':
+      next = { ...state, phase: 'running', presentation: 'app', debugMessage: null };
+      break;
     case 'paused':
       next = { ...state, phase: 'paused', presentation: 'reporter' };
       break;

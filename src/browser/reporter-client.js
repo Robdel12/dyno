@@ -123,6 +123,7 @@ if (embedded) {
   let stream = new EventSource(`/__dyno__/stream?run=${encodeURIComponent(runId)}`);
   stream.addEventListener('open', () => update({ connection: 'connected' }));
   stream.addEventListener('snapshot', (event) => receive(JSON.parse(event.data)));
+  stream.addEventListener('watch', (event) => update({ watch: JSON.parse(event.data) }));
   stream.addEventListener('host-status', (event) =>
     update({ connection: JSON.parse(event.data).connected ? 'connected' : 'closed' })
   );

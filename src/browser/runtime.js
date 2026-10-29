@@ -216,16 +216,53 @@ export async function boot() {
       return request.promise;
     };
     let requireFinishedOperations = (signal) => {
+      if (debugResume) throw new Error('Await app.pause() before finishing the test.');
       if ([...pending.values()].some((request) => request.signal === signal))
         throw new Error('Await app.screenshot() and app.setViewport() before finishing a test or hook.');
     };
+    let debugResume;
+    let executionDeadline;
+    let budgetEnds;
+    let pause = async (message = 'Inspect the application, then continue.') => {
+      if (phase === 'afterEach') throw new Error('app.pause() is available during setup or the test, before cleanup.');
+      controller.signal.throwIfAborted();
+      if (debugResume) throw new Error('Await app.pause() before pausing again.');
+      if (!settings.interactive)
+        throw new Error('app.pause() requires --ui or --manual. Remove it from headless tests.');
+      if (phase === 'afterEach') throw new Error('app.pause() is available during setup or the test, before cleanup.');
+      if (typeof message !== 'string') throw new Error('app.pause() needs a message string.');
+      let remaining = Math.max(1, budgetEnds - performance.now());
+      executionDeadline.removeEventListener('abort', executionExpired);
+      let continuation = Promise.withResolvers();
+      debugResume = continuation.resolve;
+      send('debug-paused', { message, remaining });
+      try {
+        await abortable(continuation.promise, controller.signal);
+      } finally {
+        debugResume = undefined;
+        if (!controller.signal.aborted) armDeadline(remaining);
+      }
+    };
+    window.addEventListener('message', (event) => {
+      let message = event.data;
+      if (
+        event.origin === location.origin &&
+        event.source === parent &&
+        message?.channel === 'dyno' &&
+        message.runId === runId &&
+        message.executionId === executionId &&
+        message.kind === 'debug-continue'
+      )
+        debugResume?.();
+    });
     let contextFor = (signal) => {
       let app = createApp(
         frame,
         () => state,
         signal,
         (path) => navigate(path, signal),
-        (input, prepare, select) => operation(input, prepare, select, signal)
+        (input, prepare, select) => operation(input, prepare, select, signal),
+        pause
       );
       return Object.freeze({
         app,
@@ -248,7 +285,7 @@ export async function boot() {
     let context = contextFor(controller.signal);
     let started = performance.now();
     let remaining = Number(parameters.get('deadline')) - Date.now();
-    let executionDeadline = AbortSignal.timeout(Math.max(1, remaining));
+
     let executionExpired = () => {
       let error = new Error(
         `Test exceeded ${test.timeout ?? settings.timeout} ms. Check blocked scripts, application startup, or unresolved test work.`
@@ -256,7 +293,12 @@ export async function boot() {
       kinds.set(error, 'timeout');
       controller.abort(error);
     };
-    executionDeadline.addEventListener('abort', executionExpired, { once: true });
+    let armDeadline = (remaining) => {
+      budgetEnds = performance.now() + remaining;
+      executionDeadline = AbortSignal.timeout(Math.max(1, Math.ceil(remaining)));
+      executionDeadline.addEventListener('abort', executionExpired, { once: true });
+    };
+    armDeadline(remaining);
     if (remaining <= 0) executionExpired();
     send('runtime-ready');
     try {
