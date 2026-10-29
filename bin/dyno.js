@@ -14,6 +14,7 @@ import { createCleanup } from '../src/cleanup.js';
 import { defaultViewport } from '../src/browser/viewport.js';
 import { testTitle } from '../src/suite.js';
 import { createTestWatcher, createWatchState, watchTransition } from '../src/watch.js';
+import { createReportWriter } from '../src/reports.js';
 import { diagnose } from '../src/doctor.js';
 import { initializeProject } from '../src/init.js';
 
@@ -85,7 +86,8 @@ async function main() {
     host: options.host,
     browser: options.browser,
     browserPath: options['browser-path'],
-    provider: options.provider
+    provider: options.provider,
+    reportDir: options['report-dir']
   });
   if (options.command === 'doctor') {
     let result = await diagnose(config, { manual: options.manual });
@@ -101,6 +103,7 @@ async function main() {
   let browserPlan = options.manual ? null : await resolveSession(config.browser, { headless: !options.ui });
   let controller = new AbortController();
   let interruptCode;
+  let endingError;
   let stop = (name, code) => {
     interruptCode ??= code;
     controller.abort(new Error(`Stopped by ${name}`));
@@ -164,6 +167,14 @@ async function main() {
   };
   let launchKey;
   let reporterAddress;
+  let writer = createReportWriter(config.reportDir, {
+    redact: (value) => (launchKey ? value.replaceAll(launchKey, '[private launch]') : value)
+  });
+  let saveRun = async (run) => {
+    let result = await writer.save(run);
+    if (json) emit({ type: 'report-saved', ...result });
+    else console.log(`Report: ${result.html}`);
+  };
   let persistent = options.ui || options.manual || options.watch;
   let report = (event) => {
     if (event.type === 'capture')
@@ -228,12 +239,18 @@ async function main() {
       fixtures: setup?.fixtures,
       interactive: Boolean(options.ui || options.manual),
       onEvent: report,
+      onRun: saveRun,
+      onError: (error) => {
+        json ? emit({ type: 'error', phase: 'report', message: error.message }) : log(error.message);
+        failed(error);
+      },
       rebuild: persistent ? () => buildSuite(config) : null
     });
-    cleanups.add(() => gateway.close());
+    cleanups.add(() => gateway.close({ error: endingError }));
     if (options.watch) {
       watcher = createTestWatcher({
         root: config.root,
+        ignoredPaths: [config.reportDir, config.artifactsDir],
         testDir: config.testDir,
         onError: (error) => {
           watchEvent({ status: 'error', message: error.message });
@@ -314,9 +331,9 @@ async function main() {
       deadline?.removeEventListener('abort', expired);
     }
   } catch (error) {
+    endingError = error;
     if (controller.signal.aborted) {
       process.exitCode = interruptCode;
-      if (json) emit({ type: 'stopped', signal: interruptCode === 130 ? 'SIGINT' : 'SIGTERM' });
     } else {
       let failure = error instanceof Error ? error : new Error(error?.message ?? String(error));
       if (launchKey) failure.message = failure.message.replaceAll(launchKey, '[private launch]');
@@ -330,6 +347,7 @@ async function main() {
         : log(`Cleanup failed: ${error.message}`);
       process.exitCode = 1;
     }
+    if (interruptCode && json) emit({ type: 'stopped', signal: interruptCode === 130 ? 'SIGINT' : 'SIGTERM' });
     process.removeListener('SIGINT', interrupt);
     process.removeListener('SIGTERM', terminate);
     controller.signal.removeEventListener('abort', aborted);

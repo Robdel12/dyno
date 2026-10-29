@@ -103,10 +103,27 @@ test(
   { timeout: 90000 },
   async (t) => {
     let fixture = await project(t);
-    await exec('npm', ['install', '--offline', '--ignore-scripts', '--no-audit', '--no-fund', repository], {
-      cwd: fixture.directory,
-      timeout: 15000
-    });
+    let { stdout: packed } = await exec(
+      'npm',
+      ['pack', '--json', '--ignore-scripts', '--pack-destination', fixture.directory],
+      { cwd: repository, timeout: 10000 }
+    );
+    let [pack] = JSON.parse(packed);
+    assert.ok(pack.files.some((file) => file.path === 'types/index.d.ts'));
+    assert.ok(pack.files.some((file) => file.path === 'types/config.d.ts'));
+    await exec(
+      'npm',
+      [
+        'install',
+        '--ignore-scripts',
+        '--no-audit',
+        '--no-fund',
+        '--cache',
+        join(fixture.directory, '.npm-cache'),
+        join(fixture.directory, pack.filename)
+      ],
+      { cwd: fixture.directory, timeout: 60000 }
+    );
     await writeFile(
       join(fixture.directory, 'consumer.ts'),
       `
@@ -152,6 +169,29 @@ test(
     await exec(
       process.execPath,
       [join(repository, 'node_modules/typescript/bin/tsc'), '--project', join(fixture.directory, 'tsconfig.json')],
+      { cwd: fixture.directory, timeout: 15000 }
+    );
+    await writeFile(
+      join(fixture.directory, 'config-only.ts'),
+      `import {defineConfig} from 'dyno/config'; export default defineConfig({webServer:{url:'http://localhost:3000'},reportDir:'reports'});`
+    );
+    await writeFile(
+      join(fixture.directory, 'config-check.json'),
+      JSON.stringify({
+        compilerOptions: {
+          target: 'ES2022',
+          module: 'NodeNext',
+          moduleResolution: 'NodeNext',
+          strict: true,
+          noEmit: true,
+          skipLibCheck: false
+        },
+        files: ['config-only.ts']
+      })
+    );
+    await exec(
+      process.execPath,
+      [join(repository, 'node_modules/typescript/bin/tsc'), '--project', join(fixture.directory, 'config-check.json')],
       { cwd: fixture.directory, timeout: 15000 }
     );
   }

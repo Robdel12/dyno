@@ -1,7 +1,7 @@
 import { watch } from 'node:fs';
 import { dirname, relative, isAbsolute, resolve, sep } from 'node:path';
 
-export function createTestWatcher({ root, testDir, onChange, onError }) {
+export function createTestWatcher({ root, testDir, onChange, onError, ignoredPaths = [] }) {
   let handles = new Map();
   let closed = false;
   let dependencies = new Set();
@@ -9,13 +9,15 @@ export function createTestWatcher({ root, testDir, onChange, onError }) {
     let name = relative(parent, path);
     return name === '' || (!name.startsWith('..' + sep) && name !== '..' && !isAbsolute(name));
   };
-  let ignored = (path) => path.split(sep).some((part) => ['node_modules', '.git', '.dyno'].includes(part));
+  let ignored = (path) =>
+    ignoredPaths.some((directory) => !inside(directory, testDir) && inside(directory, path)) ||
+    path.split(sep).some((part) => ['node_modules', '.git', '.dyno'].includes(part));
   let add = (directory, recursive) => {
     if (handles.has(directory)) return;
     let handle = watch(directory, { recursive }, (event, name) => {
       let file = name ? resolve(directory, String(name)) : directory;
       if (ignored(file)) return;
-      if (inside(testDir, file) || dependencies.has(file) || !name) onChange(file);
+      if ((inside(testDir, file) && /\.[jt]sx?$/.test(file)) || dependencies.has(file) || !name) onChange(file);
     });
     handle.on('error', onError);
     handles.set(directory, handle);

@@ -20,6 +20,7 @@ dyno install --browser chromium|firefox|webkit
   --suite name       Suite path, including descendants (repeatable)
   --host address     Gateway bind address (127.0.0.1)
   --port number      Gateway port (7357; 0 chooses an available port)
+  --report-dir path  Saved JSON, JUnit, and HTML reports (.dyno/reports)
   --json             Newline-delimited JSON on stdout; logs go to stderr
   --version, -v      Print the installed version
   --help, -h         Show this help
@@ -35,6 +36,7 @@ export function parseCLI(args) {
       browser: { type: 'string' },
       'browser-path': { type: 'string' },
       provider: { type: 'string' },
+      'report-dir': { type: 'string' },
       watch: { type: 'boolean' },
       ui: { type: 'boolean' },
       manual: { type: 'boolean' },
@@ -54,7 +56,7 @@ export function parseCLI(args) {
   if (positionals.length > 1 || !['run', 'init', 'browsers', 'install', 'doctor'].includes(command))
     throw new Error(`Unknown command: ${positionals.join(' ')}. Run dyno --help.`);
   if (values.ui && values.manual) throw new Error('Choose --ui or --manual.');
-  for (let name of ['config', 'browser-path', 'host', 'test'])
+  for (let name of ['config', 'browser-path', 'host', 'test', 'report-dir'])
     if (values[name] !== undefined && !values[name].trim()) throw new Error(`--${name} requires a non-empty value.`);
   for (let key of ['id', 'file', 'suite'])
     if (values[key]?.some((value) => !value.trim())) throw new Error(`--${key} requires a non-empty value.`);

@@ -84,7 +84,15 @@ export function acceptEvent(run, input) {
     )
       throw new Error('Invalid run start.');
     let event = snapshotEvent(input);
-    return { run: Object.freeze({ ...run, status: 'running', tests: event.tests }), event };
+    return {
+      run: Object.freeze({
+        ...run,
+        status: 'running',
+        tests: event.tests,
+        ...(typeof input.userAgent === 'string' ? { userAgent: input.userAgent } : {})
+      }),
+      event
+    };
   }
   if (input.type === 'test') {
     if (
