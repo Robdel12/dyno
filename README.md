@@ -2,7 +2,7 @@
 
 Browser tests that run in the browser. Dyno starts your app, serves a test URL, and reports the results. [Interactor.js](https://github.com/wwilsman/interactor.js) handles DOM interaction and assertions in the same browser as your app.
 
-Open that URL in another browser or on another device to run the same tests. No driver or extension is required. Optional providers add screenshots and browser window control.
+Open the URL to run tests without a driver or extension. Dyno keeps the app in the main window and runs tests in a companion window. Optional providers add screenshots and window sizing. Other devices remain a goal; popup and background-tab behavior still need real-device checks.
 
 Dyno is early and isn't published to npm yet. You'll need Node 24+ and an installed browser. Chrome is the default.
 
@@ -15,13 +15,14 @@ npm ci
 node bin/dyno.js --config examples/demo/dyno.config.js --ui
 ```
 
-The app fills the browser. Press **Ctrl+Shift+D** to open the reporter after the current test finishes, or use the printed reporter URL in a separate tab.
+The app fills the original browser window. If the browser blocks the companion window, click **Start**. Keep both windows open. Press **Ctrl+Shift+D** to inspect results over the app, or open the printed reporter URL separately.
 
 ## Use it in an app
 
 ```sh
 npm install --save-dev github:Robdel12/dyno
 npx dyno init
+npx dyno doctor
 ```
 
 Set your app's command and URL in `dyno.config.js`, then write a test:
@@ -37,7 +38,7 @@ test('saves a contact', async ({ app, I }) => {
 });
 ```
 
-Run `npx dyno` for a headless run, `npx dyno --ui` to inspect the app, or `npx dyno --manual` to open the URL yourself. Tests and the app get fresh JavaScript contexts for each test. Storage and database cleanup stay explicit.
+Run `npx dyno` for a headless run, `npx dyno --ui` to inspect the app, or `npx dyno --manual` to open the URL yourself. Each test gets a fresh runtime and app document. Storage and database cleanup stay explicit. Use `--watch` to rerun test and helper edits. Each run also saves an HTML report you can open after Dyno stops.
 
 ## Screenshots
 
@@ -46,7 +47,7 @@ npm install --save-dev playwright-core
 npx dyno --provider playwright --browser chrome
 ```
 
-Then `await app.screenshot('dashboard')` saves the app viewport. `await app.setViewport({ width: 390, height: 844 })` changes its layout, with or without a driver. [Browser setup](docs/browsers.md) covers Playwright builds and WebDriver for installed browsers.
+Then `await app.screenshot('dashboard', { fullPage: true })` saves the full app page. Managed providers also support `await app.setViewport({ width: 390, height: 844 })`. Native and manual runs use the actual window size. [Browser setup](docs/browsers.md) covers providers and their limits.
 
 ## Work on Dyno
 

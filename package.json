@@ -7,8 +7,14 @@
     "dyno": "./bin/dyno.js"
   },
   "exports": {
-    ".": "./src/browser/index.js",
-    "./config": "./src/config.js"
+    ".": {
+      "types": "./types/index.d.ts",
+      "default": "./src/browser/index.js"
+    },
+    "./config": {
+      "types": "./types/config.d.ts",
+      "default": "./src/config.js"
+    }
   },
   "files": [
     "bin",
@@ -20,7 +26,8 @@
     "docs/research/screenshots.md",
     "docs/architecture.md",
     "docs/design.md",
-    "docs/ci.md"
+    "docs/ci.md",
+    "types"
   ],
   "scripts": {
     "test": "node scripts/test.js",
@@ -44,7 +51,8 @@
   "private": true,
   "devDependencies": {
     "playwright-core": "1.64.1",
-    "selenium-webdriver": "4.51.0"
+    "selenium-webdriver": "4.51.0",
+    "typescript": "5.9.3"
   },
   "peerDependencies": {
     "playwright-core": "^1.64.1",
@@ -57,5 +65,6 @@
     "selenium-webdriver": {
       "optional": true
     }
-  }
+  },
+  "types": "./types/index.d.ts"
 }

@@ -10,12 +10,12 @@ export async function signalProcessGroup(group, signal) {
   catch (error) {
     if (error.code === 'ESRCH') return;
     if (process.platform === 'darwin' && error.code === 'EPERM') {
-      // macOS excludes zombies from group signalling and can report EPERM even
-      // after every member exited. Verify that before accepting cleanup.
+      // macOS can report EPERM for groups whose members are zombies or already
+      // exiting (ps's E flag). Verify every member before accepting cleanup.
       let { stdout } = await execute('ps', ['-axo', 'pid=,pgid=,stat='], { timeout: 3000 });
       let members = stdout.trim().split('\n').map(line => line.trim().split(/\s+/)).filter(([, pgid]) => Number(pgid) === group);
       if (members.every(([pid, , state]) => {
-        if (state?.startsWith('Z')) return true;
+        if (state?.startsWith('Z') || state?.includes('E')) return true;
         // A process may disappear while ps collects its snapshot.
         try { process.kill(Number(pid), 0); }
         catch (error) { if (error.code === 'ESRCH') return true; }
@@ -54,9 +54,10 @@ export function startProcess(command, { cwd, env, output = () => {}, shell = tru
     if (!child.pid) return;
     let send = signal => signalProcessGroup(child.pid, signal);
     if (process.platform === 'win32') {
-      if (child.exitCode !== null || child.signalCode !== null) return;
-      let killer = spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' });
-      await once(killer, 'close');
+      if (child.exitCode === null && child.signalCode === null) {
+        let killer = spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' });
+        await once(killer, 'close');
+      }
     } else {
       await send('SIGTERM');
       if (child.exitCode === null && child.signalCode === null) {
@@ -66,6 +67,10 @@ export function startProcess(command, { cwd, env, output = () => {}, shell = tru
       // Stop descendants even when the command was a short-lived shell.
       await send('SIGKILL');
     }
+    // A detached updater can inherit these pipes outside our process group.
+    // Once the owned command is stopped, its helpers cannot hold cleanup open.
+    child.stdout.destroy();
+    child.stderr.destroy();
     await closed;
   })();
   let abort = () => { void stop().catch(error => { failed = error; events.emit('change'); }); };
@@ -79,16 +84,18 @@ async function reachable(url, signal) {
   try {
     let response = await fetch(url, { method: 'HEAD', redirect: 'manual', signal: AbortSignal.any([AbortSignal.timeout(1000), ...(signal ? [signal] : [])]) });
     await response.body?.cancel();
-    return true;
+    return Object.freeze(Object.fromEntries(response.headers));
   } catch { return false; }
 }
 
-export async function startWebServer(config, { output = () => {}, signal } = {}) {
+export async function startWebServer(config, { output = () => {}, onReady = () => {}, signal } = {}) {
   signal?.throwIfAborted();
-  if (await reachable(config.url, signal)) {
+  let existing = await reachable(config.url, signal);
+  if (existing) {
     if (!config.reuseExistingServer) throw new Error(`App server already running at ${config.url}. Set webServer.reuseExistingServer to true to use it.`);
     signal?.throwIfAborted();
     output(`Reusing app server ${config.url}\n`);
+    onReady(existing);
     return { stop: async () => {} };
   }
   signal?.throwIfAborted();
@@ -119,7 +126,8 @@ export async function startWebServer(config, { output = () => {}, signal } = {})
         changedDuringCheck = false;
         try {
           let ready = !config.ready || (config.ready instanceof RegExp ? new RegExp(config.ready.source, config.ready.flags).test(owned.logs) : owned.logs.includes(config.ready));
-          if (ready && await reachable(config.url, deadline)) finish();
+          let headers = ready && await reachable(config.url, deadline);
+          if (headers && !done) { onReady(headers); finish(); }
         } catch (error) { finish(error); }
         finally {
           checking = false;

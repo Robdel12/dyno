@@ -9,21 +9,26 @@
   </div>
 </header>
 <main id="main" class="reporter" tabindex="-1">
-  <div id="pause-banner" class="pause-banner" hidden><p>Run paused. <a id="inspect-paused" href="#/">Inspect the app</a></p><button id="continue">Continue run <span aria-hidden="true">→</span></button></div>
+  <div class="connection"><p id="connection-state" role="status">Connecting to test browser…</p><p id="capabilities"></p></div>
+  <p id="watch-status" class="watch-status" role="status" hidden></p>
+  <div id="command-notice" class="command-notice" hidden><p id="command-status" role="status"></p><button id="retry-command" class="quiet" hidden>Try again</button></div>
+  <div id="pause-banner" class="pause-banner" hidden><p><span id="pause-message">Run paused.</span> <a id="inspect-paused" href="#/">Inspect the app</a></p><button id="continue">Continue run <span aria-hidden="true">→</span></button></div>
   <section id="overview" aria-label="Test run">
     <header class="run-overview"><div class="summary-title"><span id="run-indicator" class="run-indicator" aria-hidden="true"></span><h1 id="status">Connecting to your app…</h1></div><p id="run-meta">Preparing the browser test suite</p><div class="summary-counts"><span><strong id="passed-count">0</strong> passed</span><span id="failed-summary"><strong id="failed-count">0</strong> failed</span><span><strong id="pending-count">0</strong> pending</span><span id="skipped-summary" hidden><strong id="skipped-count">0</strong> skipped</span><span id="run-duration"></span></div><progress id="progress" aria-label="Test run progress" max="1" value="0"></progress></header>
-    <div class="list-toolbar"><label class="search"><span class="sr-only">Filter tests</span><span aria-hidden="true">⌕</span><input id="test-search" type="search" placeholder="Filter tests…" autocomplete="off"><kbd>/</kbd></label><div class="filters" aria-label="Test status filters"><button data-filter="all" aria-pressed="true">All</button><button data-filter="failed" aria-pressed="false">Failed</button><button data-filter="passed" aria-pressed="false">Passed</button></div><button id="run-failed" class="text-button" hidden>Run failed</button></div>
+    <div class="list-toolbar"><label class="search"><span class="sr-only">Filter tests</span><span aria-hidden="true">⌕</span><input id="test-search" type="search" placeholder="Filter tests…" autocomplete="off"><kbd>/</kbd></label><div class="filters" aria-label="Test status filters"><button data-filter="all" aria-pressed="true">All</button><button data-filter="failed" aria-pressed="false">Failed</button><button data-filter="passed" aria-pressed="false">Passed</button><button data-filter="skipped" aria-pressed="false">Skipped</button></div><button id="run-failed" class="text-button" hidden>Run failed</button></div>
     <div class="list-heading"><span>Tests <span id="test-count">0</span></span><span>Duration</span></div>
-    <ol id="results" aria-label="Test results"></ol><p id="empty-results" class="empty-list" hidden>No tests match this filter.</p>
+    <div id="results" aria-label="Test results"></div><p id="empty-results" class="empty-list" hidden>No tests match this filter.</p>
+    <details id="slow-tests" class="run-info" hidden><summary>Slowest tests</summary><ol id="slow-test-list" class="slow-test-list"></ol></details>
     <details class="run-info"><summary>Run info</summary><p id="browser-name"></p><p id="app-host"></p><ul id="files"></ul><a id="standalone-reporter" target="_blank" rel="noopener">Open reporter in a new tab</a></details>
   </section>
-  <section id="test-heading" hidden><a class="back-link" href="#/">All tests</a><div class="test-heading"><h1 id="selected-name"></h1><span id="selected-status" class="test-status"></span></div><nav class="test-tabs" aria-label="Test views"><a id="output-tab" href="#/">Output</a><a id="app-tab" href="#/">Application</a><button id="copy-output" class="text-button" disabled>Copy output</button></nav></section>
+  <section id="test-heading" hidden><a class="back-link" href="#/">All tests</a><p id="selected-context" class="selected-context"></p><div class="test-heading"><h1 id="selected-name"></h1><span id="selected-status" class="test-status"></span></div><nav class="test-tabs" aria-label="Test views"><a id="output-tab" href="#/">Output</a><a id="timings-tab" href="#/">Timings</a><a id="app-tab" href="#/">Application</a><button id="copy-output" class="text-button" disabled>Copy output</button></nav></section>
   <section id="output-panel" class="output-panel" aria-label="Test output" hidden><div id="output" class="output-content" tabindex="0" aria-label="Selected test output"></div><p id="copy-status" class="sr-only" role="status"></p></section>
+  <section id="timing-panel" class="output-panel" aria-label="Test timings" hidden><div id="timings" class="output-content"></div></section>
   <section id="app-panel" class="app-panel" aria-label="Rendered application" data-active="false" aria-hidden="true">
     <header class="app-toolbar"><span id="app-address">Your app will appear here</span><label>Viewport <select id="viewport"><option value="1280x800">1280 × 800</option><option value="768x1024">768 × 1024</option><option value="390x844">390 × 844</option></select></label></header>
     <div class="app-stage"><div id="preview-empty" class="preview-empty"><h2>The application runs in its own frame</h2><p>Your app keeps its viewport while you inspect results.</p><button id="show-app" class="primary">Show application</button></div></div>
     <p id="preview-caption" class="preview-caption"></p>
   </section>
   <section id="not-found" hidden><a class="back-link" href="#/">All tests</a><h1>Test not found</h1><p>This test isn’t part of the current run.</p></section>
-  <p id="connection-state" class="sr-only" role="status"></p>
+
 </main>

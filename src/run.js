@@ -1,8 +1,11 @@
+import { validFailure, snapshotFailure } from './failures.js';
 import { testId, testDescriptor } from './suite.js';
+import { validTimings, snapshotTimings, performanceSummary } from './browser/timings.js';
 
 function snapshotEvent(event) {
   return Object.freeze({
     ...event,
+    ...(event.timings ? { timings: snapshotTimings(event.timings) } : {}),
     ...(event.attachments
       ? { attachments: Object.freeze(event.attachments.map((attachment) => Object.freeze({ ...attachment }))) }
       : {}),
@@ -16,13 +19,9 @@ function snapshotEvent(event) {
         }
       : {}),
     ...(event.output ? { output: Object.freeze(event.output.map((entry) => Object.freeze({ ...entry }))) } : {}),
-    ...(event.error
-      ? {
-          error: Object.freeze({
-            ...event.error,
-            ...(event.error.source ? { source: Object.freeze({ ...event.error.source }) } : {})
-          })
-        }
+    ...(event.error ? { error: snapshotFailure(event.error, event.type === 'test' ? 'test' : 'runtime') } : {}),
+    ...(event.additionalErrors
+      ? { additionalErrors: Object.freeze(event.additionalErrors.map((error) => snapshotFailure(error, 'afterEach'))) }
       : {})
   });
 }
@@ -39,13 +38,16 @@ export function acceptEvent(run, input) {
     (typeof input.duration !== 'number' || !Number.isFinite(input.duration) || input.duration < 0)
   )
     throw new Error('Event duration must be a non-negative number.');
+  if (input.timings !== undefined && (!validTimings(input.timings) || input.type !== 'test' ||
+    input.duration === undefined || Math.abs(input.duration - input.timings.duration) > 0.01))
+    throw new Error('Invalid test timings.');
+  if (input.error !== undefined && !validFailure(input.error))
+    throw new Error('An event error requires a message and a valid phase/stack.');
   if (
-    input.error !== undefined &&
-    (!input.error ||
-      typeof input.error.message !== 'string' ||
-      (input.error.stack !== undefined && typeof input.error.stack !== 'string'))
+    input.additionalErrors !== undefined &&
+    (!Array.isArray(input.additionalErrors) || input.additionalErrors.some((error) => !validFailure(error)))
   )
-    throw new Error('An event error requires a message and an optional stack.');
+    throw new Error('Invalid additional failures.');
 
   if (
     input.output !== undefined &&
@@ -87,7 +89,15 @@ export function acceptEvent(run, input) {
     )
       throw new Error('Invalid run start.');
     let event = snapshotEvent(input);
-    return { run: Object.freeze({ ...run, status: 'running', tests: event.tests }), event };
+    return {
+      run: Object.freeze({
+        ...run,
+        status: 'running',
+        tests: event.tests,
+        ...(typeof input.userAgent === 'string' ? { userAgent: input.userAgent } : {})
+      }),
+      event
+    };
   }
   if (input.type === 'test') {
     if (
@@ -99,6 +109,8 @@ export function acceptEvent(run, input) {
       !['passed', 'failed', 'skipped'].includes(input.status)
     )
       throw new Error('Unexpected or duplicate test result.');
+    if (input.status !== 'failed' && (input.error || input.additionalErrors?.length))
+      throw new Error('Only failed tests can include failures.');
     if (input.status === 'failed' && !input.error) throw new Error('A failed test requires an error.');
     if (input.status === 'skipped' && (typeof input.skipReason !== 'string' || !input.skipReason.trim()))
       throw new Error('A skipped test requires a reason.');
@@ -110,7 +122,7 @@ export function acceptEvent(run, input) {
       throw new Error('Run completed before all tests reported.');
     let failed = run.outcomes.filter((outcome) => outcome.status === 'failed').length;
     let skipped = run.outcomes.filter((outcome) => outcome.status === 'skipped').length;
-    let event = snapshotEvent({ ...input, failed, skipped, passed: run.outcomes.length - failed - skipped });
+    let event = snapshotEvent({ ...input, failed, skipped, passed: run.outcomes.length - failed - skipped, performance: performanceSummary(run.outcomes, input.duration) });
     return { run: Object.freeze({ ...run, status: 'completed', summary: event }), event };
   }
   if (input.type === 'fatal') {

@@ -18,7 +18,7 @@ Interactor.defineAction('trigger', function* trigger(eventName, properties) {
 Interactor.defineAction('click', function* click(selector) {
   yield this.find(selector);
   yield this.assert.not.disabled();
-  let option = yield ({ $ }) => $.localName === 'option' ? $ : $.closest('option');
+  let option = yield ({ $ }) => ($.localName === 'option' ? $ : $.closest('option'));
   let select = option?.closest('select');
   if (select) {
     yield this.assert(!select.disabled, '#{this} select is disabled');
@@ -39,8 +39,58 @@ Interactor.defineAction('click', function* click(selector) {
   };
 });
 
-Interactor.defineAssertion('focused', () => ({ $ }) => $ === $.ownerDocument.activeElement,
-  '#{this} is not focused', '#{this} is focused');
+Interactor.defineAssertion(
+  'focused',
+  () =>
+    ({ $ }) =>
+      $ === $.ownerDocument.activeElement,
+  '#{this} is not focused',
+  '#{this} is focused',
+);
+
+// DOM focus works in a background app tab too. Browser window activation is
+// outside local interaction; focus() and the focused assertion check the element.
+Interactor.defineAssertion(
+  'focusable',
+  () =>
+    ({ $ }) =>
+      !$.disabled && !$.closest('[inert]') && ($.tabIndex >= 0 || $.isContentEditable),
+  '#{this} is not focusable',
+  '#{this} is focusable',
+);
+
+Interactor.defineAssertion(
+  'visible',
+  () =>
+    ({ $ }) => {
+      let document = $.ownerDocument;
+      let window = document.defaultView;
+      let style = window.getComputedStyle($);
+      if (style.display === 'none' || style.visibility !== 'visible' || Number(style.opacity) < 0.1)
+        return false;
+      // Wrapped inline elements have several painted rectangles. Their union can
+      // contain whitespace, so check the visible part of each fragment instead.
+      return [...$.getClientRects()].some((rect) => {
+        let left = Math.max(0, rect.left),
+          top = Math.max(0, rect.top);
+        let right = Math.min(window.innerWidth, rect.right),
+          bottom = Math.min(window.innerHeight, rect.bottom);
+        if (right <= left || bottom <= top) return false;
+        let x = (left + right) / 2,
+          y = (top + bottom) / 2;
+        let inset = Math.min(1, (right - left) / 2, (bottom - top) / 2);
+        return [
+          [x, y],
+          [x, top + inset],
+          [x, bottom - inset],
+          [left + inset, y],
+          [right - inset, y],
+        ].some(([x, y]) => $.contains(document.elementFromPoint(x, y)));
+      });
+    },
+  '#{this} is not visible',
+  '#{this} is visible',
+);
 
 export function createInteractor(app, signal, timeout) {
   return new Interactor({ root: () => app.document.body, signal, assert: { timeout } });

@@ -11,7 +11,7 @@ The CLI starts the app, bundles tests, serves the runner, and reports results. T
 - Give the app its full, unscaled viewport. Open the reporter for inspection without moving the app.
 - Keep functions small, data immutable, and side effects at clear boundaries.
 - Test real user workflows. Wait for observable state and explain failures plainly.
-- Leave storage and backend cleanup to the project. Fresh frames don't reset a database or browser session.
+- Leave storage and backend cleanup to the project. Fresh documents don't reset a database or browser session.
 - Say when a capability is unavailable. Required screenshots fail; explicitly optional screenshots can skip.
 
 ## Keep the scope small

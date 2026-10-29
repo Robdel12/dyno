@@ -4,15 +4,14 @@ import { project, reportPayload } from '../helpers/project.js';
 
 let browser = process.env.DYNO_TEST_BROWSER ?? 'chrome';
 let visibleConfig = {
-  viewport: { width: 1280, height: 800 },
   browser: { name: browser, args: [browser === 'firefox' ? '--headless' : '--headless=new'] }
 };
 let observerFrame = `
-let observer = document.createElement('iframe');
-Object.assign(observer.style,{position:'fixed',inset:'0',width:'100%',height:'100%',border:'0'});
+let observer = app.document.createElement('iframe');
+Object.assign(observer.style,{position:'fixed',inset:'0',width:'100%',height:'100%',border:'0',zIndex:'2147483647'});
 let loaded = new Promise(resolve=>observer.addEventListener('load',resolve,{once:true}));
 observer.src='/__dyno__/reporter?run='+new URLSearchParams(location.search).get('run');
-document.body.append(observer); await loaded;
+app.document.body.append(observer); await loaded;
 let UI = new Interactor({root:()=>observer.contentDocument.body});
 `;
 
@@ -48,13 +47,14 @@ test('reports an actual assertion failure', async ({ app, I }) => {
   await I.find('$([role=status])').text('Contact archived');
 });
 test('keeps the current app available for inspection', async ({ app, I }) => {
-  await app.setViewport({ width: 900, height: 650 });
   await app.goto('/');
   await I.type('Route check').into('$(input[name=name])');
   let appDocument = app.document;
-  let host = window.top.document;
-  let reporter = host.querySelector('#reporter');
-  await I.assert(() => !!reporter.contentDocument?.querySelector('#main'));
+  let appWindow = app.window;
+  let originalViewport = { width: appWindow.innerWidth, height: appWindow.innerHeight };
+  await I.assert(() => appWindow.top === appWindow && appWindow.frameElement === null, 'The app must be a top-level document');
+  let reporter;
+  await I.assert(() => !!(reporter = appDocument.querySelector('#__dynoReporter'))?.contentDocument?.querySelector('#main'));
   let inspect = new window.top.MutationObserver(async () => {
     if (reporter.hidden) return;
     inspect.disconnect();
@@ -70,7 +70,7 @@ test('keeps the current app available for inspection', async ({ app, I }) => {
         'Expected the reporter overview'
       );
       await UI.click('$(a[aria-label="Passed: saves a contact with console output"])');
-      await UI.assert(() => location.hash === '#/tests/0/output');
+      await UI.assert(() => location.hash === '#/tests/' + encodeURIComponent(JSON.stringify(['tests/browser/workflow.test.js','saves a contact with console output'])) + '/output');
       await UI.assert(
         () =>
           document.querySelector('#output').textContent.includes('Starting save workflow') &&
@@ -91,7 +91,7 @@ test('keeps the current app available for inspection', async ({ app, I }) => {
       reporter.contentWindow.history.back();
       await UI.assert(
         () =>
-          location.hash === '#/tests/1/output' && !document.querySelector('#output-panel').hidden,
+          location.hash === '#/tests/' + encodeURIComponent(JSON.stringify(['tests/browser/workflow.test.js','reports an actual assertion failure'])) + '/output' && !document.querySelector('#output-panel').hidden,
         'Expected the reporter overview'
       );
       reporter.contentWindow.history.forward();
@@ -106,7 +106,7 @@ test('keeps the current app available for inspection', async ({ app, I }) => {
       await UI.type('actual assertion').into('$(#test-search)');
       await UI.assert(
         () =>
-          [...document.querySelectorAll('#results li')].filter((row) => !row.hidden).length === 1
+          [...document.querySelectorAll('#results [data-test-id]')].filter((row) => !row.hidden).length === 1
       );
       await UI.click('$(a[aria-label="Failed: reports an actual assertion failure"])');
       await UI.click('All tests');
@@ -116,32 +116,30 @@ test('keeps the current app available for inspection', async ({ app, I }) => {
       await UI.click('"Failed"$(button[data-filter])');
       await UI.assert(
         () =>
-          [...document.querySelectorAll('#results li')].filter((row) => !row.hidden).length === 1
+          [...document.querySelectorAll('#results [data-test-id]')].filter((row) => !row.hidden).length === 1
       );
       await UI.click('"All"$(button[data-filter])');
       await UI.click('$(a[aria-label="Passed: keeps the current app available for inspection"])');
       await UI.click('Application');
-      await UI.find('$(#viewport)').value('900x650');
+      await UI.find('$(#viewport)').value(originalViewport.width + 'x' + originalViewport.height);
       await UI.click('$(#show-app)');
       await UI.assert(() => reporter.hidden);
       await UI.assert(
         () =>
-          appDocument ===
-            host.querySelector('#execution iframe').contentDocument.querySelector('iframe')
-              .contentDocument && appDocument.querySelector('input').value === 'Route check'
+          appWindow.document === appDocument && appDocument.querySelector('input').value === 'Route check'
       );
       await UI.assert(
         () =>
-          appDocument.defaultView.innerWidth === 900 && appDocument.defaultView.innerHeight === 650,
+          appDocument.defaultView.innerWidth === originalViewport.width && appDocument.defaultView.innerHeight === originalViewport.height,
         'Reporter navigation changed the app viewport'
       );
-      let hostUI = new Interactor({ root: () => host.body });
-      await hostUI.click('Show test results');
+      let appUI = new Interactor({ root: () => appDocument.documentElement });
+      await appUI.click('Show test results');
       await UI.assert(() => !reporter.hidden);
       document.querySelector('#main').focus();
       await UI.find('$(#main)').then.press('Escape');
       await UI.assert(() => reporter.hidden);
-      await hostUI.click('Show test results');
+      await appUI.click('Show test results');
       await UI.assert(() => !reporter.hidden);
       location.hash = '/tests/999/output';
       await UI.find('Test not found').visible();
@@ -232,7 +230,7 @@ test('stops while the app is open', async ({ app }) => {
 });
 
 test(
-  'pause on failure preserves the failed app and Continue starts a fresh viewport',
+  'pause on failure preserves the top-level app and unsupported resizing stays honest before Continue',
   { timeout: 90000 },
   async (t) => {
     let fixture = await project(t, {
@@ -246,9 +244,10 @@ test('pauses with the failed app', async ({ app, I }) => {
   await UI.click('$(#pause-on-failure)');
   await UI.assert(() => observer.contentDocument.querySelector('#pause-on-failure').checked);
   observer.remove();
-  let host = window.top.document;
-  let reporter = host.querySelector('#reporter');
   let appDocument = app.document;
+  let originalViewport = { width: app.window.innerWidth, height: app.window.innerHeight };
+  let reporter;
+  await I.assert(() => !!(reporter = appDocument.querySelector('#__dynoReporter'))?.contentDocument?.querySelector('#main'));
   let inspect = new window.top.MutationObserver(async () => {
     if (reporter.hidden) return;
     inspect.disconnect();
@@ -261,19 +260,14 @@ test('pauses with the failed app', async ({ app, I }) => {
         method: 'POST',
         body: 'inspected: ' + appDocument.querySelector('[role=status]').textContent
       });
-      appDocument.defaultView.addEventListener(
-        'resize',
-        () =>
-          appDocument.defaultView.localStorage.setItem(
-            'inspected-width',
-            String(appDocument.defaultView.innerWidth)
-          ),
-        { once: true }
-      );
+      appDocument.defaultView.localStorage.setItem('inspected-viewport', JSON.stringify(originalViewport));
       let viewport = reporter.contentDocument.querySelector('#viewport');
-      viewport.value = '390x844';
+      viewport.value = originalViewport.width === 390 && originalViewport.height === 844 ? '1280x800' : '390x844';
       viewport.dispatchEvent(new reporter.contentWindow.Event('change', { bubbles: true }));
-      reporter.contentDocument.querySelector('#continue').click();
+      await UI.find('$(#command-status)').text('This browser cannot resize the application viewport. Resize its window manually or select a managed provider.');
+      await UI.assert(() => appDocument.defaultView.innerWidth === originalViewport.width && appDocument.defaultView.innerHeight === originalViewport.height, 'An unsupported resize changed the app');
+      await UI.assert(() => !reporter.contentDocument.querySelector('#continue').disabled, 'Resize failure should leave Continue usable');
+      await UI.click('$(#continue)');
     } catch (error) {
       await fetch('/api/lifecycle', { method: 'POST', body: 'inspection error: ' + error.message });
     }
@@ -288,10 +282,10 @@ test('continues with a fresh app', async ({ app, I }) => {
   let inspections = await (await app.request('/api/lifecycle')).json();
   await I.assert(() => inspections.join(',') === 'inspected: Saved Robert · 1');
   await I.assert(
-    () => app.window.localStorage.getItem('inspected-width') === '390',
-    'Inspection resize did not finish before Continue'
+    () => { let size = JSON.parse(app.window.localStorage.getItem('inspected-viewport')); return app.window.innerWidth === size.width && app.window.innerHeight === size.height; },
+    'Inspection changed the actual app viewport'
   );
-  await I.assert(() => app.window.innerWidth === 1280 && app.window.innerHeight === 800);
+  await I.assert(() => app.window.top === app.window && app.window.frameElement === null);
   await I.find('$(input[name=name])').value('');
   await I.find('$([role=status])').text('Ready');
 });
@@ -303,5 +297,61 @@ test('continues with a fresh app', async ({ app, I }) => {
     let runs = await (await fetch(url + 'results')).json();
     assert.equal(result.passed, 1, JSON.stringify(runs));
     assert.equal(result.failed, 1);
+  }
+);
+
+test(
+  'groups suites, preserves route filters, and reruns the chosen suite from the real reporter',
+  { timeout: 90000 },
+  async (t) => {
+    let fixture = await project(t, {
+      config: visibleConfig,
+      source: `
+describe('Contacts',()=>{
+  test('opens', async ({app,I})=>{await app.goto('/');await I.find('Fixture app').visible();});
+  test.skip('later');
+});
+test('another workflow', async ({app,I})=>{
+  await app.goto('/');
+  let appDocument=app.document;
+  let reporter;
+  await I.assert(()=>!!(reporter=appDocument.querySelector('#__dynoReporter'))?.contentDocument?.querySelector('#main'));
+  let inspect=new window.top.MutationObserver(async()=>{
+    if(reporter.hidden)return;inspect.disconnect();
+    try{
+      let document=reporter.contentDocument;
+      let UI=new Interactor({root:()=>document.body});
+      let location=reporter.contentWindow.location;
+      await UI.find('$(.group-heading h2)').text('tests/browser/workflow.test.js');
+      await UI.find('$(.suite-heading h3)').text('Contacts');
+      await UI.find('$(#connection-state)').text('Connected to test browser');
+      await UI.find('$(#capabilities)').text('Screenshots unavailable · URL-only browser');
+      await UI.click('"Skipped"$(button[data-filter])');
+      await UI.click('$(a[aria-label="Skipped: later"])');
+      await UI.assert(()=>location.hash.includes('status=skipped') && location.hash.includes(encodeURIComponent(JSON.stringify(['tests/browser/workflow.test.js','Contacts','later']))));
+      await UI.find('Skipped: Skipped').visible();
+      await UI.click('All tests');
+      await UI.assert(()=>document.querySelector('button[data-filter=skipped]').getAttribute('aria-pressed')==='true');
+      await UI.click('"All"$(button[data-filter])');
+      await fetch('/api/inspection',{method:'POST',body:JSON.stringify({ok:true})});
+      await UI.click('$(button[aria-label="Run suite Contacts in tests/browser/workflow.test.js"])');
+    }catch(error){await fetch('/api/inspection',{method:'POST',body:JSON.stringify({error:error.message})});}
+  });
+  inspect.observe(reporter,{attributes:true,attributeFilter:['hidden']});
+});`
+    });
+    let session = fixture.run(['--ui']);
+    let { url } = await session.waitForEvent('ready');
+    let first = await session.waitForEvent('complete');
+    let inspection = await (await fetch(new URL('/api/inspection', url), { signal: t.signal })).json();
+    assert.deepEqual(inspection, { ok: true });
+    let second = await session.waitForEvent('complete', (event) => event.runId !== first.runId);
+    assert.equal(second.passed, 1);
+    assert.equal(second.skipped, 1);
+    let runs = await (await fetch(url + 'results')).json();
+    assert.deepEqual(
+      runs.at(-1).tests.map((test) => test.name),
+      ['opens', 'later']
+    );
   }
 );

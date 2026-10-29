@@ -116,7 +116,13 @@ jobs:
         env:
           DYNO_ENGINE: ${{ matrix.browser }}
         run: npx --no-install playwright-core install --with-deps "$DYNO_ENGINE"
+      - name: Prepare matching WebDriver
+        if: matrix.provider == 'webdriver'
+        timeout-minutes: 3
+        run: node .github/scripts/prepare-webdriver.js
       - uses: ./.github/actions/test
+        env:
+          SE_OFFLINE: ${{ matrix.provider == 'webdriver' }}
         with:
           suite: capture
           artifact: screenshots-${{ matrix.provider }}-${{ matrix.browser }}

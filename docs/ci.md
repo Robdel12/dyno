@@ -30,3 +30,7 @@ Each test job uploads `output.log` and `results.xml` under its own artifact name
 Shared actions in `.github/actions` install Node/dependencies and run/report a suite. Official actions are pinned to commit SHAs. The workflow has read-only repository access, doesn't persist checkout credentials, and uses ordinary pull-request events for contributions from forks.
 
 Linux jobs supply a D-Bus session. `.github/scripts/install-edge.sh` installs the official Edge package and fixes the hosted image's sandbox configuration. Playwright jobs explicitly install the engine matching the locked dependency version; browser downloads aren't cached. See [browser setup](browsers.md) for known limits.
+
+WebDriver jobs prepare the matching driver before tests start, then run Selenium Manager offline. Driver downloads have their own setup deadline and cannot consume the framework's browser startup budget.
+
+Product runs also write `.dyno/reports/<run-id>/`. Upload the whole folder for portable HTML/images, or give `junit.xml` to a test-results consumer. `run.json` uses an explicit schema version and marks interrupted runs and tests without results. These are separate from the Node test runner's own CI output.
