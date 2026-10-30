@@ -72,12 +72,36 @@ import { readAppBinding, appController, appRuntime } from './companion.js';
   let lastSnapshot;
   let hiddenBodies = new Map();
   let previousFocus;
+  let createReporterFrame = () => {
+    reporter = document.createElement('iframe');
+    reporter.id = '__dynoReporter';
+    reporter.title = 'Dyno test results';
+    reporter.hidden = true;
+    Object.assign(reporter.style, {
+      position: 'fixed',
+      inset: '0',
+      width: '100vw',
+      height: '100vh',
+      border: '0',
+      zIndex: '2147483647',
+      background: '#151719',
+      display: 'none'
+    });
+    reporter.src = `/__dyno__/reporter?run=${encodeURIComponent(binding.runId)}&embedded=1`;
+    document.documentElement.append(reporter);
+  };
   let present = () => {
-    if (!reporter) return;
+    if (!inspectButton) return;
     let visible = Boolean(presentation.visible);
-    if (visible && reporter.hidden) previousFocus = document.activeElement;
-    reporter.hidden = !visible;
-    reporter.style.setProperty('display', visible ? 'block' : 'none', 'important');
+    if (visible && !reporter) createReporterFrame();
+    let opening = visible && reporter.hidden;
+    if (opening) previousFocus = document.activeElement;
+    if (reporter) {
+      reporter.hidden = !visible;
+      reporter.style.setProperty('display', visible ? 'block' : 'none', 'important');
+      if (opening && lastSnapshot)
+        reporter.contentWindow.postMessage({ ...lastSnapshot, channel: 'dyno-reporter' }, location.origin);
+    }
     inspectButton.hidden = !disconnected && (visible || presentation.active || !presentation.interactive);
     inspectButton.style.setProperty('display', inspectButton.hidden ? 'none' : 'block', 'important');
     if (visible && document.body) {
@@ -112,37 +136,31 @@ import { readAppBinding, appController, appRuntime } from './companion.js';
         };
         present();
       } else if (!disconnected && ['snapshot', 'focus', 'command-result'].includes(message.kind)) {
-        if (message.kind === 'snapshot') lastSnapshot = message;
+        if (message.kind === 'snapshot') {
+          lastSnapshot = message;
+          if (!presentation.visible) return;
+        }
         reporter?.contentWindow?.postMessage({ ...message, channel: 'dyno-reporter' }, location.origin);
       }
     } else if (message.channel === 'dyno-reporter' && event.source === reporter?.contentWindow) {
-      if (!disconnected && message.kind === 'ready' && lastSnapshot)
-        reporter.contentWindow.postMessage({ ...lastSnapshot, channel: 'dyno-reporter' }, location.origin);
+      if (!disconnected && message.kind === 'ready' && presentation.visible) {
+        if (lastSnapshot)
+          reporter.contentWindow.postMessage({ ...lastSnapshot, channel: 'dyno-reporter' }, location.origin);
+        reporter.contentWindow.postMessage(
+          { channel: 'dyno-reporter', kind: 'focus', runId: binding.runId },
+          location.origin,
+        );
+      }
       if (!disconnected && ['ready', 'command'].includes(message.kind)) relay(message);
     }
   });
   let ready = () => {
-    reporter = document.createElement('iframe');
-    reporter.id = '__dynoReporter';
-    reporter.title = 'Dyno test results';
-    reporter.hidden = true;
-    Object.assign(reporter.style, {
-      position: 'fixed',
-      inset: '0',
-      width: '100vw',
-      height: '100vh',
-      border: '0',
-      zIndex: '2147483647',
-      background: '#151719',
-      display: 'none'
-    });
     // Inline app styles may target iframe broadly; this rule only controls Dyno's own tools.
     let style = document.createElement('style');
     let nonce = document.querySelector('style[nonce],script[nonce]')?.nonce;
     if (nonce) style.nonce = nonce;
     style.textContent =
       '#__dynoReporter[hidden],#__dynoInspect[hidden]{display:none!important}#__dynoReporter:not([hidden]){display:block!important}#__dynoInspect:not([hidden]){display:block!important}';
-    reporter.src = `/__dyno__/reporter?run=${encodeURIComponent(binding.runId)}&embedded=1`;
     inspectButton = document.createElement('button');
     inspectButton.id = '__dynoInspect';
     inspectButton.type = 'button';
@@ -166,7 +184,7 @@ import { readAppBinding, appController, appRuntime } from './companion.js';
       if (disconnected) location.assign('/__dyno__/');
       else inspect();
     });
-    document.documentElement.append(style, reporter, inspectButton);
+    document.documentElement.append(style, inspectButton);
     new MutationObserver(() => {
       if (presentation.visible) present();
     }).observe(document.documentElement, { childList: true });

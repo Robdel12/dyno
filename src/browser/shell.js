@@ -48,7 +48,7 @@ let publish = () => {
     identity: settings?.identity,
     capabilities: settings?.capabilities,
   };
-  overlay('snapshot', { view });
+  if (reporterVisible) overlay('snapshot', { view });
   latestView = view;
   publishing ??= (async () => {
     try {
@@ -649,12 +649,20 @@ try {
     }
     resource?.remove();
     resource = undefined;
-    await sizeViewport(
+    let viewport =
       settings.viewport ??
-        (settings.capabilities.hostViewport ? settings.managedViewport : appSize()),
-      null,
-      viewportMode,
-    );
+      (settings.capabilities.hostViewport ? settings.managedViewport : appSize());
+    if (
+      state.viewportMode !== viewportMode ||
+      state.viewport.width !== viewport.width ||
+      state.viewport.height !== viewport.height ||
+      appWindow.innerWidth !== viewport.width ||
+      appWindow.innerHeight !== viewport.height ||
+      observedViewport.width !== appWindow.innerWidth ||
+      observedViewport.height !== appWindow.innerHeight ||
+      observedViewport.pixelRatio !== appWindow.devicePixelRatio
+    )
+      await sizeViewport(viewport, null, viewportMode);
     let runner = await runtime('test', test.timeout ?? settings.timeout, test.index, test.id);
     update({ type: 'test.started', index: test.index });
     let outcome;

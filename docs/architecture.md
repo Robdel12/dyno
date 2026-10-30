@@ -41,7 +41,9 @@ The bundled entry loads test modules sequentially through the registration bound
 
 The app owns its full, unscaled browser viewport. Manual runs use its actual dimensions; managed runs can resize it. Reporter routes never move the app. Inspection opens an overlay at a test boundary. Continue hides it before the next test starts; pausing doesn't freeze the app's timers or network activity.
 
-The reporter owns its route, search, and filter. Embedded reporters receive checked `postMessage` messages. Separate reporter URLs receive server events and send HTTP commands. Both use the same UI.
+Before each test, default sizing runs only when configured, actual, or observed geometry differs. Public sizing calls retain their validation and revision changes. Run-specific bundle bytes can be cached; every execution still registers the complete suite in fresh globals.
+
+The reporter owns its route, search, and filter. Its iframe is created on first inspection and retained on close, preserving its route. Closed reporters do not render snapshots; reopening receives current state through the existing ready and presentation messages. Command acknowledgements still arrive while closed. Separate reporter URLs receive server events and send HTTP commands. Both use the same UI.
 
 A private `window.name` binds the original app window across navigation and survives project calls to `sessionStorage.clear()`. Names route the bootstrap; they do not authenticate messages. Origin, exact source window, run, execution, and current document are checked before accepting messages or operation results. Old unload messages cannot invalidate a newer document.
 

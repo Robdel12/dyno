@@ -21,7 +21,7 @@ let pending;
 let lastCommand;
 let update = (patch) => {
   state = Object.freeze({ ...state, ...patch });
-  render(state);
+  if (!embedded || !window.frameElement?.hidden) render(state);
 };
 let acknowledge = (message) => {
   if (!pending || message.requestId !== pending.id) return;
@@ -94,7 +94,7 @@ let render = createReporter({
   close: () => command('show-app'),
   copy: () => state.route.tab === 'timings' ? timingText(selectedTest(state)?.timings) : testOutput(selectedTest(state))
 });
-render(state);
+if (!embedded || !window.frameElement?.hidden) render(state);
 window.addEventListener('hashchange', () => {
   let route = reporterRoute(location.hash);
   if (['page', 'id', 'tab', 'query', 'filter'].every((key) => route[key] === state.route[key])) return;
