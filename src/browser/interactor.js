@@ -9,6 +9,7 @@ export class Interactor extends BrowserInteractor {
     return new this.constructor({
       root: () => context.$,
       signal: context.signal,
+      // Context inherits these settings; spreading assert would drop them.
       assert: {
         timeout: context.assert.timeout,
         frequency: context.assert.frequency,
@@ -25,6 +26,18 @@ function dispatch(element, eventName, { bubbles = true, cancelable = true, ...pr
   let event = new EventConstructor(eventName, { bubbles, cancelable, ...properties });
   for (let [name, value] of Object.entries(properties)) if (!(name in event)) event[name] = value;
   return element.dispatchEvent(event);
+}
+
+function isDisplayed(element, minimumOpacity = 0) {
+  let window = element.ownerDocument.defaultView;
+  let style = window.getComputedStyle(element);
+  if (style.display === 'none' || style.visibility !== 'visible') return false;
+  let opacity = 1;
+  for (let node = element; node; node = node.parentElement ?? node.getRootNode().host) {
+    opacity *= Number(window.getComputedStyle(node).opacity);
+    if (opacity <= 0 || opacity < minimumOpacity) return false;
+  }
+  return true;
 }
 
 // Interactor.js 3.6.2's defaults use the runner's Event/MouseEvent/document.
@@ -59,13 +72,13 @@ Interactor.defineAction('click', function* click(selector) {
 
 Interactor.defineAction('fill', function* fill(value) {
   yield this.focus();
-  yield this.assert.not.disabled();
+  yield this.assert(({ $ }) => !$.disabled && !$.readOnly, '#{this} is disabled or read-only');
   yield ({ $, signal }) => {
     signal?.throwIfAborted();
+    if (!['input', 'textarea'].includes($.localName)) throw new Error('fill requires an input or textarea');
     let window = $.ownerDocument.defaultView;
     let prototype = $.localName === 'textarea' ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype;
-    let setter = Object.getOwnPropertyDescriptor(prototype, 'value')?.set;
-    if (!setter || !/^(input|textarea)$/.test($.localName)) throw new Error('fill requires an input or textarea');
+    let setter = Object.getOwnPropertyDescriptor(prototype, 'value').set;
     setter.call($, String(value));
   };
   yield this.trigger('input', { cancelable: false, inputType: 'insertReplacementText', data: String(value) });
@@ -91,11 +104,7 @@ Interactor.defineAction('upload', function* upload(...files) {
 
 Interactor.defineAssertion(
   'rendered',
-  () => ({ $ }) => {
-    let style = $.ownerDocument.defaultView.getComputedStyle($);
-    return style.display !== 'none' && style.visibility === 'visible' && Number(style.opacity) > 0 &&
-      [...$.getClientRects()].some(rect => rect.width > 0 && rect.height > 0);
-  },
+  () => ({ $ }) => isDisplayed($) && [...$.getClientRects()].some(rect => rect.width > 0 && rect.height > 0),
   '#{this} is not rendered',
   '#{this} is rendered',
 );
@@ -126,9 +135,7 @@ Interactor.defineAssertion(
     ({ $ }) => {
       let document = $.ownerDocument;
       let window = document.defaultView;
-      let style = window.getComputedStyle($);
-      if (style.display === 'none' || style.visibility !== 'visible' || Number(style.opacity) < 0.1)
-        return false;
+      if (!isDisplayed($, 0.1)) return false;
       // Wrapped inline elements have several painted rectangles. Their union can
       // contain whitespace, so check the visible part of each fragment instead.
       return [...$.getClientRects()].some((rect) => {

@@ -61,3 +61,34 @@ test('missing Interactor scopes fail without finding a matching field outside th
   assert.equal(result.code, 1);
   assert.match(result.events.find(event => event.type === 'test').error.message, /missing/);
 });
+
+test('content checks respect transparent ancestors and become visible after a user action', { timeout: 90000 }, async t => {
+  let fixture = await project(t, { source: `
+    test('reveal notes', async ({app,I}) => {
+      await app.goto('/interactor');
+      let shadowNote = ({ $root }) => $root.querySelector('#shadow').shadowRoot.querySelector('p');
+      await I.find('Private note').not.rendered();
+      await I.find('Private note').not.visible();
+      await I.find(shadowNote).not.rendered();
+      await I.find('Faint control').rendered();
+      await I.find('Faint control').not.visible();
+      await I.click('Reveal note');
+      await I.find('Private note').rendered();
+      await I.find('Private note').visible();
+      await I.find(shadowNote).rendered();
+    });` });
+  let result = await fixture.run().completion;
+  assert.equal(result.code, 0, result.stdout + result.stderr);
+  assert.equal(result.summary.passed, 1);
+});
+
+test('filling a read-only field fails instead of changing a value the user cannot edit', { timeout: 90000 }, async t => {
+  let fixture = await project(t, { config: { expectTimeout: 150 }, source: `
+    test('published contact', async ({app,I}) => {
+      await app.goto('/interactor');
+      await I.find('Published name').then.fill('Changed');
+    });` });
+  let result = await fixture.run().completion;
+  assert.equal(result.code, 1);
+  assert.match(result.events.find(event => event.type === 'test').error.message, /read-only/);
+});
