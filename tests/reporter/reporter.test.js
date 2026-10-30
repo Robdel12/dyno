@@ -56,9 +56,15 @@ test('keeps the current app available for inspection', async ({ app, I }) => {
   let originalViewport = { width: appWindow.innerWidth, height: appWindow.innerHeight };
   await I.assert(() => appWindow.top === appWindow && appWindow.frameElement === null, 'The app must be a top-level document');
   let reporter;
-  await I.assert(() => !!(reporter = appDocument.querySelector('#__dynoReporter'))?.contentDocument?.querySelector('#main'));
-  let inspect = new window.top.MutationObserver(async () => {
-    if (reporter.hidden) return;
+  let inspect;
+  let inspectReporter = async () => {
+    reporter = appDocument.querySelector('#__dynoReporter');
+    if (!reporter || reporter.hidden) return;
+    if (!reporter.contentDocument?.querySelector('#main')) {
+      reporter.addEventListener('load', inspectReporter, { once: true });
+      return;
+    }
+    reporter.removeEventListener('load', inspectReporter);
     inspect.disconnect();
     try {
       let document = reporter.contentDocument;
@@ -154,8 +160,9 @@ test('keeps the current app available for inspection', async ({ app, I }) => {
         body: JSON.stringify({ error: error.message, stack: error.stack })
       });
     }
-  });
-  inspect.observe(reporter, { attributes: true, attributeFilter: ['hidden'] });
+  };
+  inspect = new appDocument.defaultView.MutationObserver(inspectReporter);
+  inspect.observe(appDocument.documentElement, { attributes: true, childList: true, subtree: true, attributeFilter: ['hidden'] });
 });
 
 });`
@@ -163,11 +170,12 @@ test('keeps the current app available for inspection', async ({ app, I }) => {
     let session = fixture.run(['--ui']);
     let { url } = await session.waitForEvent('ready');
     let complete = await session.waitForEvent('complete');
-    assert.equal(complete.passed, 2);
-    assert.equal(complete.failed, 1);
+    let [run] = await (await fetch(url + 'results')).json();
+    let outcomes = JSON.stringify(run.outcomes.map(({ name, status, error }) => ({ name, status, error })));
+    assert.equal(complete.passed, 2, outcomes);
+    assert.equal(complete.failed, 1, outcomes);
     let inspection = await (await fetch(new URL('/api/inspection', url), { signal: t.signal })).json();
     assert.deepEqual(inspection, { ok: true });
-    let [run] = await (await fetch(url + 'results')).json();
     assert.equal(run.outcomes[1].error.source.file, 'tests/browser/workflow.test.js');
     assert.ok(
       run.outcomes[0].output.some((entry) => entry.text.includes('[Getter]') && entry.text.includes('[Circular]'))
@@ -255,9 +263,15 @@ test('pauses with the failed app', async ({ app, I }) => {
   let appDocument = app.document;
   let originalViewport = { width: app.window.innerWidth, height: app.window.innerHeight };
   let reporter;
-  await I.assert(() => !!(reporter = appDocument.querySelector('#__dynoReporter'))?.contentDocument?.querySelector('#main'));
-  let inspect = new window.top.MutationObserver(async () => {
-    if (reporter.hidden) return;
+  let inspect;
+  let inspectReporter = async () => {
+    reporter = appDocument.querySelector('#__dynoReporter');
+    if (!reporter || reporter.hidden) return;
+    if (!reporter.contentDocument?.querySelector('#main')) {
+      reporter.addEventListener('load', inspectReporter, { once: true });
+      return;
+    }
+    reporter.removeEventListener('load', inspectReporter);
     inspect.disconnect();
     try {
       let UI = new Interactor({ root: () => reporter.contentDocument.body });
@@ -279,8 +293,9 @@ test('pauses with the failed app', async ({ app, I }) => {
     } catch (error) {
       await fetch('/api/lifecycle', { method: 'POST', body: 'inspection error: ' + error.message });
     }
-  });
-  inspect.observe(reporter, { attributes: true, attributeFilter: ['hidden'] });
+  };
+  inspect = new appDocument.defaultView.MutationObserver(inspectReporter);
+  inspect.observe(appDocument.documentElement, { attributes: true, childList: true, subtree: true, attributeFilter: ['hidden'] });
   await I.type('Robert').into('$(input[name=name])');
   await I.click('Save');
   await I.find('$([role=status])').text('Saved Robert · 2');
@@ -326,9 +341,16 @@ test('another workflow', async ({app,I})=>{
   await app.goto('/');
   let appDocument=app.document;
   let reporter;
-  await I.assert(()=>!!(reporter=appDocument.querySelector('#__dynoReporter'))?.contentDocument?.querySelector('#main'));
-  let inspect=new window.top.MutationObserver(async()=>{
-    if(reporter.hidden)return;inspect.disconnect();
+  let inspect;
+  let inspectReporter=async()=>{
+    reporter=appDocument.querySelector('#__dynoReporter');
+    if(!reporter||reporter.hidden)return;
+    if(!reporter.contentDocument?.querySelector('#main')){
+      reporter.addEventListener('load',inspectReporter,{once:true});
+      return;
+    }
+    reporter.removeEventListener('load', inspectReporter);
+    inspect.disconnect();
     try{
       let document=reporter.contentDocument;
       let UI=new Interactor({root:()=>document.body});
@@ -347,8 +369,9 @@ test('another workflow', async ({app,I})=>{
       await fetch('/api/inspection',{method:'POST',body:JSON.stringify({ok:true})});
       await UI.click('$(button[aria-label="Run suite Workflow › Contacts in tests/browser/workflow.test.js"])');
     }catch(error){await fetch('/api/inspection',{method:'POST',body:JSON.stringify({error:error.message})});}
-  });
-  inspect.observe(reporter,{attributes:true,attributeFilter:['hidden']});
+  };
+  inspect=new appDocument.defaultView.MutationObserver(inspectReporter);
+  inspect.observe(appDocument.documentElement,{attributes:true,childList:true,subtree:true,attributeFilter:['hidden']});
 });
 });`
     });

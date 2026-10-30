@@ -174,12 +174,21 @@ export function createBrowserControl({ artifactsDir, onReplaced = () => {} }) {
     }
   };
   let broadcast = (runId, type, value) => {
-    let event = `event: ${type}\ndata: ${JSON.stringify(value)}\n\n`;
+    let event;
     for (let { response, role } of streams.get(runId) ?? []) {
-      if ((type === 'snapshot' && role === 'host') || (type === 'command' && role !== 'host'))
+      if (
+        (type === 'snapshot' && role === 'host') ||
+        (type === 'command' && role !== 'host') ||
+        response.destroyed ||
+        response.writableEnded
+      )
         continue;
-      if (response.writableLength > 8_000_000) response.end();
-      else response.write(event);
+      if (response.writableLength > 8_000_000) {
+        response.end();
+        continue;
+      }
+      event ??= `event: ${type}\ndata: ${JSON.stringify(value)}\n\n`;
+      response.write(event);
     }
   };
   let authorize = (input) => {

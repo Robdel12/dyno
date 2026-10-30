@@ -1,0 +1,211 @@
+{
+  "schemaVersion": 1,
+  "fixtureHash": "a8eba789d82f7ba846cefb63341f7c02eaed474f0a9a42a57da1c5d63d2a013a",
+  "rows": [
+    {
+      "variant": "base",
+      "fixtureHash": "a8eba789d82f7ba846cefb63341f7c02eaed474f0a9a42a57da1c5d63d2a013a",
+      "sourceHash": "2bd15033dd0a72f7e9a4d9d69f8d5380496b86253cb4e6d73c41294586f2f73f",
+      "diagnosticsFormat": 2,
+      "passed": 338,
+      "browserMs": 89203.69999992847,
+      "wallMs": 89906.855291,
+      "testMs": 66691.20000135899,
+      "outsideMs": 22512.49999856949,
+      "viewport": {
+        "count": 338,
+        "sum": 5893.79999935627,
+        "median": 16.799999952316284,
+        "p95": 27.800000071525574
+      },
+      "append": {
+        "count": 338,
+        "sum": 6762.300000071526,
+        "median": 19.600000023841858,
+        "p95": 28.799999952316284
+      },
+      "postResult": {
+        "count": 338,
+        "sum": 1508.0000002384186,
+        "median": 4.399999976158142,
+        "p95": 5.699999928474426
+      },
+      "viewSerialization": {
+        "count": 3386,
+        "sum": 1734.5999969244003,
+        "median": 0.5,
+        "p95": 0.8999999761581421
+      },
+      "overlay": {
+        "count": 4396,
+        "sum": 2381.4000025987625,
+        "median": 0.5,
+        "p95": 1
+      },
+      "reporter": {
+        "appDocuments": 676,
+        "frames": 676,
+        "snapshotsReceived": 3695,
+        "snapshotsForwarded": 3045,
+        "renders": 2701,
+        "renderMs": 2791.2999982833862,
+        "initializationMs": 49.700000166893005
+      },
+      "node": {
+        "broadcastSerializations": 3388,
+        "snapshotSerializations": 3386,
+        "discardedSnapshotSerializations": 3386,
+        "broadcastMs": {
+          "count": 3388,
+          "sum": 1992.1632069998961,
+          "median": 0.5863750000062282,
+          "p95": 1.0096659999981057
+        },
+        "viewParsingMs": {
+          "count": 3386,
+          "sum": 2815.183230000048,
+          "median": 0.8286670000015874,
+          "p95": 1.3977909999957774
+        },
+        "viewBytes": 1320389491
+      },
+      "suiteTransferBytes": 111202000
+    },
+    {
+      "variant": "combined",
+      "fixtureHash": "a8eba789d82f7ba846cefb63341f7c02eaed474f0a9a42a57da1c5d63d2a013a",
+      "sourceHash": "7fa972e46b3f9ca37a71de6874a522aff4902ff911d828f80e4fba51a6c7f7b9",
+      "diagnosticsFormat": 2,
+      "passed": 338,
+      "browserMs": 83333.70000004768,
+      "wallMs": 84012.817666,
+      "testMs": 63830.800001859665,
+      "outsideMs": 19502.89999818802,
+      "viewport": {
+        "count": 338,
+        "sum": 4440.099999547005,
+        "median": 12.900000095367432,
+        "p95": 21.299999952316284
+      },
+      "append": {
+        "count": 338,
+        "sum": 6037.500000238419,
+        "median": 17.700000047683716,
+        "p95": 25.399999976158142
+      },
+      "postResult": {
+        "count": 338,
+        "sum": 706.0999990701675,
+        "median": 2,
+        "p95": 2.5
+      },
+      "viewSerialization": {
+        "count": 3047,
+        "sum": 1568.500002503395,
+        "median": 0.5,
+        "p95": 0.9000000953674316
+      },
+      "overlay": {
+        "count": 4058,
+        "sum": 2181.399998664856,
+        "median": 0.5,
+        "p95": 1
+      },
+      "reporter": {
+        "appDocuments": 676,
+        "frames": 0,
+        "snapshotsReceived": 3356,
+        "snapshotsForwarded": 0,
+        "renders": 0,
+        "renderMs": 0,
+        "initializationMs": 0
+      },
+      "node": {
+        "broadcastSerializations": 1,
+        "snapshotSerializations": 0,
+        "discardedSnapshotSerializations": 0,
+        "broadcastMs": {
+          "count": 1,
+          "sum": 0.003791000000035183,
+          "median": 0.003791000000035183,
+          "p95": 0.003791000000035183
+        },
+        "viewParsingMs": {
+          "count": 3047,
+          "sum": 2600.0302910002365,
+          "median": 0.8507500000050641,
+          "p95": 1.4140409999963595
+        },
+        "viewBytes": 1184688923
+      },
+      "suiteTransferBytes": 0
+    },
+    {
+      "variant": "extended",
+      "fixtureHash": "a8eba789d82f7ba846cefb63341f7c02eaed474f0a9a42a57da1c5d63d2a013a",
+      "sourceHash": "ba897b9d0783438d7e12485eb4067d9a23d571a9e3db026bfadcd24dbf1db4aa",
+      "diagnosticsFormat": 2,
+      "passed": 338,
+      "browserMs": 76481.29999995232,
+      "wallMs": 77109.847375,
+      "testMs": 62336.7999997139,
+      "outsideMs": 14144.500000238419,
+      "viewport": {
+        "count": 338,
+        "sum": 2.100000262260437,
+        "median": 0,
+        "p95": 0.10000002384185791
+      },
+      "append": {
+        "count": 338,
+        "sum": 5624.599999547005,
+        "median": 16.699999928474426,
+        "p95": 22.699999928474426
+      },
+      "postResult": {
+        "count": 338,
+        "sum": 526.8999999761581,
+        "median": 1.5,
+        "p95": 2
+      },
+      "viewSerialization": {
+        "count": 2716,
+        "sum": 1508.2999993562698,
+        "median": 0.5,
+        "p95": 1
+      },
+      "overlay": null,
+      "reporter": {
+        "appDocuments": 676,
+        "frames": 0,
+        "snapshotsReceived": 0,
+        "snapshotsForwarded": 0,
+        "renders": 0,
+        "renderMs": 0,
+        "initializationMs": 0
+      },
+      "node": {
+        "broadcastSerializations": 1,
+        "snapshotSerializations": 0,
+        "discardedSnapshotSerializations": 0,
+        "broadcastMs": {
+          "count": 1,
+          "sum": 0.00333299999999781,
+          "median": 0.00333299999999781,
+          "p95": 0.00333299999999781
+        },
+        "viewParsingMs": {
+          "count": 2716,
+          "sum": 2320.4261309999533,
+          "median": 0.8493749999979627,
+          "p95": 1.4128339999879245
+        },
+        "viewBytes": 1057821034
+      },
+      "suiteTransferBytes": 0
+    }
+  ],
+  "extendedBrowserImprovementVsControl": 14.262188676014963,
+  "extendedBrowserImprovementVsCombined": 8.22284381959693,
+  "extendedWallImprovementVsControl": 14.23362865332142
+}

@@ -210,6 +210,7 @@ export async function createGateway(
           let run = url.searchParams.get('run');
           let snapshot = bundles.get(run);
           if (!snapshot) throw new Error('Unknown test bundle. Reload the capture URL.');
+          response.setHeader('Cache-Control', 'private, max-age=31536000, immutable');
           return route.endsWith('.map')
             ? send('application/json', JSON.stringify(snapshot.map))
             : send(
