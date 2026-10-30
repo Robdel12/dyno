@@ -96,3 +96,13 @@ Shutdown closes admission before waiting for pending writes. Joins already rebun
 The runtime records bounded monotonic intervals around phases, app operations, and named steps. Interactor runs unchanged. Abort ends pending measurements, and immutable snapshots cross the existing result boundary; the gateway validates bounds and drops unknown fields. Inclusive intervals may overlap, so rankings do not add them together.
 
 CLI lifecycle intervals use a separate session clock. Each report saves a running session snapshot; shutdown finalizes session.json atomically after resource cleanup. Browser-run and CLI wall times remain distinct. No per-poll messages or driver commands are added.
+
+## Native browser operations
+
+Rare native keys, pointer movement, permissions, media, offline transport, and virtual authenticators use the existing runtime message, controller queue, authenticated gateway, and owned worker. Interactor resolves DOM targets locally. No exposed SDK binding, driver selector, or generic evaluation API enters the app.
+
+Requests carry execution and document identity. The worker checks the original page bridge immediately before dispatch. Geometry stays tied to that document; keys may navigate within their execution. Cancellation rejects queued requests and late results, but cannot undo delivered input. The checks detect races rather than making browser input atomic.
+
+The controller resets managed native state after each test. The gateway also restores it on completion, replacement, and shutdown. Cleanup must finish before another execution proceeds; failed restoration ends the session. Locale and time zone are context configuration. Native calls use the existing first-class timing model.
+
+Element screenshots extend the existing capture path with a document-coordinate clip and checked PNG dimensions. They keep the viewport and scroll position unchanged. Fractional edges round outward to include the element's painted bounds; element capture cannot combine full-page or mask options.

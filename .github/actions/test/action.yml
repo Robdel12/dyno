@@ -2,7 +2,7 @@ name: Run Dyno tests
 description: Run one suite and retain its console and JUnit output.
 inputs:
   suite:
-    description: core, browser, package, or capture.
+    description: core, browser, package, capture, or native.
     required: true
   browser:
     description: Playwright engine for browser suites.
@@ -23,7 +23,7 @@ runs:
       run: |
         mkdir -p test-results
         command=(node scripts/test.js "$DYNO_TEST_SUITE")
-        if [[ "$DYNO_TEST_SUITE" == 'browser' || "$DYNO_TEST_SUITE" == 'package' || "$DYNO_TEST_SUITE" == 'capture' || "$DYNO_TEST_SUITE" == 'all' ]]; then
+        if [[ "$DYNO_TEST_SUITE" == 'browser' || "$DYNO_TEST_SUITE" == 'package' || "$DYNO_TEST_SUITE" == 'capture' || "$DYNO_TEST_SUITE" == 'native' || "$DYNO_TEST_SUITE" == 'all' ]]; then
           command+=("$DYNO_TEST_BROWSER")
         fi
         if [[ "$RUNNER_OS" == 'Linux' ]]; then

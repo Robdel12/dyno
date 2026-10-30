@@ -1,0 +1,122 @@
+{
+  "source": "a6f62de1d9487764e003d6f64b00fd75899d46b8",
+  "repository": "vizzly-testing/vizzly",
+  "command": "npm run test:e2e -- --reporter=list,json",
+  "workers": 1,
+  "shards": 1,
+  "retries": 0,
+  "node": "v24.22.1",
+  "platform": "darwin",
+  "arch": "arm64",
+  "cpu": "Apple M4 Max",
+  "playwrightSDK": "1.64.0",
+  "browser": "Chromium 156.0.8078.4",
+  "browserRevision": "1248",
+  "conditions": "Serial runs; original builds, real PostgreSQL/Redis/app, screenshot capture enabled; dependency/browser install excluded.",
+  "caseInventorySHA256": "198d2e6027f925b17ced7f6e50d752430401099ead6679369a7a12f1050dc37a",
+  "samples": [
+    {
+      "sample": 1,
+      "startedAt": "2026-10-30T06:24:24.257Z",
+      "commandMS": 313433.33462499996,
+      "runnerMS": 307305.13,
+      "serviceInclusiveMS": 317785.71904199995,
+      "phases": [
+        {
+          "name": "Service setup",
+          "duration": 1888.48425,
+          "code": 0,
+          "signal": null
+        },
+        {
+          "name": "Port database",
+          "duration": 65.15329199999996,
+          "code": 0,
+          "signal": null
+        },
+        {
+          "name": "Port redis",
+          "duration": 44.30116700000008,
+          "code": 0,
+          "signal": null
+        },
+        {
+          "name": "Test command",
+          "duration": 313433.33462499996,
+          "code": 0,
+          "signal": null
+        },
+        {
+          "name": "Service cleanup",
+          "duration": 2350.357833999966,
+          "code": 0,
+          "signal": null
+        }
+      ],
+      "stats": {
+        "startTime": "2026-10-30T06:24:32.360Z",
+        "duration": 307305.13,
+        "expected": 339,
+        "skipped": 0,
+        "unexpected": 0,
+        "flaky": 0
+      },
+      "savedImages": 232,
+      "imageDimensionsSHA256": "385bf6ca1138d239af4266f1af5bef74557a14ad824a3ad743ddc1b2235d6ce3"
+    },
+    {
+      "sample": 2,
+      "startedAt": "2026-10-30T06:36:28.318Z",
+      "commandMS": 306062.235542,
+      "runnerMS": 302365.592,
+      "serviceInclusiveMS": 310299.555875,
+      "phases": [
+        {
+          "name": "Service setup",
+          "duration": 1858.793709,
+          "code": 0,
+          "signal": null
+        },
+        {
+          "name": "Port database",
+          "duration": 65.92049999999995,
+          "code": 0,
+          "signal": null
+        },
+        {
+          "name": "Port redis",
+          "duration": 49.8544159999999,
+          "code": 0,
+          "signal": null
+        },
+        {
+          "name": "Test command",
+          "duration": 306062.235542,
+          "code": 0,
+          "signal": null
+        },
+        {
+          "name": "Service cleanup",
+          "duration": 2259.021458000003,
+          "code": 0,
+          "signal": null
+        }
+      ],
+      "stats": {
+        "startTime": "2026-10-30T06:36:33.967Z",
+        "duration": 302365.592,
+        "expected": 339,
+        "skipped": 0,
+        "unexpected": 0,
+        "flaky": 0
+      },
+      "savedImages": 232,
+      "imageDimensionsSHA256": "385bf6ca1138d239af4266f1af5bef74557a14ad824a3ad743ddc1b2235d6ce3"
+    }
+  ],
+  "medians": {
+    "commandMS": 309747.78508349997,
+    "runnerMS": 304835.36100000003,
+    "serviceInclusiveMS": 314042.6374585
+  }
+}

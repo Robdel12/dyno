@@ -8,7 +8,7 @@ export interface UploadFile {
 type Selector = Parameters<BrowserInteractor['find']>[0];
 type Actions = Record<string, (...args: any[]) => unknown>;
 type AssertionDefinitions = Parameters<typeof BrowserInteractor.defineAssertions>[0];
-type Chain<T, I = Interactor> = { readonly then: I & PromiseLike<T>['then'] };
+type Chain<T, I = Interactor> = { readonly then: Omit<I, 'scope'> & { readonly scope?: never } & PromiseLike<T>['then'] };
 type AssertionArguments<T> = T extends (...args: infer A) => unknown ? A : T extends new (...args: infer A) => unknown ? A : [];
 type AssertionMethods<S, I> = { [K in keyof S]: (...args: AssertionArguments<S[K]>) => Chain<boolean, I> };
 type Rechain<F, I> = F extends (...args: infer A) => infer R ? (...args: A) => R & Chain<Awaited<R>, I> : F;
@@ -31,6 +31,9 @@ export class Interactor<S extends AssertionDefinitions = {}> extends BrowserInte
   scope(selector?: Selector): this;
   fill(value: string | number): Chain<HTMLElement, this>;
   upload(...files: UploadFile[]): Chain<HTMLElement, this>;
+  nativePress(key: string): Chain<void, this>;
+  nativeMove(point: NativePoint): Chain<void, this>;
+  nativeHover(options?: NativeHoverOptions): Chain<HTMLElement, this>;
   click: (...args: Parameters<BrowserInteractor['click']>) => ReturnType<BrowserInteractor['click']> & Chain<HTMLElement, this>;
   focus: (...args: Parameters<BrowserInteractor['focus']>) => ReturnType<BrowserInteractor['focus']> & Chain<HTMLElement, this>;
   blur: (...args: Parameters<BrowserInteractor['blur']>) => ReturnType<BrowserInteractor['blur']> & Chain<HTMLElement, this>;
@@ -74,6 +77,7 @@ export interface CapturedScreenshot {
   readonly browser: BrowserIdentity;
   readonly policy: {
     readonly fullPage: boolean;
+    readonly element?: true;
     readonly animations: 'allow' | 'disabled';
     readonly caret: 'hide' | 'initial';
     readonly scale: 'device';
@@ -86,12 +90,56 @@ export interface SkippedScreenshot {
   readonly reason: string;
 }
 export type Screenshot = CapturedScreenshot | SkippedScreenshot;
-export interface ScreenshotOptions {
+export interface ScreenshotRenderingOptions {
   readonly optional?: boolean;
-  readonly fullPage?: boolean;
   readonly animations?: 'allow' | 'disabled';
   readonly caret?: 'hide' | 'initial';
-  readonly mask?: readonly Element[];
+  readonly maskColor?: string;
+}
+export type ScreenshotOptions = ScreenshotRenderingOptions & (
+  | { readonly element: Element; readonly fullPage?: never; readonly mask?: never }
+  | { readonly element?: never; readonly fullPage?: boolean; readonly mask?: readonly Element[] }
+);
+export interface NativePoint {
+  readonly x: number;
+  readonly y: number;
+}
+export interface NativeHoverOptions {
+  /** Position relative to the element's bounding box, in CSS pixels. */
+  readonly position?: NativePoint;
+}
+export interface NativeDialogOptions {
+  readonly action: 'accept' | 'dismiss';
+  readonly message?: string;
+  readonly text?: string;
+}
+export interface NativeConsoleMessage {
+  readonly id: number;
+  readonly type: string;
+  readonly text: string;
+}
+export interface NativeCapabilities {
+  readonly keyboard: boolean;
+  readonly pointer: boolean;
+  readonly permissions: readonly string[];
+  readonly authenticator: boolean;
+  readonly offline: boolean;
+  readonly media: boolean;
+  readonly dialogs: boolean;
+  readonly diagnostics: boolean;
+}
+export interface NativeBrowser {
+  readonly capabilities: NativeCapabilities;
+  press(key: string): Promise<void>;
+  move(point: NativePoint): Promise<void>;
+  hover(element: Element, options?: NativeHoverOptions): Promise<void>;
+  grantPermissions(permissions: readonly string[]): Promise<void>;
+  enableVirtualAuthenticator(): Promise<void>;
+  disableVirtualAuthenticator(): Promise<void>;
+  setOffline(offline: boolean): Promise<void>;
+  setReducedMotion(value: 'reduce' | 'no-preference'): Promise<void>;
+  consoleMessages(): Promise<readonly NativeConsoleMessage[]>;
+  withDialog<T>(options: NativeDialogOptions, work: () => T | Promise<T>): Promise<T>;
 }
 export interface Application {
   goto(path: string): Promise<void>;
@@ -101,6 +149,7 @@ export interface Application {
   pause(message?: string): Promise<void>;
   readonly document: Document;
   readonly window: Window & typeof globalThis;
+  readonly native: NativeBrowser;
 }
 export interface TestDescriptor {
   readonly id: string;
@@ -117,7 +166,7 @@ export interface Fixtures {
 }
 export interface TimingEntry {
   readonly id: number;
-  readonly kind: 'reset' | 'beforeEach' | 'test' | 'afterEach' | 'drain' | 'navigation' | 'request' | 'screenshot' | 'viewport' | 'pause' | 'step' | 'lifecycle';
+  readonly kind: 'reset' | 'beforeEach' | 'test' | 'afterEach' | 'drain' | 'navigation' | 'request' | 'screenshot' | 'viewport' | 'pause' | 'step' | 'lifecycle' | 'native';
   readonly name: string;
   readonly start: number;
   readonly duration: number;

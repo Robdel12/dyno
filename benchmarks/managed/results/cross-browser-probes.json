@@ -1,0 +1,166 @@
+[
+  {
+    "engine": "chromium",
+    "profileMode": "explicit disposable profile",
+    "version": "156.0.8078.4",
+    "initialBinding": {
+      "sameOrigin": true,
+      "title": "Managed operation evaluation"
+    },
+    "syntheticSpaceRecords": 0,
+    "nativeSpaceRecords": 1,
+    "nativeTabFocus": "notes",
+    "cssHover": "rgb(20, 160, 80)",
+    "contextOffline": {
+      "app": {
+        "ok": false,
+        "error": "Failed to fetch",
+        "online": false
+      },
+      "controller": {
+        "ok": false,
+        "error": "Failed to fetch",
+        "online": false
+      }
+    },
+    "contextOnlineRestored": {
+      "app": {
+        "ok": true,
+        "value": {
+          "status": "Connected",
+          "revision": 1
+        },
+        "online": true
+      },
+      "controller": {
+        "ok": true,
+        "value": {
+          "status": "Connected",
+          "revision": 2
+        },
+        "online": true
+      }
+    },
+    "cdp": {
+      "supported": true
+    },
+    "appOffline": {
+      "app": {
+        "ok": false,
+        "error": "Failed to fetch",
+        "online": false
+      },
+      "controller": {
+        "ok": true,
+        "value": {
+          "status": "Connected",
+          "revision": 3
+        },
+        "online": false
+      }
+    },
+    "restored": {
+      "ok": true,
+      "value": {
+        "status": "Connected",
+        "revision": 4
+      },
+      "online": true
+    },
+    "virtualAuthenticator": "created and removed; credential flow belongs to fixed evaluator",
+    "clipboardPermissions": {
+      "supported": true
+    },
+    "opaqueNavigationBinding": {
+      "accessible": false,
+      "name": "SecurityError"
+    },
+    "opaqueTopLevelSubmission": {
+      "origin": "null",
+      "body": "login=test%40example.test&password=fixture-password"
+    },
+    "sandboxSubmission": {
+      "origin": "null",
+      "body": "login=test%40example.test&password=fixture-password"
+    },
+    "sandboxBinding": {
+      "sameOrigin": true,
+      "title": "Managed operation evaluation"
+    },
+    "verdict": "passed"
+  },
+  {
+    "engine": "firefox",
+    "profileMode": "SDK temporary persistent profile",
+    "verdict": "failed",
+    "error": "browserType.launchPersistentContext: Failed to launch the browser process.\nBrowser logs:\n\n<launching> /Users/robertdeluca/Library/Caches/ms-playwright/firefox-1555/firefox/Nightly.app/Contents/MacOS/firefox -no-remote -headless -profile /var/folders/44/ng7yt98j78z5kjhptpztzm240000gn/T/playwright_firefoxdev_profile-1njhdA -juggler-pipe about:blank\n<launched> pid=60383\n[pid=60383][err] *** You are running in headless mode.\n[pid=60383][err] Could not find profile folder.\n[pid=60383] <process did exit: exitCode=1, signal=null>\n[pid=60383] starting temporary directories cleanup\nCall log:\n\u001b[2m  - <launching> /Users/robertdeluca/Library/Caches/ms-playwright/firefox-1555/firefox/Nightly.app/Contents/MacOS/firefox -no-remote -headless -profile /var/folders/44/ng7yt98j78z5kjhptpztzm240000gn/T/playwright_firefoxdev_profile-1njhdA -juggler-pipe about:blank\u001b[22m\n\u001b[2m  - <launched> pid=60383\u001b[22m\n\u001b[2m  - [pid=60383][err] *** You are running in headless mode.\u001b[22m\n\u001b[2m  - [pid=60383][err] Could not find profile folder.\u001b[22m\n\u001b[2m  - [pid=60383] <process did exit: exitCode=1, signal=null>\u001b[22m\n\u001b[2m  - [pid=60383] starting temporary directories cleanup\u001b[22m\n\u001b[2m  - [pid=60383] <gracefully close start>\u001b[22m\n\u001b[2m  - [pid=60383] <kill>\u001b[22m\n\u001b[2m  - [pid=60383] <skipped force kill spawnedProcess.killed=false processClosed=true>\u001b[22m\n\u001b[2m  - [pid=60383] finished temporary directories cleanup\u001b[22m\n\u001b[2m  - [pid=60383] <gracefully close end>\u001b[22m\n\n    at async TestContext.<anonymous> (/private/tmp/dyno-native-spike-QyJmvk/adversarial/adversarial.js:33:17)"
+  },
+  {
+    "engine": "webkit",
+    "profileMode": "explicit disposable profile",
+    "version": "27.2",
+    "initialBinding": {
+      "sameOrigin": true,
+      "title": "Managed operation evaluation"
+    },
+    "syntheticSpaceRecords": 0,
+    "nativeSpaceRecords": 1,
+    "nativeTabFocus": "notes",
+    "cssHover": "rgb(20, 160, 80)",
+    "contextOffline": {
+      "app": {
+        "ok": false,
+        "error": "Load failed",
+        "online": false
+      },
+      "controller": {
+        "ok": false,
+        "error": "Load failed",
+        "online": false
+      }
+    },
+    "contextOnlineRestored": {
+      "app": {
+        "ok": true,
+        "value": {
+          "status": "Connected",
+          "revision": 1
+        },
+        "online": true
+      },
+      "controller": {
+        "ok": true,
+        "value": {
+          "status": "Connected",
+          "revision": 2
+        },
+        "online": true
+      }
+    },
+    "cdp": {
+      "supported": false,
+      "error": "browserContext.newCDPSession: CDP session is only available in Chromium"
+    },
+    "clipboardPermissions": {
+      "supported": false,
+      "error": "browserContext.grantPermissions: Unknown permission: clipboard-write"
+    },
+    "opaqueNavigationBinding": {
+      "accessible": false,
+      "name": "SecurityError"
+    },
+    "opaqueTopLevelSubmission": {
+      "origin": "null",
+      "body": "login=test%40example.test&password=fixture-password"
+    },
+    "sandboxSubmission": {
+      "origin": "null",
+      "body": "login=test%40example.test&password=fixture-password"
+    },
+    "sandboxBinding": {
+      "sameOrigin": true,
+      "title": "Managed operation evaluation"
+    },
+    "verdict": "passed"
+  }
+]

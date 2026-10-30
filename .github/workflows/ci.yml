@@ -74,7 +74,7 @@ jobs:
       fail-fast: false
       matrix:
         engine: [chromium, firefox, webkit]
-        suite: [browser, capture]
+        suite: [browser, capture, native]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -95,7 +95,7 @@ jobs:
       fail-fast: false
       matrix:
         engine: [chromium, firefox, webkit]
-        suite: [browser, capture]
+        suite: [browser, capture, native]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
