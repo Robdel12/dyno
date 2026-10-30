@@ -17,8 +17,7 @@ export interface Config {
   reportDir?: string;
   setup?: string;
   browser?: {
-    name?: 'chrome' | 'chromium' | 'edge' | 'firefox' | 'safari' | 'webkit';
-    provider?: 'native' | 'playwright' | 'webdriver';
+    name?: 'chrome' | 'chromium' | 'edge' | 'firefox' | 'webkit';
     path?: string;
     args?: readonly string[];
     deviceScaleFactor?: 1 | 2 | 3;

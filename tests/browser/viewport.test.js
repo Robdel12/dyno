@@ -1,3 +1,4 @@
+import { runURL } from '../helpers/manual.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readdir } from 'node:fs/promises';
@@ -10,6 +11,7 @@ test(
   async (t) => {
     let fixture = await project(t, {
       source: `
+describe('Workflow', () => {
 test('optional capture on an ordinary browser', async ({ app, I }) => {
   await app.goto('/visual');
   let actual = {width:app.window.innerWidth,height:app.window.innerHeight};
@@ -24,10 +26,11 @@ test('required capture explains the missing provider', async ({ app }) => {
   await app.goto('/visual');
   await app.screenshot('required image');
 });
-`
+
+});`
     });
-    let result = await fixture.run().completion;
-    assert.equal(result.code, 1, result.stdout + result.stderr);
+    let result = await runURL(t, fixture);
+    assert.equal(result.code, 143, result.stdout + result.stderr);
     assert.equal(result.summary?.passed, 1, result.stdout + result.stderr);
     assert.equal(result.summary?.failed, 1);
     assert.equal(result.events.find((event) => event.type === 'attachment').attachment.status, 'skipped');
@@ -42,6 +45,7 @@ test('required capture explains the missing provider', async ({ app }) => {
 test('unfinished app operations fail explicitly and awaited errors remain catchable', { timeout: 90000 }, async (t) => {
   let fixture = await project(t, {
     source: `
+describe('Workflow', () => {
 afterEach(({ app }) => {
   if (window.unfinishedHook) app.setViewport({ width: 600, height: 400 });
 });
@@ -63,7 +67,8 @@ test('keeps awaited operation failures catchable', async ({ app, I }) => {
   await I.assert(() => /integers/.test(error));
   await I.find('$(form)').visible();
 });
-`
+
+});`
   });
   let result = await fixture.run().completion;
   assert.equal(result.code, 1, result.stdout + result.stderr);
@@ -82,6 +87,7 @@ test(
   async (t) => {
     let fixture = await project(t, {
       source: `
+describe('Workflow', () => {
 test('fills the real top-level browser', async ({ app, I }) => {
   await app.goto('/visual');
   let actual = {width:app.window.innerWidth,height:app.window.innerHeight};
@@ -102,10 +108,11 @@ test('starts the next document at the actual browser size', async ({ app, I }) =
   await I.assert(() => app.window.innerWidth === actual.width && app.window.innerHeight === actual.height);
   await I.assert(() => app.window === app.window.top && app.window.frameElement === null);
 });
-`
+
+});`
     });
-    let result = await fixture.run().completion;
-    assert.equal(result.code, 0, result.stdout + result.stderr);
+    let result = await runURL(t, fixture);
+    assert.equal(result.code, 143, result.stdout + result.stderr);
     assert.equal(result.summary?.passed, 2);
   }
 );
@@ -113,10 +120,12 @@ test('starts the next document at the actual browser size', async ({ app, I }) =
 test('an unsupported configured viewport fails before executing the app workflow', { timeout: 90000 }, async (t) => {
   let fixture = await project(t, {
     config: { viewport: { width: 8192, height: 8192 } },
-    source: `test('must not pretend to resize',()=>{throw new Error('Workflow started with the wrong viewport');});`
+    source: `describe('Workflow', () => {
+test('must not pretend to resize',()=>{throw new Error('Workflow started with the wrong viewport');});
+});`
   });
-  let result = await fixture.run().completion;
-  assert.equal(result.code, 1, result.stdout + result.stderr);
+  let result = await runURL(t, fixture);
+  assert.equal(result.code, 143, result.stdout + result.stderr);
   let fatal = result.events.find((event) => event.type === 'fatal');
   assert.match(fatal.error.message, /cannot resize the application viewport/);
   assert.equal(

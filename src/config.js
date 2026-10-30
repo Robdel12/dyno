@@ -75,21 +75,11 @@ export function normalizeConfig(input, file, overrides = {}) {
       throw new Error('webServer.env must contain string values.');
   }
   let browser = input.browser ?? {};
-  keys(browser, ['name', 'path', 'args', 'provider', 'deviceScaleFactor'], 'browser');
-  let provider = overrides.provider ?? browser.provider ?? 'native';
-  if (!['native', 'playwright', 'webdriver'].includes(provider))
-    throw new Error('browser.provider must be native, playwright, or webdriver.');
-  let name = overrides.browser ?? browser.name ?? 'chrome';
-  if (!browserNames.includes(name)) throw new Error(`Unknown browser "${name}". Choose ${browserNames.join(', ')}.`);
-  if (name === 'webkit' && provider !== 'playwright')
-    throw new Error('WebKit requires browser.provider: "playwright". Safari is a separate browser.');
-  if (name === 'safari' && provider === 'playwright')
-    throw new Error('Playwright cannot launch Safari. Choose webkit or the webdriver provider.');
-  if (
-    browser.deviceScaleFactor !== undefined &&
-    (provider !== 'playwright' || ![1, 2, 3].includes(browser.deviceScaleFactor))
-  )
-    throw new Error('browser.deviceScaleFactor requires Playwright and must be 1, 2, or 3.');
+  keys(browser, ['name', 'path', 'args', 'deviceScaleFactor'], 'browser');
+  let name = overrides.browser ?? browser.name ?? 'chromium';
+  if (!browserNames.includes(name)) throw new Error(`Unknown managed browser "${name}". Choose ${browserNames.join(', ')} or use --manual for other browsers.`);
+  if (browser.deviceScaleFactor !== undefined && ![1, 2, 3].includes(browser.deviceScaleFactor))
+    throw new Error('browser.deviceScaleFactor must be 1, 2, or 3.');
   let viewport = null;
   if (input.viewport !== undefined) {
     keys(input.viewport, ['width', 'height'], 'viewport');
@@ -125,7 +115,6 @@ export function normalizeConfig(input, file, overrides = {}) {
     host: overrides.host ?? input.host ?? '127.0.0.1',
     browser: Object.freeze({
       name,
-      provider,
       ...(path ? { path } : {}),
       ...(browser.deviceScaleFactor ? { deviceScaleFactor: browser.deviceScaleFactor } : {}),
       args: Object.freeze([...(browser.args ?? [])])

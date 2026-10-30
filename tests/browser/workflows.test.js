@@ -46,6 +46,7 @@ test(
 test('hooks reset the session and still clean up after a failing assertion', { timeout: 90000 }, async (t) => {
   let fixture = await project(t, {
     source: `
+describe('Workflow', () => {
 beforeEach(async ({app}) => { await app.request('/api/lifecycle', {method:'POST', body:'before'}); });
 afterEach(async ({app}) => { await app.request('/api/lifecycle', {method:'POST', body:'after'}); });
 test('fails after recording work', async ({app, I}) => {
@@ -56,6 +57,7 @@ test('observes cleanup before the next workflow', async ({app, I}) => {
   await app.goto('/');
   let log = await (await app.request('/api/lifecycle')).json();
   await I.assert(() => log.join(',') === 'before,body,after,before', 'Expected ordered hook cleanup');
+});
 });`
   });
   outcomes(await fixture.run().completion, 1, 1);
@@ -64,6 +66,7 @@ test('observes cleanup before the next workflow', async ({app, I}) => {
 test('fresh frames retain origin storage until the project explicitly resets it', { timeout: 90000 }, async (t) => {
   let fixture = await project(t, {
     source: `
+describe('Workflow', () => {
 test('stores a session', async ({app, I}) => {
   await app.goto('/'); app.window.localStorage.setItem('session', 'saved');
   await I.type('Robert').into('$(input[name=name])'); await I.click('Save');
@@ -80,6 +83,7 @@ test('starts without the reset session', async ({app, I}) => {
   await app.goto('/'); await I.assert(() => app.window.localStorage.getItem('session') === null);
   let cookie = await (await app.request('/api/cookie')).json();
   await I.assert(() => !cookie.cookie.includes('saved=yes'));
+});
 });`
   });
   outcomes(await fixture.run().completion, 3, 0);
@@ -91,9 +95,11 @@ test(
   async (t) => {
     let fixture = await project(t, {
       source: `
+describe('Workflow', () => {
 test('runs under the real nonce policy', async ({app, I}) => { await app.goto('/nonce-app'); await I.find('Nonce app ready').visible(); });
 test('cannot bypass blocked scripts', async ({app}) => { await app.goto('/blocked-app'); }, {timeout:600});
-test('recovers after blocked startup', async ({app, I}) => { await app.goto('/'); await I.find('Fixture app').visible(); });`
+test('recovers after blocked startup', async ({app, I}) => { await app.goto('/'); await I.find('Fixture app').visible(); });
+});`
     });
     let result = await fixture.run().completion;
     outcomes(result, 2, 1);
@@ -174,7 +180,9 @@ test(
 
 test('an app crash fails the run and releases the owned server port', { timeout: 90000 }, async (t) => {
   let fixture = await project(t, {
-    source: `test('app disconnects', async ({app, I}) => { await app.goto('/'); await app.request('/api/crash'); await I.assert(() => false); });`
+    source: `describe('Workflow', () => {
+test('app disconnects', async ({app, I}) => { await app.goto('/'); await app.request('/api/crash'); await I.assert(() => false); });
+});`
   });
   let result = await fixture.run().completion;
   assert.equal(result.code, 1, result.stdout + result.stderr);

@@ -2,7 +2,7 @@ import { fileURLToPath } from 'node:url';
 import { readFile } from 'node:fs/promises';
 import { parseCLI, configOverrides } from './cli.js';
 import { loadConfig } from './config.js';
-import { installedBrowsers } from './launcher.js';
+import { installedBrowsers } from './browsers.js';
 import { startProcess } from './process.js';
 import { initializeProject } from './init.js';
 import { diagnose } from './doctor.js';
@@ -10,17 +10,12 @@ import { runTests } from './cli-run.js';
 
 async function installBrowser(options, { signal, output }) {
   let name = options.browser;
-  let executable;
-  try {
-    let packageURL = import.meta.resolve('playwright-core/package.json');
-    let provider = JSON.parse(await readFile(new URL(packageURL), 'utf8'));
-    executable = fileURLToPath(new URL(provider.bin['playwright-core'], packageURL));
-  } catch {
-    throw new Error('Install the optional provider first: npm install --save-dev playwright-core');
-  }
+  let packageURL = import.meta.resolve('playwright-core/package.json');
+  let provider = JSON.parse(await readFile(new URL(packageURL), 'utf8'));
+  let executable = fileURLToPath(new URL(provider.bin['playwright-core'], packageURL));
   signal.throwIfAborted();
   let installation = startProcess(process.execPath, {
-    shell: false, signal, args: [executable, 'install', name], output: output.diagnostic
+    shell: false, signal, args: [executable, 'install', ...(options.withDeps ? ['--with-deps'] : []), name], output: output.diagnostic
   });
   try {
     await installation.ready;
@@ -42,7 +37,7 @@ export async function runCLI(args, context) {
   switch (options.command) {
     case 'init':
       await initializeProject(process.cwd());
-      output.event({ type: 'initialized', message: 'Created dyno.config.js and tests/browser/home.test.js. Set your app command/URL and update the example assertion, then run dyno.' });
+      output.event({ type: 'initialized', message: 'Created dyno.config.js and tests/browser/home.test.js. Set your app command/URL and update the example assertion. Run dyno install once, then dyno.' });
       return 0;
     case 'browsers':
       output.event({ type: 'browsers', browsers: await installedBrowsers() });

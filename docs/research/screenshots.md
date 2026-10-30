@@ -10,7 +10,7 @@ A nested iframe can produce a full-height PNG without rendering the whole app. O
 
 Expanding the iframe would change media queries, fixed positioning, and the viewport under test. Scroll stitching and DOM reconstruction also change capture semantics. We chose a top-level app so full-page capture can preserve the actual viewport and browser rendering.
 
-## What the spikes proved
+## What the earlier spikes proved
 
 | Check | Result |
 | --- | --- |
@@ -23,11 +23,11 @@ Expanding the iframe would change media queries, fixed positioning, and the view
 | WebDriver Chrome | Real full-page pixels verified without expanding the viewport |
 | WebDriver Firefox 159 beta | Full-page pixels, viewport sizing, and masks passed; installed Firefox 158 failed initialization |
 
-The implementation also passed the local framework suite and capture regressions through Playwright Chrome/WebKit and WebDriver Chrome/Firefox 159 beta. Those checks cover pixels, masks, sizing, navigation, interruption, and animation cleanup. They do not establish every browser or device. Safari viewport capture, Windows providers, and companion execution on phones, iOS, and TVs still need verification. WebKit results do not establish Safari behavior.
+At the time of the spike, the implementation also passed the local framework suite and capture regressions through Playwright Chrome/WebKit and WebDriver Chrome/Firefox 159 beta. Those checks cover pixels, masks, sizing, navigation, interruption, and animation cleanup. They do not establish every browser or device. Safari viewport capture, Windows providers, and companion execution on phones, iOS, and TVs still need verification. WebKit results do not establish Safari behavior.
 
 ## Capture and recovery rules
 
-Providers keep the original app page or window handle. They never choose the active tab or the latest popup. Playwright uses its screenshot API; WebDriver Chrome, Edge, and Firefox use BiDi viewport or document capture. WebDriver Safari rejects full-page capture clearly.
+Managed runs now use Playwright Core exclusively. The WebDriver results above are historical research; that implementation was removed. Playwright keeps the original app page and uses its screenshot API. It never chooses the active tab or the latest popup. Other browsers use the manual URL without capture or resizing.
 
 Screenshots support app-element masks, animation suppression, and caret hiding. Dyno finishes finite animations and suspends infinite ones before measuring the document and masks. It restores capture styles and restarts suspended animations afterward. Document identity, viewport, ownership, and saved pixels still need checking before accepting an attachment. Navigation or cancellation discards stale results and partial files.
 

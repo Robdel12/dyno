@@ -6,14 +6,12 @@ import { tmpdir } from 'node:os';
 import { PNG } from 'pngjs';
 import { project, exec } from '../helpers/project.js';
 
-let provider = process.env.DYNO_CAPTURE_PROVIDER ?? 'playwright';
-let name = process.env.DYNO_CAPTURE_BROWSER ?? 'chrome';
+let name = process.env.DYNO_CAPTURE_BROWSER ?? 'chromium';
 let managedOptions = {
   timeout: 90000,
 };
 let browser = {
   name,
-  provider,
   ...(process.env.DYNO_CAPTURE_PATH ? { path: process.env.DYNO_CAPTURE_PATH } : {}),
 };
 
@@ -24,6 +22,7 @@ test(
     let fixture = await project(t, {
       config: { browser, viewport: { width: 800, height: 600 } },
       source: `
+describe('Workflow', () => {
 test('saves the actual app', async ({ app, I }) => {
   await app.goto('/visual');
   await I.type('Robert').into('$(input[name=name])');
@@ -47,7 +46,8 @@ test('starts the next test with configured dimensions', async ({ app, I }) => {
   await app.goto('/visual');
   await I.assert(() => app.window.innerWidth === 800 && app.window.innerHeight === 600);
 });
-`,
+
+});`,
     });
     let result = await fixture.run().completion;
     assert.equal(result.code, 0, result.stdout + result.stderr);
@@ -73,7 +73,7 @@ test('starts the next test with configured dimensions', async ({ app, I }) => {
       ];
       assert.deepEqual(pixel(10, 10), [30, 70, 210, 255]);
       assert.deepEqual(pixel(200, 300), [20, 150, 80, 255]);
-      assert.equal(attachment.browser.provider, provider);
+      assert.equal(attachment.browser.provider, 'playwright');
     }
     assert.equal(result.events.find((event) => event.type === 'test').attachments.length, 2);
     assert.equal(
@@ -91,6 +91,7 @@ test(
     let fixture = await project(t, {
       config: { browser },
       source: `
+describe('Workflow', () => {
 test('rejects capture after document navigation', async ({ app, I }) => {
   await app.goto('/visual');
   let whenControlled = (realm) =>
@@ -120,7 +121,8 @@ test('rejects capture after document navigation', async ({ app, I }) => {
   await I.find('Other page').visible();
   await registration.unregister();
 });
-`,
+
+});`,
     });
     let result = await fixture.run().completion;
     assert.equal(result.code, 0, result.stdout + result.stderr);
@@ -140,11 +142,13 @@ test(
       config: { browser },
       files: { '.dyno/artifacts': 'a file blocking artifact storage' },
       source: `
+describe('Workflow', () => {
 test('does not hide a storage failure', async ({ app }) => {
   await app.goto('/visual');
   await app.screenshot('cannot save', { optional: true });
 });
-`,
+
+});`,
     });
     let result = await fixture.run().completion;
     assert.equal(result.code, 1, result.stdout + result.stderr);
@@ -164,6 +168,7 @@ test(
     let fixture = await project(t, {
       config: { browser },
       source: `
+describe('Workflow', () => {
 test('keeps managed capture bound to this browser', async ({ app, I }) => {
   await app.goto('/visual');
   let joined = await (await app.request('/__dyno__/capture', { method: 'POST' })).json();
@@ -225,7 +230,8 @@ test('keeps managed capture bound to this browser', async ({ app, I }) => {
   });
   await app.screenshot('owned image');
 });
-`,
+
+});`,
     });
     let result = await fixture.run().completion;
     assert.equal(result.code, 0, result.stdout + result.stderr);
@@ -242,16 +248,18 @@ test('keeps managed capture bound to this browser', async ({ app, I }) => {
 
 test(
   'managed Playwright capture records actual device pixels at DPR 2',
-  { ...managedOptions, skip: managedOptions.skip || provider !== 'playwright' },
+  managedOptions,
   async (t) => {
     let fixture = await project(t, {
       config: { browser: { ...browser, deviceScaleFactor: 2 }, viewport: { width: 320, height: 240 } },
       source: `
+describe('Workflow', () => {
 test('captures device pixels', async ({ app }) => {
   await app.goto('/visual');
   await app.screenshot('retina viewport');
 });
-`,
+
+});`,
     });
     let result = await fixture.run().completion;
     assert.equal(result.code, 0, result.stdout + result.stderr);
@@ -270,11 +278,13 @@ test(
     let fixture = await project(t, {
       config: { browser },
       source: `
+describe('Workflow', () => {
 test('waits for a provider failure', async ({ app }) => {
   await app.goto('/');
   await new Promise(() => {});
 });
-`,
+
+});`,
     });
     let priorProfiles = new Set(await readdir(tmpdir()));
     let session = fixture.run();
@@ -288,7 +298,7 @@ test('waits for a provider failure', async ({ app }) => {
           Number(parent) === session.child.pid && command.join(' ').endsWith('/src/providers/worker.js'),
       );
     assert.ok(worker, 'Expected an owned provider worker');
-    let ownedProfiles = (await readdir(tmpdir())).filter(name => name.startsWith(`dyno-${provider}-${session.child.pid}-`) && !priorProfiles.has(name));
+    let ownedProfiles = (await readdir(tmpdir())).filter(name => name.startsWith(`dyno-playwright-${session.child.pid}-`) && !priorProfiles.has(name));
     assert.equal(ownedProfiles.length, 1, 'Expected one new provider profile');
     process.kill(Number(worker[0]), 'SIGKILL');
     let result = await session.completion;
@@ -313,6 +323,7 @@ test(
     let fixture = await project(t, {
       config: { browser },
       source: `
+describe('Workflow', () => {
 test('waits for capture acknowledgement', async ({ app }) => {
   await app.goto('/visual');
   let controlled = new Promise((resolve) =>
@@ -323,7 +334,8 @@ test('waits for capture acknowledgement', async ({ app }) => {
   if (!window.top.navigator.serviceWorker.controller) await controlled;
   await app.screenshot('interrupt committed image');
 });
-`,
+
+});`,
     });
     let priorProfiles = new Set(await readdir(tmpdir()));
     let session = fixture.run();
@@ -338,7 +350,7 @@ test('waits for capture acknowledgement', async ({ app }) => {
     );
     assert.deepEqual(await readdir(join(fixture.directory, '.dyno/artifacts')), []);
     assert.equal(
-      (await readdir(tmpdir())).some((name) => !priorProfiles.has(name) && name.startsWith(`dyno-${provider}-${session.child.pid}-`)),
+      (await readdir(tmpdir())).some((name) => !priorProfiles.has(name) && name.startsWith(`dyno-playwright-${session.child.pid}-`)),
       false,
     );
   },
@@ -351,6 +363,7 @@ test(
     let fixture = await project(t, {
       config: { browser, viewport: { width: 800, height: 600 } },
       source: `
+describe('Workflow', () => {
 test('rejects a changed capture surface', async ({ app, I }) => {
   await app.goto('/visual');
   let whenControlled = (realm) =>
@@ -395,7 +408,8 @@ test('rejects a changed capture surface', async ({ app, I }) => {
   await app.setViewport({ width: 800, height: 600 });
   await registration.unregister();
 });
-`,
+
+});`,
     });
     let result = await fixture.run().completion;
     assert.equal(result.code, 0, result.stdout + result.stderr);
@@ -414,6 +428,7 @@ test(
     let fixture = await project(t, {
       config: { browser },
       source: `
+describe('Workflow', () => {
 afterEach(async ({app}) => {
   await app.request('/api/release-capture', {method:'POST'});
   for (let registration of await navigator.serviceWorker.getRegistrations()) await registration.unregister();
@@ -429,7 +444,8 @@ test('capture timeout', async ({app}) => {
   await app.request('/api/capture-staged');
   await capture;
 }, {timeout:3000});
-test('recovers after capture cancellation',async ({app,I}) => {await app.goto('/other'); await I.find('Other page').visible();});`,
+test('recovers after capture cancellation',async ({app,I}) => {await app.goto('/other'); await I.find('Other page').visible();});
+});`,
     });
     let result = await fixture.run().completion;
     assert.equal(result.summary?.failed, 1, result.stdout + result.stderr);
@@ -447,10 +463,10 @@ test(
   'full-page capture preserves the real app viewport and masks document pixels',
   managedOptions,
   async (t) => {
-    let fullPageAvailable = !(provider === 'webdriver' && name === 'safari');
     let fixture = await project(t, {
       config: { browser, viewport: { width: 800, height: 600 } },
-      source: `
+      source: `describe('Workflow', () => {
+
 test('uses a mobile viewport before the next test resets it', async ({app,I}) => {
   await app.setViewport({width:390,height:600});
   await app.goto('/visual');
@@ -479,7 +495,7 @@ test('captures a long document without resizing it', async ({app,I}) => {
   let observeResize = () => resized.push([surface.innerWidth,surface.innerHeight]);
   surface.addEventListener('resize',observeResize);
   try {
-    ${fullPageAvailable ? "await app.screenshot('long app', { fullPage:true, animations:'disabled', caret:'hide', mask:[secret] });" : "let failure; try { await app.screenshot('long app', {fullPage:true}); } catch (error) { failure = error.message; } await I.assert(() => /full.page|unavailable/i.test(failure), 'Unsupported full-page capture did not fail clearly');"}
+    await app.screenshot('long app', { fullPage:true, animations:'disabled', caret:'hide', mask:[secret] });
     await new Promise(resolve => surface.requestAnimationFrame(() => surface.requestAnimationFrame(resolve)));
     await I.assert(() => surface.innerWidth === 800 && surface.innerHeight === 600, 'Capture changed the application viewport');
     await I.assert(() => resized.every(([width,height]) => width === 800 && height === 600), 'Capture resized the application: ' + JSON.stringify(resized));
@@ -489,6 +505,7 @@ test('captures a long document without resizing it', async ({app,I}) => {
   } finally {
     surface.removeEventListener('resize',observeResize);
   }
+});
 });`,
     });
     let result = await fixture.run().completion;
@@ -496,10 +513,6 @@ test('captures a long document without resizing it', async ({app,I}) => {
     let attachments = result.events
       .filter((event) => event.type === 'attachment')
       .map((event) => event.attachment);
-    if (!fullPageAvailable) {
-      assert.deepEqual(attachments, []);
-      return;
-    }
     assert.equal(attachments.length, 1);
     let [attachment] = attachments;
     let image = PNG.sync.read(await readFile(attachment.path));

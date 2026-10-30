@@ -24,7 +24,7 @@ export function createCLIOutput({ json, stdout = process.stdout, stderr = proces
         case 'initialized': line(event.message); break;
         case 'browsers':
           for (let browser of event.browsers)
-            line(`${browser.name.padEnd(10)} ${browser.installed ? browser.path : 'not installed'}${browser.name === 'safari' ? ' (headed handoff; shared profile)' : ''}`);
+            line(`${browser.name.padEnd(10)} ${browser.installed ? browser.path : 'not installed'}`);
           break;
         case 'diagnosis':
           for (let check of event.checks) {

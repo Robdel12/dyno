@@ -1,4 +1,5 @@
 import { buildSuite } from './build.js';
+import { installedBrowsers, browserChannel } from './browsers.js';
 import { resolveSession } from './browser-session.js';
 
 export async function diagnose(config, { manual = false, ui = false } = {}) {
@@ -17,13 +18,17 @@ export async function diagnose(config, { manual = false, ui = false } = {}) {
       {
         name: 'browser',
         status: 'info',
-        message: 'URL-only mode: open the test URL in your browser. Screenshots need an optional provider.'
+        message: 'URL-only mode: open the test URL in your browser. Screenshots and viewport resizing require a managed run.'
       }
     ];
   else
     await check('browser', async () => {
       let plan = await resolveSession(config.browser, { headless: !ui });
-      return `${config.browser.name} · ${config.browser.provider} · ${plan.path ?? 'provider-managed build'}`;
+      if (plan.path) return `${plan.name} · Playwright · ${plan.path}`;
+      if (browserChannel(plan.name)) return `${plan.name} · Playwright channel; installation is checked when the browser starts`;
+      let installed = (await installedBrowsers()).find(browser => browser.name === plan.name);
+      if (!installed?.installed) throw new Error(`Browser build is missing. Run dyno install --browser ${plan.name}.`);
+      return `${plan.name} · Playwright · ${installed.path}`;
     });
   await check('app', async () => {
     let responding = false;

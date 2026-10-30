@@ -2,11 +2,12 @@ import { fileURLToPath } from 'node:url';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { randomUUID } from 'node:crypto';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { access, mkdtemp, rm } from 'node:fs/promises';
+import { constants } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { startProcess } from './process.js';
-import { resolveBrowser, launchBrowser } from './launcher.js';
+import { browserNames } from './browsers.js';
 
 let execute = promisify(execFile);
 
@@ -39,8 +40,8 @@ async function stopProfileProcesses(profile) {
         return { pid: Number(pid), parent: Number(parent), command: command ?? '' };
       });
   }
-  // SDKs can detach their browser from the worker's process group. The unique
-  // profile identifies only this session, including after the worker crashes.
+  // Playwright normally closes its browser. The profile also lets the parent
+  // find a detached browser if its worker exits before that close completes.
   let owned = new Set(processes.filter((item) => item.command.includes(profile)).map((item) => item.pid));
   for (let size = -1; size !== owned.size;) {
     size = owned.size;
@@ -63,55 +64,34 @@ async function stopProfileProcesses(profile) {
 }
 
 export async function resolveSession(browser, { headless = true } = {}) {
-  let provider = browser.provider ?? 'native';
-  if (provider !== 'native') {
-    let dependency = provider === 'playwright' ? 'playwright-core' : 'selenium-webdriver';
+  let name = browser.name ?? 'chromium';
+  if (!browserNames.includes(name))
+    throw new Error(`Unknown browser "${name}". Choose ${browserNames.join(', ')} or use --manual.`);
+  let path = browser.path;
+  if (path) {
+    path = resolve(path);
     try {
-      import.meta.resolve(dependency);
+      await access(path, constants.X_OK);
     } catch {
-      throw new Error(
-        `${provider} requires ${dependency}. Install it with npm install --save-dev ${dependency}. URL-only runs need no provider.`
-      );
+      throw new Error(`Browser executable is missing or not executable: ${path}`);
     }
   }
-  if (provider === 'playwright') {
-    if (browser.name === 'safari') throw new Error('Playwright cannot launch Safari. Choose webkit or webdriver.');
-    return Object.freeze({ ...browser, provider, headless, isolated: true });
-  }
-  if (provider === 'webdriver' && browser.name === 'safari' && (browser.path || process.env.SAFARI_PATH))
-    throw new Error(
-      'WebDriver Safari uses the system safaridriver. Custom Safari paths are unsupported; remove browser.path and SAFARI_PATH.'
-    );
-  let resolved = await resolveBrowser(browser, { headless });
   return Object.freeze({
-    ...resolved,
-    provider,
-    ...(browser.deviceScaleFactor ? { deviceScaleFactor: browser.deviceScaleFactor } : {}),
-    isolated: provider === 'webdriver' || resolved.isolated
+    ...browser,
+    name,
+    ...(path ? { path } : {}),
+    provider: 'playwright',
+    headless,
+    isolated: true
   });
 }
 
 export async function createBrowserSession(plan, { viewport, signal, onExit } = {}) {
-  if (plan.provider === 'native') {
-    let native;
-    return Object.freeze({
-      identity: Object.freeze({ name: plan.name, provider: 'native', build: 'installed' }),
-      capabilities: Object.freeze({ screenshot: false, fullPage: false, hostViewport: false }),
-      open: async (url) => {
-        native = await launchBrowser(url, { resolved: plan, signal, onExit });
-      },
-      stop: async () => native?.stop(),
-      get logs() {
-        return native?.logs;
-      }
-    });
-  }
-  let profile = await mkdtemp(join(tmpdir(), `dyno-${plan.provider}-${process.pid}-`));
+  let profile = await mkdtemp(join(tmpdir(), `dyno-playwright-${process.pid}-`));
   let owned = startProcess(process.execPath, {
     shell: false,
     ipc: true,
-    args: [fileURLToPath(new URL('./providers/worker.js', import.meta.url))],
-    env: { SE_AVOID_BROWSER_DOWNLOAD: 'true', SE_TIMEOUT: '25' }
+    args: [fileURLToPath(new URL('./providers/worker.js', import.meta.url))]
   });
   let requests = new Map();
   let stopping;
@@ -126,7 +106,7 @@ export async function createBrowserSession(plan, { viewport, signal, onExit } = 
     message.error ? pending.reject(new Error(message.error)) : pending.resolve(message.value);
   });
   owned.child.once('exit', () => {
-    let error = new Error(`The ${plan.provider} browser session disconnected. ${owned.logs}`.trim());
+    let error = new Error(`The Playwright browser session disconnected. ${owned.logs}`.trim());
     for (let pending of requests.values()) pending.reject(error);
     requests.clear();
     if (!stopping) onExit?.(error);
@@ -181,11 +161,7 @@ export async function createBrowserSession(plan, { viewport, signal, onExit } = 
     let identity = Object.freeze(await invoke('initialize', { plan: { ...plan, profile }, viewport }));
     return Object.freeze({
       identity,
-      capabilities: Object.freeze({
-        screenshot: true,
-        fullPage: plan.provider !== 'webdriver' || plan.name !== 'safari',
-        hostViewport: true
-      }),
+      capabilities: Object.freeze({ screenshot: true, fullPage: true, hostViewport: true }),
       open: (url) => invoke('open', { url }),
       activate: () => invoke('activate'),
       resize: (size, operationSignal) => invoke('resize', size, operationSignal),
@@ -198,14 +174,9 @@ export async function createBrowserSession(plan, { viewport, signal, onExit } = 
     });
   } catch (error) {
     await stop();
-    let help = '';
-    if (plan.name === 'safari')
-      help = ' Enable Safari Remote Automation explicitly before using webdriver, or use --manual for URL-only tests.';
-    else if (plan.name === 'firefox' && error.message.includes('Could not find profile folder'))
-      help =
-        ' This Firefox build cannot start its profile on this macOS release. Use a fixed build, or installed Firefox 158+ through webdriver.';
-    else if (plan.provider === 'playwright')
-      help = ` Install matching builds with dyno install --browser ${plan.name}.`;
+    let help = !plan.path && ['chromium', 'firefox', 'webkit'].includes(plan.name) && /executable.*doesn.t exist/i.test(error.message)
+      ? ` Install its Playwright build with dyno install --browser ${plan.name}.`
+      : '';
     throw new Error(`${error.message}${help}`, { cause: error });
   }
 }

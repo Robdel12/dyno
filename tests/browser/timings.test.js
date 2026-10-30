@@ -5,7 +5,7 @@ import { project } from '../helpers/project.js';
 import { inspectOfflineReport } from '../helpers/offline-report.js';
 import { validTimings } from '../../src/browser/timings.js';
 
-let browser = { name: process.env.DYNO_TEST_BROWSER ?? 'chrome', provider: 'native' };
+let browser = { name: process.env.DYNO_TEST_BROWSER ?? 'chromium' };
 
 test('a developer can identify slow work in JSON, the live reporter, and an offline report', { timeout: 90000 }, async t => {
   let fixture = await project(t, {
@@ -25,6 +25,7 @@ export let Contact = defineInteractor({ actions: {
     },
     source: `
 import { Contact } from './contacts.js';
+describe('Workflow', () => {
 beforeEach(async ({app,step}) => { await step('Open contacts', () => app.goto('/?token=never-record-this-query')); });
 afterEach(async ({app,step}) => { await step('Reset contacts', () => app.request('/api/lifecycle', {method:'POST',body:'never-record-this-body'})); });
 test('saves a contact', async ({app,I,step,fixtures}) => {
@@ -52,6 +53,7 @@ test('inspects the timings', async ({app,I}) => {
   await UI.assert(()=>!observer.contentDocument.querySelector('contact'),'Timing label was inserted as HTML');
   await UI.assert(()=>observer.contentWindow.location.hash.endsWith('/timings'));
   await UI.assert(()=>observer.contentDocument.documentElement.scrollWidth<=390,'Timings overflow the mobile viewport');
+});
 });`
   });
   let result = await fixture.run().completion;

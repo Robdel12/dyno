@@ -14,6 +14,7 @@ test(
   async (t) => {
     let fixture = await project(t, {
       source: `
+describe('Workflow', () => {
 test('saves exactly once through the HTTP boundary', async ({app, I}) => {
   await app.goto('/');
   await I.type('Robert').into('$(input[name=name])');
@@ -48,6 +49,7 @@ test('follows full-document links and explicit redirects without stale reads', a
   await app.goto('/redirect');
   await I.assert(() => app.window.location.pathname === '/other', 'Expected the other page URL');
   await I.find('Other page').visible();
+});
 });`,
     });
     let result = await fixture.run().completion;
@@ -64,11 +66,13 @@ test(
   async (t) => {
     let fixture = await project(t, {
       source: `
+describe('Workflow', () => {
 test('saves after the app finishes loading', async ({app,I}) => {
   await app.goto('/held-app');
   await I.type('Robert').into('$(input[name=name])');
   await I.click('Save');
   await I.find('$([role=status])').text('Saved Robert · 1');
+});
 });`,
     });
     let session = fixture.run();
@@ -93,6 +97,7 @@ test(
   async (t) => {
     let fixture = await project(t, {
       source: `
+describe('Workflow', () => {
 test('early app exception', async ({app, I}) => { await app.goto('/startup-error'); });
 test('unhandled rejection', async ({app, I}) => {
   await app.goto('/'); await I.click('Reject');
@@ -104,6 +109,7 @@ test('failed assertion', async ({app, I}) => {
 test('unresolved test', () => new Promise(() => {}), {timeout: 200});
 test('runs cleanly after failures', async ({app, I}) => {
   await app.goto('/'); await I.find('$([role=status])').text('Ready');
+});
 });`,
     });
     let result = await fixture.run().completion;
@@ -133,7 +139,9 @@ test('runs cleanly after failures', async ({app, I}) => {
 
 test('leaves explicitly reused app servers running', { timeout: 90000 }, async (t) => {
   let fixture = await project(t, {
-    source: `test('opens reused app', async ({app, I}) => { await app.goto('/'); await I.find('Fixture app').visible(); });`,
+    source: `describe('Workflow', () => {
+test('opens reused app', async ({app, I}) => { await app.goto('/'); await I.find('Fixture app').visible(); });
+});`,
     config: { webServer: { reuseExistingServer: true } },
   });
   let app = spawn(process.execPath, [fixtureServer], {
@@ -171,12 +179,14 @@ test('app startup and browser launch failures stop owned processes', { timeout: 
     { browser: { path: '/missing/dyno-chrome' } },
   ]) {
     let fixture = await project(t, {
-      source: `test('never starts', async ({app, I}) => { await app.goto('/'); });`,
+      source: `describe('Workflow', () => {
+test('never starts', async ({app, I}) => { await app.goto('/'); });
+});`,
       config: overrides,
     });
     let result = await fixture.run().completion;
     assert.equal(result.code, 1, result.stderr + result.stdout);
-    assert.match(result.stderr, /Process exited \(7\)|chrome not found/);
+    assert.match(result.stderr, /Process exited \(7\)|Browser executable is missing/);
     await assert.rejects(fetch(`http://127.0.0.1:${fixture.port}`));
   }
 });
@@ -187,8 +197,10 @@ test(
   async (t) => {
     let fixture = await project(t, {
       source: `
+describe('Workflow', () => {
 test('skip this workflow', () => { throw new Error('Should not run'); });
-test('selected workflow', async ({app, I}) => { await app.goto('/'); await I.find('Fixture app').visible(); });`,
+test('selected workflow', async ({app, I}) => { await app.goto('/'); await I.find('Fixture app').visible(); });
+});`,
     });
     let result = await fixture.run(['--test', 'selected workflow']).completion;
     assert.equal(result.code, 0, result.stderr + result.stdout);
@@ -201,7 +213,9 @@ test(
   'manual capture rebuilds changed tests, freezes active bundles, rejects duplicate results, and stops on a signal',
   { timeout: 90000 },
   async (t) => {
-    let fixture = await project(t, { source: `test('original workflow', () => {});` });
+    let fixture = await project(t, { source: `describe('Workflow', () => {
+test('original workflow', () => {});
+});` });
     let session = fixture.run(['--manual']);
     try {
       let { url } = await session.waitForEvent('ready');
@@ -221,7 +235,9 @@ test(
       let first = await capture();
       await writeFile(
         join(fixture.directory, 'tests/browser/workflow.test.js'),
-        `import {test} from 'dyno'; test('edited workflow', () => {});`,
+        `import { describe, test } from 'dyno'; describe('Workflow', () => {
+test('edited workflow', () => {});
+});`,
       );
       let second = await capture();
       let firstBundle = await (await fetch(url + `suite.js?run=${first.runId}`)).text();
@@ -283,6 +299,7 @@ test(
   async (t) => {
     let fixture = await project(t, {
       source: `
+describe('Workflow', () => {
 test('finds visible painted fragments', async ({ app, I }) => {
   await app.goto('/wrapped-link');
   await I.find('Create an account to document history').visible();
@@ -290,6 +307,7 @@ test('finds visible painted fragments', async ({ app, I }) => {
   await I.find('$(#hidden)').not.visible();
   await I.click('Create an account to document history');
   await I.find('Other page').visible();
+});
 });`,
     });
     let result = await fixture.run().completion;
@@ -301,7 +319,8 @@ test('finds visible painted fragments', async ({ app, I }) => {
 test('keeps opener isolation intact while local tests navigate and interact', { timeout: 90000 }, async t => {
   let fixture = await project(t, {
     config: { webServer: { env: { COOP: 'same-origin', COEP: 'require-corp' } } },
-    source: `test('isolated app', async ({app,I}) => {
+    source: `describe('Workflow', () => {
+test('isolated app', async ({app,I}) => {
       await app.goto('/');
       await I.assert(() => app.window.crossOriginIsolated === true);
       await I.type('Robert').into('$(input[name=name])');
@@ -312,7 +331,8 @@ test('keeps opener isolation intact while local tests navigate and interact', { 
       let response = await app.request('/other', {method:'HEAD'});
       await I.assert(() => response.headers.get('cross-origin-opener-policy') === 'same-origin');
       await I.assert(() => response.headers.get('cross-origin-embedder-policy') === 'require-corp');
-    });`
+    });
+});`
   });
   let result = await fixture.run().completion;
   assert.equal(result.code, 0, result.stderr + result.stdout);

@@ -1,10 +1,11 @@
+import { openURL } from '../helpers/manual.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { project, reportPayload } from '../helpers/project.js';
 
-let browser = process.env.DYNO_TEST_BROWSER ?? 'chrome';
+let browser = process.env.DYNO_TEST_BROWSER ?? 'chromium';
 let visibleConfig = {
-  browser: { name: browser, args: [browser === 'firefox' ? '--headless' : '--headless=new'] }
+  browser: { name: browser, args: [['firefox', 'webkit'].includes(browser) ? '--headless' : '--headless=new'] }
 };
 let observerFrame = `
 let observer = app.document.createElement('iframe');
@@ -22,6 +23,7 @@ test(
     let fixture = await project(t, {
       config: visibleConfig,
       source: `
+describe('Workflow', () => {
 test('saves a contact with console output', async ({ app, I }) => {
   let getterReads = 0;
   let diagnostic = { attempt: 1 };
@@ -70,7 +72,7 @@ test('keeps the current app available for inspection', async ({ app, I }) => {
         'Expected the reporter overview'
       );
       await UI.click('$(a[aria-label="Passed: saves a contact with console output"])');
-      await UI.assert(() => location.hash === '#/tests/' + encodeURIComponent(JSON.stringify(['tests/browser/workflow.test.js','saves a contact with console output'])) + '/output');
+      await UI.assert(() => location.hash === '#/tests/' + encodeURIComponent(JSON.stringify(['tests/browser/workflow.test.js','Workflow','saves a contact with console output'])) + '/output');
       await UI.assert(
         () =>
           document.querySelector('#output').textContent.includes('Starting save workflow') &&
@@ -91,7 +93,7 @@ test('keeps the current app available for inspection', async ({ app, I }) => {
       reporter.contentWindow.history.back();
       await UI.assert(
         () =>
-          location.hash === '#/tests/' + encodeURIComponent(JSON.stringify(['tests/browser/workflow.test.js','reports an actual assertion failure'])) + '/output' && !document.querySelector('#output-panel').hidden,
+          location.hash === '#/tests/' + encodeURIComponent(JSON.stringify(['tests/browser/workflow.test.js','Workflow','reports an actual assertion failure'])) + '/output' && !document.querySelector('#output-panel').hidden,
         'Expected the reporter overview'
       );
       reporter.contentWindow.history.forward();
@@ -155,7 +157,8 @@ test('keeps the current app available for inspection', async ({ app, I }) => {
   });
   inspect.observe(reporter, { attributes: true, attributeFilter: ['hidden'] });
 });
-`
+
+});`
     });
     let session = fixture.run(['--ui']);
     let { url } = await session.waitForEvent('ready');
@@ -176,12 +179,14 @@ test('keeps the current app available for inspection', async ({ app, I }) => {
 test('console output is bounded and malformed output cannot change a run', { timeout: 90000 }, async (t) => {
   let fixture = await project(t, {
     source: `
+describe('Workflow', () => {
 test('logs bounded output', async ({ app, I }) => {
   await app.goto('/');
   for (let index = 0; index < 150; index++) console.log('message ' + index, 'x'.repeat(3000));
   await I.find('Fixture app').visible();
 });
-`
+
+});`
   });
   let result = await fixture.run().completion;
   assert.equal(result.code, 0, result.stdout + result.stderr);
@@ -212,7 +217,8 @@ test('logs bounded output', async ({ app, I }) => {
 
 test('a developer can stop an active run from the standalone reporter', { timeout: 90000 }, async (t) => {
   let fixture = await project(t, {
-    source: `
+    source: `describe('Workflow', () => {
+
 test('stops while the app is open', async ({ app }) => {
   await app.goto('/');
   ${observerFrame}
@@ -220,7 +226,8 @@ test('stops while the app is open', async ({ app }) => {
   await UI.click('Stop run');
   await new Promise(() => {});
 });
-`
+
+});`
   });
   let result = await fixture.run().completion;
   assert.equal(result.code, 1, result.stdout + result.stderr);
@@ -235,7 +242,8 @@ test(
   async (t) => {
     let fixture = await project(t, {
       config: visibleConfig,
-      source: `
+      source: `describe('Workflow', () => {
+
 test('pauses with the failed app', async ({ app, I }) => {
   await app.goto('/');
   ${observerFrame}
@@ -289,10 +297,12 @@ test('continues with a fresh app', async ({ app, I }) => {
   await I.find('$(input[name=name])').value('');
   await I.find('$([role=status])').text('Ready');
 });
-`
+
+});`
     });
-    let session = fixture.run(['--ui']);
+    let session = fixture.run(['--manual']);
     let { url } = await session.waitForEvent('ready');
+    await openURL(t, url);
     let result = await session.waitForEvent('complete');
     let runs = await (await fetch(url + 'results')).json();
     assert.equal(result.passed, 1, JSON.stringify(runs));
@@ -307,6 +317,7 @@ test(
     let fixture = await project(t, {
       config: visibleConfig,
       source: `
+describe('Workflow', () => {
 describe('Contacts',()=>{
   test('opens', async ({app,I})=>{await app.goto('/');await I.find('Fixture app').visible();});
   test.skip('later');
@@ -323,21 +334,22 @@ test('another workflow', async ({app,I})=>{
       let UI=new Interactor({root:()=>document.body});
       let location=reporter.contentWindow.location;
       await UI.find('$(.group-heading h2)').text('tests/browser/workflow.test.js');
-      await UI.find('$(.suite-heading h3)').text('Contacts');
+      await UI.find('$(.suite-heading h3)').text('Workflow › Contacts');
       await UI.find('$(#connection-state)').text('Connected to test browser');
-      await UI.find('$(#capabilities)').text('Screenshots unavailable · URL-only browser');
+      await UI.find('$(#capabilities)').text('Screenshots available');
       await UI.click('"Skipped"$(button[data-filter])');
       await UI.click('$(a[aria-label="Skipped: later"])');
-      await UI.assert(()=>location.hash.includes('status=skipped') && location.hash.includes(encodeURIComponent(JSON.stringify(['tests/browser/workflow.test.js','Contacts','later']))));
+      await UI.assert(()=>location.hash.includes('status=skipped') && location.hash.includes(encodeURIComponent(JSON.stringify(['tests/browser/workflow.test.js','Workflow','Contacts','later']))));
       await UI.find('Skipped: Skipped').visible();
       await UI.click('All tests');
       await UI.assert(()=>document.querySelector('button[data-filter=skipped]').getAttribute('aria-pressed')==='true');
       await UI.click('"All"$(button[data-filter])');
       await fetch('/api/inspection',{method:'POST',body:JSON.stringify({ok:true})});
-      await UI.click('$(button[aria-label="Run suite Contacts in tests/browser/workflow.test.js"])');
+      await UI.click('$(button[aria-label="Run suite Workflow › Contacts in tests/browser/workflow.test.js"])');
     }catch(error){await fetch('/api/inspection',{method:'POST',body:JSON.stringify({error:error.message})});}
   });
   inspect.observe(reporter,{attributes:true,attributeFilter:['hidden']});
+});
 });`
     });
     let session = fixture.run(['--ui']);

@@ -32,7 +32,8 @@ test('custom interactors compose native actions without changing siblings, scope
     },
     source: `
       import { Contact, OtherContact } from './contacts.js';
-      test('edit independent contacts', async ({app,I}) => {
+      describe('Workflow', () => {
+test('edit independent contacts', async ({app,I}) => {
         let work = Contact(I, '$(#work)');
         let personal = OtherContact(I.scope('$(#personal)'));
         await app.goto('/interactor');
@@ -55,7 +56,8 @@ test('custom interactors compose native actions without changing siblings, scope
         await work.find('$(output)').text('Fresh notes');
         await work.find('Notes').value('Fresh notes');
         await personal.find('Name').value('');
-      });`,
+      });
+});`,
   });
   let result = await fixture.run().completion;
   assert.equal(result.code, 0, result.stdout + result.stderr);
@@ -63,15 +65,17 @@ test('custom interactors compose native actions without changing siblings, scope
 });
 
 test('custom interactors never search outside a missing root', { timeout: 90000 }, async t => {
-  let fixture = await project(t, { config: { expectTimeout: 150 }, source: `
+  let fixture = await project(t, { source: `
     import { defineInteractor } from 'dyno';
     let Contact = defineInteractor({ actions: {
       *rename(name) { yield this.find('Name').then.fill(name); },
     } });
-    test('missing custom contact', async ({app,I}) => {
+    describe('Workflow', () => {
+test('missing custom contact', async ({app,I}) => {
       await app.goto('/interactor');
       await Contact(I, '$(#missing)').rename('Wrong contact');
-    });` });
+    });
+});` });
   let result = await fixture.run().completion;
   assert.equal(result.code, 1);
   let failure = result.events.find(event => event.type === 'test');
@@ -80,7 +84,8 @@ test('custom interactors never search outside a missing root', { timeout: 90000 
 
 test('Interactor scopes compose, retain the current document, and isolate same-named fields', { timeout: 90000 }, async t => {
   let fixture = await project(t, { source: `
-    test('edit contacts', async ({ app, I }) => {
+    describe('Workflow', () => {
+test('edit contacts', async ({ app, I }) => {
       Interactor.defineAction('renameContact', function* (name) {
         yield this.find('Name').then.fill(name);
       });
@@ -107,7 +112,8 @@ test('Interactor scopes compose, retain the current document, and isolate same-n
       await I.find('Below the fold').rendered();
       await I.find('Below the fold').not.visible();
       await I.assert(() => app.window.scrollY === 0, 'Content checks must not scroll');
-    });` });
+    });
+});` });
   let result = await fixture.run().completion;
   assert.equal(result.code, 0, result.stdout + result.stderr);
   assert.equal(result.summary.passed, 1);
@@ -115,24 +121,28 @@ test('Interactor scopes compose, retain the current document, and isolate same-n
 
 test('Interactor uploads files in the app realm and can clear the selection', { timeout: 90000 }, async t => {
   let fixture = await project(t, { source: `
-    test('attach photos', async ({app,I}) => {
+    describe('Workflow', () => {
+test('attach photos', async ({app,I}) => {
       await app.goto('/interactor');
       await I.find('Photos').then.upload({name:'first.txt',bytes:'First'}, {name:'second.txt',bytes:new TextEncoder().encode('Second'),type:'text/plain'});
       await I.find('$(#uploads)').text('first.txt: First, second.txt: Second');
       await I.find('Photos').then.upload();
       await I.find('$(#uploads)').text('');
-    });` });
+    });
+});` });
   let result = await fixture.run().completion;
   assert.equal(result.code, 0, result.stdout + result.stderr);
   assert.equal(result.summary.passed, 1);
 });
 
 test('missing Interactor scopes fail without finding a matching field outside the scope', { timeout: 90000 }, async t => {
-  let fixture = await project(t, { config: { expectTimeout: 150 }, source: `
-    test('missing contact', async ({app,I}) => {
+  let fixture = await project(t, { source: `
+    describe('Workflow', () => {
+test('missing contact', async ({app,I}) => {
       await app.goto('/interactor');
       await I.scope('$(#missing)').find('Name').then.fill('Wrong contact');
-    });` });
+    });
+});` });
   let result = await fixture.run().completion;
   assert.equal(result.code, 1);
   assert.match(result.events.find(event => event.type === 'test').error.message, /missing/);
@@ -140,7 +150,8 @@ test('missing Interactor scopes fail without finding a matching field outside th
 
 test('content checks respect transparent ancestors and become visible after a user action', { timeout: 90000 }, async t => {
   let fixture = await project(t, { source: `
-    test('reveal notes', async ({app,I}) => {
+    describe('Workflow', () => {
+test('reveal notes', async ({app,I}) => {
       await app.goto('/interactor');
       let shadowNote = ({ $root }) => $root.querySelector('#shadow').shadowRoot.querySelector('p');
       await I.find('Private note').not.rendered();
@@ -152,19 +163,25 @@ test('content checks respect transparent ancestors and become visible after a us
       await I.find('Private note').rendered();
       await I.find('Private note').visible();
       await I.find(shadowNote).rendered();
-    });` });
+    });
+});` });
   let result = await fixture.run().completion;
   assert.equal(result.code, 0, result.stdout + result.stderr);
   assert.equal(result.summary.passed, 1);
 });
 
 test('filling a read-only field fails instead of changing a value the user cannot edit', { timeout: 90000 }, async t => {
-  let fixture = await project(t, { config: { expectTimeout: 150 }, source: `
-    test('published contact', async ({app,I}) => {
+  let fixture = await project(t, { source: `
+    describe('Workflow', () => {
+test('published contact', async ({app,I}) => {
       await app.goto('/interactor');
-      await I.find('Published name').then.fill('Changed');
-    });` });
+      let failure;
+      try { await I.find('Published name').then.fill('Changed'); } catch (error) { failure = error; }
+      await I.assert(() => /read-only/.test(failure?.message), 'Expected a read-only failure, got ' + failure?.message);
+      await I.find('Published name').value('Published contact');
+    });
+});` });
   let result = await fixture.run().completion;
-  assert.equal(result.code, 1);
-  assert.match(result.events.find(event => event.type === 'test').error.message, /read-only/);
+  assert.equal(result.code, 0, result.stdout + result.stderr);
+  assert.equal(result.summary.passed, 1);
 });

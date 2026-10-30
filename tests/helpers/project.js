@@ -88,29 +88,43 @@ async function availablePort() {
     let socket = createServer();
     let candidate = nextAppPort;
     nextAppPort = candidate === 29999 ? 20000 : candidate + 1;
-    socket.listen(candidate, '127.0.0.1');
-    try { await once(socket, 'listening'); }
-    catch (error) { if (error.code === 'EADDRINUSE') continue; throw error; }
-    let port = socket.address().port;
-    await new Promise(resolve => socket.close(resolve));
-    return port;
+    let claim = process.env.DYNO_TEST_PORT_DIR ? join(process.env.DYNO_TEST_PORT_DIR, String(candidate)) : null;
+    if (claim) {
+      try { await mkdir(claim); }
+      catch (error) { if (error.code === 'EEXIST') continue; throw error; }
+    }
+    let release = () => claim ? rm(claim, { recursive: true, force: true }) : Promise.resolve();
+    try {
+      socket.listen(candidate, '127.0.0.1');
+      await once(socket, 'listening');
+      let port = socket.address().port;
+      await new Promise(resolve => socket.close(resolve));
+      return { port, release };
+    } catch (error) {
+      await release();
+      if (error.code !== 'EADDRINUSE') throw error;
+    }
   }
   throw new Error('Could not reserve a local test app port.');
 }
 
-export async function project(t, { source = "test('opens the app', async ({ app, I }) => { await app.goto('/'); await I.find('Fixture app').visible(); });", config: overrides = {}, files = {} } = {}) {
+export async function project(t, { source = "describe('Workflow', () => { test('opens the app', async ({ app, I }) => { await app.goto('/'); await I.find('Fixture app').visible(); }); });", config: overrides = {}, files = {} } = {}) {
   let directory = await mkdtemp(join(tmpdir(), 'dyno-workflow-'));
   let sessions = [];
+  let reservation;
   t.after(async () => {
-    for (let session of sessions.toReversed()) await session.stop();
-    await rm(directory, { recursive: true, force: true });
+    try {
+      for (let session of sessions.toReversed()) await session.stop();
+      await rm(directory, { recursive: true, force: true });
+    } finally { await reservation?.release(); }
   });
-  let port = await availablePort();
+  reservation = await availablePort();
+  let { port } = reservation;
   await mkdir(join(directory, 'tests/browser'), { recursive: true });
   await writeFile(join(directory, 'package.json'), '{"type":"module"}');
   await writeFile(join(directory, 'tests/browser/workflow.test.js'), `import { describe, test, beforeEach, afterEach, Interactor } from 'dyno';\n${source}`);
   let config = {
-    testDir: './tests/browser', browser: { name: process.env.DYNO_TEST_BROWSER ?? 'chrome' }, port: 0, ...overrides,
+    testDir: './tests/browser', browser: { name: process.env.DYNO_TEST_BROWSER ?? 'chromium' }, port: 0, ...overrides,
     webServer: { command: [process.execPath, appServer], url: `http://127.0.0.1:${port}`, ready: 'FIXTURE_READY', env: { PORT: String(port) }, ...overrides.webServer, env: {PORT: String(port), ...overrides.webServer?.env} }
   };
   await writeFile(join(directory, 'dyno.config.js'), `export default ${JSON.stringify(config)};`);

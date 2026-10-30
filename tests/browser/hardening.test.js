@@ -4,17 +4,17 @@ import { createServer, request } from 'node:http';
 import { once } from 'node:events';
 import { join } from 'node:path';
 import { connect } from 'node:net';
-import { readFile, chmod } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import { project, reportPayload } from '../helpers/project.js';
 
 
 test('browser selection reaches a real browser and missing exact test names explain the filter', { timeout: 150000 }, async t => {
   let fixture = await project(t);
-  let result = await fixture.run(['run', '--browser', process.env.DYNO_TEST_BROWSER ?? 'chrome']).completion;
+  let result = await fixture.run(['run', '--browser', process.env.DYNO_TEST_BROWSER ?? 'chromium']).completion;
   assert.equal(result.code, 0, result.stderr + result.stdout);
   assert.equal(result.summary.passed, 1);
   assert.equal(result.events.find(event => event.type === 'ready').browser.isolated, true);
-  assert.match(result.events.find(event => event.type === 'start').userAgent, /Chrome|Firefox/);
+  assert.match(result.events.find(event => event.type === 'start').userAgent, /Chrome|Firefox|AppleWebKit/);
   let missing = await fixture.run(['--test', 'does not exist']).completion;
   assert.equal(missing.code, 1);
   assert.match(missing.events.find(event => event.type === 'fatal').error.message, /No test named "does not exist"/);
@@ -22,10 +22,12 @@ test('browser selection reaches a real browser and missing exact test names expl
 
 test('compressed HTML runs in a real browser without changing the app response contract', { timeout: 90000 }, async t => {
   let fixture = await project(t, { source: `
+describe('Workflow', () => {
 for (let path of ['/gzip-app', '/brotli-app']) test('uses compressed app ' + path, async ({app, I}) => {
   await app.goto(path);
   await I.type('Robert').into('$(input[name=name])'); await I.click('Save');
   await I.find('$([role=status])').text('Saved Robert · 1');
+});
 });` });
   let result = await fixture.run().completion;
   assert.equal(result.code, 0, result.stdout + result.stderr);
@@ -142,7 +144,7 @@ test('a misconfigured browser executable reports its output and releases the own
   let fixture = await project(t, { config: { browser: { path: process.execPath } } });
   let result = await fixture.run().completion;
   assert.equal(result.code, 1);
-  assert.match(result.events.at(-1).message, /closed before the run finished/);
+  assert.match(result.events.at(-1).message, /launch|closed|bad option/i);
   assert.match(result.events.at(-1).message, /bad option/);
   await assert.rejects(fetch(`http://127.0.0.1:${fixture.port}`));
 });
@@ -162,17 +164,19 @@ test('stopping a run terminates descendants that ignore graceful shutdown', { ti
 });
 
 test('a reporter can rerun the same selected test repeatedly without changing its URL', { timeout: 90000 }, async t => {
-  let name = process.env.DYNO_TEST_BROWSER ?? 'chrome';
-  let fixture = await project(t, { config: { browser: { name, args: [name === 'firefox' ? '--headless' : '--headless=new'] } }, source: `
+  let name = process.env.DYNO_TEST_BROWSER ?? 'chromium';
+  let fixture = await project(t, { config: { browser: { name, args: [['firefox', 'webkit'].includes(name) ? '--headless' : '--headless=new'] } }, source: `
+describe('Workflow', () => {
 test('first visible workflow', async ({app,I}) => {
   await app.goto('/'); await I.find('Fixture app').visible();
   await app.request('/api/lifecycle', {method:'POST', body:'visited'});
 });
-test('another workflow', async ({app,I}) => { await app.goto('/'); await I.find('Fixture app').visible(); });` });
+test('another workflow', async ({app,I}) => { await app.goto('/'); await I.find('Fixture app').visible(); });
+});` });
   let session = fixture.run(['--ui']);
   let {url} = await session.waitForEvent('ready');
   let first = await session.waitForEvent('complete');
-  let rerun = runId => fetch(url+'control',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId,command:'rerun',ids:[JSON.stringify(['tests/browser/workflow.test.js','first visible workflow'])]})});
+  let rerun = runId => fetch(url+'control',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId,command:'rerun',ids:[JSON.stringify(['tests/browser/workflow.test.js','Workflow','first visible workflow'])]})});
   assert.equal((await rerun(first.runId)).status,200);
   let second = await session.waitForEvent('complete', event => event.runId !== first.runId);
   assert.equal((await rerun(second.runId)).status,200);
@@ -199,19 +203,13 @@ test('a closed stdout consumer stops owned resources without an uncaught pipe er
 });
 
 
-test('a browser that stays open without joining includes its output in the deadline error', { timeout: 10000, skip: process.platform === 'win32' }, async t => {
-  let fixture = await project(t, { config: { runTimeout: 1500 }, files: {
-    'not-a-browser.js': `#!/usr/bin/env node
-import { createServer } from 'node:http';
-console.error('Diagnostic: this executable never opens the test URL');
-createServer((request, response) => response.end('wrong executable')).listen(0, '127.0.0.1');
-`
-  } });
-  let executable = join(fixture.directory, 'not-a-browser.js');
-  await chmod(executable, 0o700);
-  let result = await fixture.run(['--browser-path', executable]).completion;
+test('the browser deadline stops registration that never completes and releases the app', { timeout: 15000 }, async t => {
+  let fixture = await project(t, { config: { runTimeout: 1500 }, source: `
+    await new Promise(() => {});
+    describe('Workflow', () => { test('never registered', () => {}); });
+  ` });
+  let result = await fixture.run().completion;
   assert.equal(result.code, 1, result.stdout + result.stderr);
   assert.match(result.events.at(-1).message, /No complete browser result within 1500 ms/);
-  assert.match(result.events.at(-1).message, /Diagnostic: this executable never opens the test URL/);
   await assert.rejects(fetch(`http://127.0.0.1:${fixture.port}`));
 });

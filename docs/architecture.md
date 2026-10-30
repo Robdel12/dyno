@@ -1,6 +1,6 @@
 # How Dyno runs a test
 
-Node manages processes, bundles, and output. The browser executes tests and Interactor actions. A driver is optional.
+Node manages processes, bundles, and output. The browser executes tests and Interactor actions. Managed runs use the included Playwright Core. Manual runs only need the URL.
 
 ## CLI boundaries
 
@@ -24,7 +24,7 @@ Persistent companion window: controller
 └─ hidden execution iframe: fresh test runtime
    └─ direct access to the app window's current document
 
-Node gateway → optional provider → original app window and screenshots
+Node gateway → Playwright worker → original app window and screenshots
 ```
 
 The start URL, `/__dyno__/`, opens a named companion before loading the app in the original window. The companion keeps its reference to that window through `opener`. App navigation replaces its document without destroying test execution. If a browser blocks the popup, the start page offers **Start** to open it with a user gesture. Both windows must stay open.
@@ -33,13 +33,13 @@ The gateway forwards app requests and WebSocket upgrades to the app server. Its 
 
 ## Test definitions
 
-The bundled entry loads test modules sequentially through the registration boundary. Each file gets its own scope, including when module evaluation awaits an import. `describe` callbacks register synchronously. [suite.js](../src/suite.js) builds immutable trees and compiles inherited hooks, focus/skip decisions, and stable file/suite/name IDs into an execution plan. Only serializable test descriptors cross into the host and gateway; callbacks remain in the test runtime.
+The bundled entry loads test modules sequentially through the registration boundary. Each file gets its own registration boundary, including when module evaluation awaits an import. Tests and hooks must belong to a named describe; file-level declarations fail. `describe` callbacks register synchronously. [suite.js](../src/suite.js) builds immutable trees and compiles inherited hooks, focus/skip decisions, and stable file/suite/name IDs into an execution plan. Only serializable test descriptors cross into the host and gateway; callbacks remain in the test runtime. Named suite paths and hook scopes are explicit in the plan. Execution stays sequential; future parallel scheduling must assign separate browser, storage, and backend ownership rather than treating a fresh test document as isolation.
 
 ## State and windows
 
 [execution.js](../src/browser/execution.js) contains pure transitions over immutable state. [shell.js](../src/browser/shell.js) applies DOM and network effects. Window and frame handles, promises, and abort controllers stay outside that state.
 
-The app owns its full, unscaled browser viewport. Native and manual runs use its actual dimensions; managed providers can resize it. Reporter routes never move the app. Inspection opens an overlay at a test boundary. Continue hides it before the next test starts; pausing doesn't freeze the app's timers or network activity.
+The app owns its full, unscaled browser viewport. Manual runs use its actual dimensions; managed runs can resize it. Reporter routes never move the app. Inspection opens an overlay at a test boundary. Continue hides it before the next test starts; pausing doesn't freeze the app's timers or network activity.
 
 The reporter owns its route, search, and filter. Embedded reporters receive checked `postMessage` messages. Separate reporter URLs receive server events and send HTTP commands. Both use the same UI.
 
@@ -55,15 +55,15 @@ Reporter Stop asks the runtime to cancel and finish bounded cleanup. App loss in
 
 Unload messages are best effort. The gateway connection and bounded run deadlines also detect lost ownership; checking `window.closed` alone is insufficient.
 
-## Browser providers
+## Managed browsers
 
-[browser-session.js](../src/browser-session.js) exposes `open`, `activate`, `resize`, `capture`, `stop`, identity, and capabilities. Native sessions only launch URLs. Playwright and WebDriver load in an owned worker when selected. The CLI removes disposable profiles and stops owned processes, including detached browsers left by a worker crash.
+[browser-session.js](../src/browser-session.js) exposes `open`, `activate`, `resize`, `capture`, `stop`, identity, and capabilities. One owned worker uses Playwright Core for launch and page operations. The SDK owns browser discovery, channels, downloads, and normal browser shutdown. Dyno owns its test session, temporary profile, operation deadlines, and forced cleanup after worker failure. There is no native or WebDriver launch path.
 
 Each launched browser has a private launch token. Each browser that joins gets its own run. Manual visitors can't use another run's controller. Reruns replace the old run and notify its observers.
 
-Providers retain the original app page or window handle. The companion becoming active cannot redirect capture or sizing to the wrong window.
+The worker retains the original app page. The companion becoming active cannot redirect capture or sizing to the wrong window.
 
-`app.setViewport` requires a managed provider to change the actual app viewport. Native and manual calls succeed only when the requested size already matches. A configured fixed size must also match; Dyno never simulates it with a larger iframe. WebDriver Chrome, Edge, and Firefox use BiDi to size the actual viewport. Safari uses window dimensions; the controller measures the app viewport and allows one correction. Sizes that still do not match fail clearly.
+`app.setViewport` changes the actual app viewport through Playwright. Manual calls succeed only when the requested size already matches. A configured fixed size must also match; Dyno never simulates it with a larger iframe.
 
 ## Editing tests
 

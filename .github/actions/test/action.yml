@@ -5,8 +5,8 @@ inputs:
     description: core, browser, package, or capture.
     required: true
   browser:
-    description: Native browser for browser/package suites.
-    default: chrome
+    description: Playwright engine for browser suites.
+    default: chromium
   artifact:
     description: Unique artifact name for this job.
     required: true
@@ -17,13 +17,14 @@ runs:
       shell: bash
       env:
         DYNO_TEST_SUITE: ${{ inputs.suite }}
-        DYNO_NATIVE_BROWSER: ${{ inputs.browser }}
+        DYNO_TEST_BROWSER: ${{ inputs.browser }}
+        DYNO_CAPTURE_BROWSER: ${{ inputs.browser }}
         DYNO_TEST_REPORT_DIR: test-results
       run: |
         mkdir -p test-results
         command=(node scripts/test.js "$DYNO_TEST_SUITE")
-        if [[ "$DYNO_TEST_SUITE" == 'browser' || "$DYNO_TEST_SUITE" == 'package' ]]; then
-          command+=("$DYNO_NATIVE_BROWSER")
+        if [[ "$DYNO_TEST_SUITE" == 'browser' || "$DYNO_TEST_SUITE" == 'package' || "$DYNO_TEST_SUITE" == 'capture' || "$DYNO_TEST_SUITE" == 'all' ]]; then
+          command+=("$DYNO_TEST_BROWSER")
         fi
         if [[ "$RUNNER_OS" == 'Linux' ]]; then
           command=(dbus-run-session -- "${command[@]}")

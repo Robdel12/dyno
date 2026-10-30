@@ -2,13 +2,14 @@
 
 Dyno starts your app, bundles tests, and serves a URL. Tests and Interactor.js execute in that browser. The CLI reports results and stops the processes it owns.
 
-You'll need Node 24+ and an installed browser. Chrome is the default. Dyno is early and isn't published to npm yet.
+You'll need Node 24+. Playwright Core is included; Chromium is the default browser. Dyno is early and isn't published to npm yet.
 
 ## Add it to an app
 
 ```sh
 npm install --save-dev github:Robdel12/dyno
 npx dyno init
+npx dyno install
 npx dyno doctor
 ```
 
@@ -26,13 +27,15 @@ export default {
 ```
 
 ```js
-import { test } from 'dyno';
+import { describe, test } from 'dyno';
 
-test('saves a contact', async ({ app, I }) => {
-  await app.goto('/contacts/new');
-  await I.type('Robert').into('$(input[name=name])');
-  await I.click('Save');
-  await I.find('$([role=status])').text('Contact saved');
+describe('Contacts', () => {
+  test('saves a contact', async ({ app, I }) => {
+    await app.goto('/contacts/new');
+    await I.type('Robert').into('$(input[name=name])');
+    await I.click('Save');
+    await I.find('$([role=status])').text('Contact saved');
+  });
 });
 ```
 
@@ -70,7 +73,7 @@ Console capture keeps the first 100 messages per test, up to 2,000 characters ea
 
 ## Editing and debugging
 
-`dyno doctor` checks config, bundles tests, locates the selected browser/provider, and checks the app URL without launching anything. It validates headless mode by default; add `--ui` for a visible browser or `--manual` for a URL-only setup. It cannot prove that a configured server command starts successfully; the run checks its output and HTTP readiness.
+`dyno doctor` checks config, bundles tests, checks the selected Playwright build or executable, and checks the app URL without launching anything. It validates headless mode by default; add `--ui` for a visible browser or `--manual` for a URL-only setup. It cannot prove that a configured server command starts successfully; the run checks its output and HTTP readiness.
 
 `--watch` keeps the app server and browser session alive. It watches test files and imported project helpers using filesystem events. Edits during a run queue one rebuild of the latest files. Build errors leave the previous results available; fixing the file runs again. Config and Node setup changes need a CLI restart. App code keeps its own hot reload.
 
@@ -90,7 +93,7 @@ declare module 'dyno' {
 
 ## Browser API
 
-Import `test`, `beforeEach`, and `afterEach` from `dyno`. Tests and hooks receive `{ app, I, fixtures, signal }`. `I` is an [Interactor.js](https://github.com/wwilsman/interactor.js) instance rooted in the current app document.
+Import `describe`, `test`, `beforeEach`, and `afterEach` from `dyno`. Tests and hooks receive `{ app, I, fixtures, signal }`. `I` is an [Interactor.js](https://github.com/wwilsman/interactor.js) instance rooted in the current app document.
 
 ```js
 await I.type('Robert').into('$(input[name=name])');
@@ -106,7 +109,7 @@ await I.assert(
 Text selectors find visible text, placeholders, and related label controls. `$(...)` selects with CSS. Interactor owns selector resolution, actions, assertion retries, and error messages. `expectTimeout` sets its assertion timeout. Wait for the result of an action; a passing assertion doesn't mean all background work is idle.
 
 - `app.goto('/path')` waits for the app's bridge and document readiness. Use Interactor to wait for rendered UI.
-- `app.setViewport({ width, height })` asks a managed provider to resize the actual app viewport and waits for layout. Each dimension must be 1–8192 CSS pixels. Native and manual runs require the requested size to already match.
+- `app.setViewport({ width, height })` asks a managed provider to resize the actual app viewport and waits for layout. Each dimension must be 1–8192 CSS pixels. Manual runs require the requested size to already match.
 - `app.screenshot(name, options)` waits for a saved PNG. See [screenshots](#screenshots).
 - `app.request('/api/path', fetchOptions)` makes a same-origin request with the browser session and returns a standard `Response`.
 - `app.document` and `app.window` expose the app's document and window. Await navigation before direct access; use `I.assert` callbacks for changing state.
@@ -181,7 +184,7 @@ Keep navigation, fixture I/O, screenshots, and named steps in workflow functions
 
 ## Suites and selection
 
-Use `describe(name, callback)` to group tests. Its callback is synchronous; put async work in hooks or tests. Top-level hooks belong to their file. Nested `beforeEach` hooks run from the file inward, and `afterEach` hooks run from the inner suite outward.
+Every test and hook must be inside a named `describe(name, callback)`, including skipped and focused tests. File-level declarations fail with guidance to move them into a suite. You can have several top-level suites in a file. Callbacks register synchronously; put async work in hooks or tests. Nested `beforeEach` hooks run from the outer suite inward, and `afterEach` hooks run from the inner suite outward.
 
 ```js
 import { describe, test, beforeEach } from 'dyno';
@@ -198,6 +201,8 @@ describe('Authentication', () => {
 });
 ```
 
+Runs are sequential. Named suites make ownership explicit for future scheduling; they don't isolate storage or backend data. Keep that cleanup in your project.
+
 Names must be unique within a suite; different files and suites can reuse a short name. Each test has a stable ID based on its file, suite path, and name. Adding another test doesn't change that ID.
 
 `test.skip('later')` and `describe.skip` report skipped tests without executing their hooks or bodies. `test.only` and `describe.only` select focused tests locally. `forbidOnly` defaults to true when `CI` is set, so committed focus markers fail clearly.
@@ -213,19 +218,19 @@ File, suite, and ID selectors can repeat; different selector kinds narrow each o
 
 ## Viewport sizing
 
-Native and manual runs use the app window's actual viewport. Managed runs default to 1280 × 800 CSS pixels. Set `viewport` in config for fixed dimensions, or await `app.setViewport({ width: 390, height: 844 })` within a managed test. The next test restores its default size.
+Manual runs use the app window's actual viewport. Managed runs default to 1280 × 800 CSS pixels. Set `viewport` in config for fixed dimensions, or await `app.setViewport({ width: 390, height: 844 })` within a managed test. The next test restores its default size.
 
-A browser page cannot reliably resize its own tab. Without a managed provider, a matching `app.setViewport` call is a no-op and any different size fails clearly. A fixed config size must also match the actual window. Resize it yourself or choose a provider; Dyno does not fake a viewport with an app iframe.
+A browser page cannot reliably resize its own tab. Without a managed provider, a matching `app.setViewport` call is a no-op and any different size fails clearly. A fixed config size must also match the actual window. Resize it yourself or use a managed run; Dyno does not fake a viewport with an app iframe.
 
 These are layout dimensions, not phone emulation. They don't set touch input, OS orientation, or physical screen size. A mobile-sized desktop viewport does not prove real-device behavior.
 
 ## Screenshots
 
-Choose an optional [browser provider](browsers.md#add-screenshots-and-window-control). Native and manual runs need no provider package.
+Managed runs include screenshots and window sizing through Playwright Core. [Download a browser build](browsers.md) once with `dyno install`; no extra dependency is needed. Manual URL-only runs have neither capability.
 
 ```js
 export default {
-  browser: { name: 'chrome', provider: 'playwright' },
+  browser: { name: 'chromium' },
   viewport: { width: 1280, height: 800 },
   artifactsDir: '.dyno/artifacts',
   webServer: {
@@ -248,11 +253,11 @@ let image = await app.screenshot('dashboard', {
 
 Dyno captures the original app window with the reporter hidden. By default it captures the viewport; `fullPage: true` captures the whole page without enlarging the viewport. It waits for fonts, checks the document and dimensions, and saves the PNG before resolving. Navigation, Stop, resize, or lost ownership invalidates pending captures. Screenshot and viewport requests run in order; finishing a test or hook with unfinished operations fails clearly. Await both APIs.
 
-Without a provider, required capture fails. Use `await app.screenshot('dashboard', { optional: true })` only when the functional test is useful without an image. It returns and reports a skipped image when capture is unavailable. Provider and storage errors still fail.
+In a manual run, required capture fails. Use `await app.screenshot('dashboard', { optional: true })` only when the functional test is useful without an image. It returns and reports a skipped image when capture is unavailable. Provider and storage errors still fail.
 
 Reported images remain on disk after cleanup. Interrupted runs discard images that weren't reported. JSON attachment events and test results include the path, browser/provider/version, viewport, and pixel ratio. The reporter links to the PNG while the gateway is running.
 
-Capture options are `fullPage` (default `false`), `mask` (an array of app `Element` objects), `animations` (`'allow'` or `'disabled'`, default `'allow'`), and `caret` (`'initial'` or `'hide'`, default `'initial'`). Masks cover those elements in the PNG; pass current elements from the app document. Full-page capture is available through Playwright and WebDriver Chrome, Edge, and Firefox. WebDriver Safari rejects it clearly.
+Capture options are `fullPage` (default `false`), `mask` (an array of app `Element` objects), `animations` (`'allow'` or `'disabled'`, default `'allow'`), and `caret` (`'initial'` or `'hide'`, default `'initial'`). Masks cover those elements in the PNG; pass current elements from the app document. All managed targets support full-page capture.
 
 Screenshots are attachments, without baseline comparison. They record a rendered frame during the request; they don't freeze other app work. Animation suppression finishes finite animations and suspends infinite ones before measuring the document and masks. Temporary styles are removed and suspended animations restart afterward. Use Interactor to wait for the state you want first.
 
@@ -263,13 +268,15 @@ Timings are always recorded. Open **Slowest tests** in the reporter, then a test
 Custom Interactor actions and assertions are included in the enclosing test or hook duration. They don't get separate timing rows automatically. Wrap meaningful workflows in `step()` to give them named intervals:
 
 ```js
-test('saves a contact', async ({ app, I, step }) => {
-  await app.goto('/contacts/new');
-  let contact = await step('Save contact', async () => {
-    await I.type('Robert').into('$(input[name=name])');
-    await I.click('Save');
-    await I.find('$([role=status])').text('Contact saved');
-    return 'Robert';
+describe('Contacts', () => {
+  test('saves a contact', async ({ app, I, step }) => {
+    await app.goto('/contacts/new');
+    let contact = await step('Save contact', async () => {
+      await I.type('Robert').into('$(input[name=name])');
+      await I.click('Save');
+      await I.find('$([role=status])').text('Contact saved');
+      return 'Robert';
+    });
   });
 });
 ```
@@ -319,7 +326,7 @@ The server must log after it starts listening. Set `webServer.ready` to match th
 
 The app receives `DYNO_URL`, the gateway origin. Root-relative URLs are easiest to use. OAuth callbacks, absolute asset hosts, and other origin-sensitive features may need app-specific test settings.
 
-App exit, startup failure, browser exit, signals, and completed headless runs go through cleanup. Dyno stops its own processes and descendants, with a bounded grace period before forceful termination. Reused servers and native Safari tabs remain yours.
+App exit, startup failure, browser exit, signals, and completed headless runs go through cleanup. Dyno stops its own processes and descendants, with a bounded grace period before forceful termination. Reused servers and manually opened browsers remain yours.
 
 ## Configuration
 
@@ -334,8 +341,7 @@ Paths are relative to the config file unless noted. See `dyno --help` for CLI ov
 | `expectTimeout` | `min(2000, timeout / 2)`, rounded down | Interactor assertion timeout |
 | `runTimeout` | `60000` | Headless browser opening and results deadline, after app readiness |
 | `host`, `port` | `127.0.0.1`, `7357` | Gateway address; port 0 chooses a free port |
-| `browser.name`, `path`, `args` | `chrome`, discovered path, `[]` | Browser and launch arguments |
-| `browser.provider` | `native` | `native`, `playwright`, or `webdriver` |
+| `browser.name`, `path`, `args` | `chromium`, Playwright build, `[]` | Managed target, optional executable, and launch arguments |
 | `browser.deviceScaleFactor` | `1` | Playwright pixel ratio: 1, 2, or 3 |
 | `viewport` | Browser size; managed: 1280 × 800 | Required app viewport dimensions |
 | `reportDir` | `.dyno/reports` | Saved JSON, JUnit, HTML, and copied images per browser run |

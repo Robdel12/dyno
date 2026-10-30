@@ -16,11 +16,13 @@ let scaffold = Object.freeze([
   }),
   Object.freeze({
     path: 'tests/browser/home.test.js',
-    contents: `import { test } from 'dyno';
+    contents: `import { describe, test } from 'dyno';
 
-test('opens the application', async ({ app, I }) => {
-  await app.goto('/');
-  await I.find('Welcome').visible();
+describe('Application', () => {
+  test('opens the application', async ({ app, I }) => {
+    await app.goto('/');
+    await I.find('Welcome').visible();
+  });
 });
 `
   })

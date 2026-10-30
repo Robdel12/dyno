@@ -1,7 +1,7 @@
-import { chromium, firefox, webkit } from 'playwright-core';
+import { browserChannel, browserEngine } from '../browsers.js';
 
 export async function open(plan, viewport, onExit) {
-  let engine = { chrome: chromium, edge: chromium, chromium, firefox, webkit }[plan.name];
+  let engine = browserEngine(plan.name);
   let context = await engine.launchPersistentContext(plan.profile, {
     headless: plan.headless,
     args: plan.args,
@@ -10,8 +10,8 @@ export async function open(plan, viewport, onExit) {
     timeout: 30000,
     ...(plan.path
       ? { executablePath: plan.path }
-      : ['chrome', 'edge'].includes(plan.name)
-        ? { channel: plan.name === 'edge' ? 'msedge' : 'chrome' }
+      : browserChannel(plan.name)
+        ? { channel: browserChannel(plan.name) }
         : {})
   });
   try {
@@ -29,7 +29,7 @@ export async function open(plan, viewport, onExit) {
         provider: 'playwright',
         name: plan.name,
         version: browser.version(),
-        build: plan.path ? 'custom' : ['chromium', 'firefox', 'webkit'].includes(plan.name) ? 'playwright' : 'installed'
+        build: plan.path ? 'custom' : browserChannel(plan.name) ? 'installed' : 'playwright'
       }),
       open: (url) => page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 }),
       activate: () => page.bringToFront(),

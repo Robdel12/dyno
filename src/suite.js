@@ -24,6 +24,7 @@ export function addSuite(parent, child) {
   return Object.freeze({ ...parent, children: list([...parent.children, child]) });
 }
 export function addTest(suite, name, run, { timeout, reason } = {}, declaration, mode = 'run') {
+  if (suite.file) throw new Error('test() must be inside a describe block. Wrap the test in describe("Suite name", () => { ... }).');
   if (!validName(name) || (typeof run !== 'function' && !(mode === 'skip' && run === undefined)))
     throw new Error('test requires a name and a function.');
   if (suite.children.some((item) => item.kind === 'test' && item.name === name))
@@ -35,6 +36,7 @@ export function addTest(suite, name, run, { timeout, reason } = {}, declaration,
   return Object.freeze({ ...suite, children: list([...suite.children, test]) });
 }
 export function addHook(suite, phase, run, declaration) {
+  if (suite.file) throw new Error(`${phase}() must be inside a describe block. Move the hook into the suite it belongs to.`);
   if (!['beforeEach', 'afterEach'].includes(phase) || typeof run !== 'function')
     throw new Error('A hook requires a function and a supported phase.');
   return Object.freeze({ ...suite, [phase]: list([...suite[phase], Object.freeze({ run, declaration, phase })]) });
@@ -45,12 +47,12 @@ export function compileSuite(definitions, { forbidOnly = false } = {}) {
   let hasOnly = false;
   let visit = (suite, file = null, path = [], scopes = [], skipped = false, focused = false) => {
     file = suite.file ?? file;
-    if (suite.file) path = [];
+    if (suite.file) { path = []; scopes = []; }
     else if (suite.name) path = [...path, suite.name];
     hasOnly ||= suite.mode === 'only';
     skipped ||= suite.mode === 'skip';
     focused ||= suite.mode === 'only';
-    if (file)
+    if (file && !suite.file)
       scopes = [
         ...scopes,
         Object.freeze({
@@ -63,6 +65,7 @@ export function compileSuite(definitions, { forbidOnly = false } = {}) {
       if (child.kind === 'suite') visit(child, file, path, scopes, skipped, focused);
       else {
         if (!file) throw new Error('Tests must be registered inside a test file.');
+        if (!path.length) throw new Error('Tests must be inside a named describe block.');
         hasOnly ||= child.mode === 'only';
         tests.push(
           Object.freeze({

@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { project } from '../helpers/project.js';
 import { inspectOfflineReport } from '../helpers/offline-report.js';
 
-let browser = { name: process.env.DYNO_TEST_BROWSER ?? 'chrome', provider: 'native' };
+let browser = { name: process.env.DYNO_TEST_BROWSER ?? 'chromium' };
 
 test(
   'CLI saves escaped JSON, JUnit, and HTML that still works offline after app shutdown',
@@ -13,12 +13,14 @@ test(
   async (t) => {
     let fixture = await project(t, {
       source: `
-  describe('Contacts & accounts',()=>{
+  describe('Workflow', () => {
+describe('Contacts & accounts',()=>{
     afterEach(({test})=>{if(test.name.startsWith('failure'))throw new Error('Cleanup <failed> & retained');});
     test('passed workflow',async({app,I})=>{await app.goto('/');await I.find('Fixture app').visible();console.log('Saved <contact> & ready');});
     test.skip('later');
     test('failure <script data-untrusted>window.injectedReportCode=true</script>',()=>{throw new Error('Save <failed> & retained');});
-  });`
+  });
+});`
     });
     let result = await fixture.run(['--report-dir', 'output']).completion;
     assert.equal(result.code, 1, result.stdout + result.stderr);
@@ -46,9 +48,11 @@ test(
 test('interrupt saves completed outcomes and honestly marks tests without results', { timeout: 90000 }, async (t) => {
   let fixture = await project(t, {
     source: `
-  test('completed workflow',()=>{});
+  describe('Workflow', () => {
+test('completed workflow',()=>{});
   test('interrupted workflow',async({app})=>{await app.goto('/held-app');});
-  test('not reached',()=>{});`
+  test('not reached',()=>{});
+});`
   });
   let session = fixture.run();
   let { url } = await session.waitForEvent('ready');

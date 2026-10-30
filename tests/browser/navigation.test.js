@@ -18,6 +18,7 @@ server.listen(Number(process.env.PORT), '127.0.0.1', () => console.log('NAVIGATI
 `
     },
     source: `
+describe('Workflow', () => {
 test('app.goto changes fragments without replacing the app', async ({ app, I }) => {
   await app.goto('/visual#one');
   let document = app.document;
@@ -42,7 +43,8 @@ test('app.goto reloads the current URL after following a fragment link', async (
   await I.assert(() => app.document !== document && app.window.savedValue === undefined);
   await I.assert(() => app.window.location.hash === '#details');
 });
-`
+
+});`
   });
   let result = await fixture.run().completion;
   assert.equal(result.code, 0, result.stdout + result.stderr);

@@ -5,7 +5,7 @@ let definitions = createSuite();
 let scopes = [];
 let change = (update) => {
   if (!scopes.length)
-    throw new Error('Register tests and hooks while a test file or describe block is being evaluated.');
+    throw new Error('Register tests and hooks inside describe blocks while a test file is being evaluated.');
   scopes = [...scopes.slice(0, -1), update(scopes.at(-1))];
 };
 export async function registerFile(file, load) {

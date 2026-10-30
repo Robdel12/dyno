@@ -42,11 +42,13 @@ test('the packaged artifact installs and runs the documented first-test workflow
   await exec(process.execPath, [bin, 'init'], { cwd: fixture.directory, timeout: 5000 });
   await writeFile(
     join(fixture.directory, 'tests/browser/home.test.js'),
-    `import {test} from 'dyno'; test('installed package opens the app', async ({app,I}) => { await app.goto('/'); await I.find('Fixture app').visible(); });`
+    `import { describe, test } from 'dyno'; describe('Workflow', () => {
+test('installed package opens the app', async ({app,I}) => { await app.goto('/'); await I.find('Fixture app').visible(); await app.screenshot('installed app'); });
+});`
   );
   await writeFile(
     join(fixture.directory, 'dyno.config.js'),
-    `import {defineConfig} from 'dyno/config'; export default defineConfig({port:0, browser:{name:${JSON.stringify(process.env.DYNO_TEST_BROWSER ?? 'chrome')}}, webServer:{command:[${JSON.stringify(process.execPath)},${JSON.stringify(join(repository, 'tests/fixtures/app-server.js'))}],url:'http://127.0.0.1:${fixture.port}',env:{PORT:'${fixture.port}'}}});`
+    `import {defineConfig} from 'dyno/config'; export default defineConfig({port:0, browser:{name:${JSON.stringify(process.env.DYNO_TEST_BROWSER ?? 'chromium')}}, webServer:{command:[${JSON.stringify(process.execPath)},${JSON.stringify(join(repository, 'tests/fixtures/app-server.js'))}],url:'http://127.0.0.1:${fixture.port}',env:{PORT:'${fixture.port}'}}});`
   );
   let { stdout, stderr } = await exec(process.execPath, [bin, '--json'], { cwd: fixture.directory, timeout: 70000 });
   let events = stdout
@@ -54,10 +56,11 @@ test('the packaged artifact installs and runs the documented first-test workflow
     .split('\n')
     .map((line) => JSON.parse(line));
   assert.equal(events.find((event) => event.type === 'complete').passed, 2, stderr + stdout);
-  await assert.rejects(
-    exec(process.execPath, [bin, '--provider', 'playwright'], { cwd: fixture.directory, timeout: 10000 }),
-    /requires playwright-core/
-  );
+  assert.equal(events.find(event => event.type === 'ready').browser.provider, 'playwright');
+  assert.ok(events.some(event => event.type === 'attachment' && event.attachment.status === 'captured'), stdout);
+  let installed = JSON.parse(await readFile(join(fixture.directory, 'node_modules/dyno/package.json'), 'utf8'));
+  assert.ok(installed.dependencies['playwright-core']);
+  assert.equal(installed.peerDependencies?.['playwright-core'], undefined);
   await assert.rejects(fetch(`http://127.0.0.1:${fixture.port}`));
 });
 
@@ -86,11 +89,13 @@ test(
     assert.match(await readFile(join(fixture.directory, 'tests/browser/home.test.js'), 'utf8'), /from 'dyno'/);
     await writeFile(
       join(fixture.directory, 'tests/browser/home.test.js'),
-      `import { test } from 'dyno'; test('my first test', async ({ app, I }) => { await app.goto('/'); await I.find('Fixture app').visible(); });`
+      `import { describe,  test  } from 'dyno'; describe('Workflow', () => {
+test('my first test', async ({ app, I }) => { await app.goto('/'); await I.find('Fixture app').visible(); });
+});`
     );
     await writeFile(
       join(fixture.directory, 'dyno.config.js'),
-      `import { defineConfig } from 'dyno/config'; export default defineConfig({ port: 0, browser: {name: ${JSON.stringify(process.env.DYNO_TEST_BROWSER ?? 'chrome')}}, webServer: { command: [${JSON.stringify(process.execPath)}, ${JSON.stringify(join(repository, 'tests/fixtures/app-server.js'))}], url: 'http://127.0.0.1:${fixture.port}', env: {PORT: '${fixture.port}'} } });`
+      `import { defineConfig } from 'dyno/config'; export default defineConfig({ port: 0, browser: {name: ${JSON.stringify(process.env.DYNO_TEST_BROWSER ?? 'chromium')}}, webServer: { command: [${JSON.stringify(process.execPath)}, ${JSON.stringify(join(repository, 'tests/fixtures/app-server.js'))}], url: 'http://127.0.0.1:${fixture.port}', env: {PORT: '${fixture.port}'} } });`
     );
     let { stdout, stderr } = await exec(bin, ['--json'], { cwd: fixture.directory, timeout: 70000 });
     let events = stdout
@@ -135,10 +140,11 @@ test(
   import {test,describe,beforeEach,afterEach,Interactor,defineInteractor,type InteractorContext} from 'dyno';
   import {defineConfig} from 'dyno/config';
   declare module 'dyno' {interface Fixtures {contactId:string}}
-  defineConfig({cleanupTimeout:1000,webServer:{url:'http://localhost:3000',command:['npm','run','dev']},browser:{provider:'playwright',name:'webkit'}});
-  // @ts-expect-error provider names are checked
+  defineConfig({cleanupTimeout:1000,webServer:{url:'http://localhost:3000',command:['npm','run','dev']},browser:{name:'webkit'}});
+  // @ts-expect-error browser management has one Playwright backend
   defineConfig({webServer:{url:'http://localhost:3000'},browser:{provider:'unknown'}});
-  beforeEach(({app})=>app.request('/api/reset',{method:'POST'}));
+  describe('Workflow', () => {
+beforeEach(({app})=>app.request('/api/reset',{method:'POST'}));
   describe('Contacts',()=>{
     beforeEach(async({app})=>{await app.goto('/');});afterEach(async({signal})=>{signal.throwIfAborted();});
     test('saves',async({app,I,fixtures,test,step})=>{
@@ -195,7 +201,8 @@ test(
       await app.setViewport({width:'390',height:844});
     });
     test.skip('later');test.only('focused',()=>{});
-  });`
+  });
+});`
     );
     await writeFile(
       join(fixture.directory, 'tsconfig.json'),

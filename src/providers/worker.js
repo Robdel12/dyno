@@ -1,3 +1,5 @@
+import { open as openBrowser } from './playwright.js';
+
 let session;
 let queue = Promise.resolve();
 process.on('message', (request) => {
@@ -5,9 +7,7 @@ process.on('message', (request) => {
     try {
       let value;
       if (request.method === 'initialize') {
-        // Provider dependencies are optional and loaded only in the owned worker.
-        let provider = await import(`./${request.input.plan.provider}.js`);
-        session = await provider.open(request.input.plan, request.input.viewport, () =>
+        session = await openBrowser(request.input.plan, request.input.viewport, () =>
           process.send?.({ kind: 'disconnected' })
         );
         value = session.identity;
