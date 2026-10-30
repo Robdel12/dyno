@@ -6,20 +6,21 @@
 
 | Suite | Command | CI coverage |
 | --- | --- | --- |
-| Core | `npm run test:core` | CLI errors, immutable state, cleanup, and proxy transforms on Node 24 and 26; no browser needed |
-| Package | `npm run test:package` | Fresh tarball and checkout installs, init, and a real Chrome test on Node 26 |
-| Browser | `npm run test:browser -- firefox` | Real app, gateway, reporter, viewport, and process workflows in Chrome/Firefox/Edge on Linux and macOS, using Node 24 |
-| Capture | `npm run test:capture` | Actual pixels and capture lifecycle in Playwright Chromium/Firefox/WebKit and WebDriver Chrome/Firefox/Edge on Linux, using Node 24 |
+| Core | `npm run test:core` | CLI errors, immutable state, cleanup, and proxy transforms on Linux Node 24/26 and macOS Node 24; no browser needed |
+| Package | `npm run test:package` | Fresh tarball and checkout installs, init, and a real Chromium test on Node 26 |
+| Browser | `npm run test:browser -- firefox` | Real app, gateway, reporter, viewport, and process workflows in Chromium, Firefox, and WebKit on Linux and macOS, using Node 24 |
+| Capture | `npm run test:capture` | Actual pixels and capture lifecycle in Chromium, Firefox, and WebKit on Linux and macOS, using Node 24 |
 
-`npm test` runs every suite locally with Chrome. Set `DYNO_CAPTURE_PROVIDER` and `DYNO_CAPTURE_BROWSER` to select a different capture target. For example:
+`npm test` runs every suite locally with Chromium. Install its browser build with `node bin/dyno.js install`. Pass an engine name to select another target:
 
 ```sh
-DYNO_CAPTURE_PROVIDER=webdriver DYNO_CAPTURE_BROWSER=firefox npm run test:capture
+node bin/dyno.js install --browser firefox
+npm run test:browser -- firefox
 ```
 
-Tests live under `tests/core`, `tests/package`, `tests/browser`, and `tests/capture`. The runner discovers every `.test.js` file in the selected directory and rejects test files outside these suites. Keep browser-free checks in core and provider-specific checks in capture. Tests still use real CLI/server/browser boundaries; these groups only decide where they run.
+Tests live under `tests/core`, `tests/package`, `tests/browser`, and `tests/capture`. The runner discovers every `.test.js` file in the selected directory and rejects test files outside these suites. Keep browser-free checks in core and browser workflows in browser or capture. Tests use real CLI, server, and Playwright browser boundaries; these groups only decide where they run.
 
-Core checks and actionlint workflow validation run first. The other suites run in parallel once core passes. Browser jobs run their tests sequentially, without retries or extra sleeps. Package installs run in one job instead of repeating for every browser.
+Core checks and actionlint workflow validation run first. The other suites run in parallel once core passes. Browser and capture suites have separate jobs so each complete suite has its own budget. Each test job has a hard five-minute cap, including setup. Browser checks run up to three independent files together; each owns its app, gateway, browser profiles, and fixture directory. Tests inside a file stay sequential. Capture and package suites stay sequential. The macOS process-group check runs once in core instead of repeating for each browser. There are no retries or extra sleeps.
 
 ## Results and setup
 
@@ -29,8 +30,6 @@ Each test job uploads `output.log` and `results.xml` under its own artifact name
 
 Shared actions in `.github/actions` install Node/dependencies and run/report a suite. Official actions are pinned to commit SHAs. The workflow has read-only repository access, doesn't persist checkout credentials, and uses ordinary pull-request events for contributions from forks.
 
-Linux jobs supply a D-Bus session. `.github/scripts/install-edge.sh` installs the official Edge package and fixes the hosted image's sandbox configuration. Playwright jobs explicitly install the engine matching the locked dependency version; browser downloads aren't cached. See [browser setup](browsers.md) for known limits.
-
-WebDriver jobs prepare the matching driver before tests start, then run Selenium Manager offline. Driver downloads have their own setup deadline and cannot consume the framework's browser startup budget.
+Linux browser and package jobs use the official Playwright Noble image, which includes browsers and system dependencies. Keep its version aligned with `playwright-core` in `package.json`; those jobs don't download browser builds. macOS jobs install the matching engine because Linux containers cannot verify macOS behavior. The image runs as `pwuser`, matching the hosted workspace owner so Firefox can start without a home-directory ownership conflict. Linux tests supply a D-Bus session. WebKit CI coverage does not establish Safari behavior. See [browser setup](browsers.md) for known limits.
 
 Product runs also write `.dyno/reports/<run-id>/`. Upload the whole folder for portable HTML/images, or give `junit.xml` to a test-results consumer. `run.json` uses an explicit schema version and marks interrupted runs and tests without results. These are separate from the Node test runner's own CI output.

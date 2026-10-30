@@ -4,11 +4,9 @@ import { readFile } from 'node:fs/promises';
 import { PNG } from 'pngjs';
 import { project } from '../helpers/project.js';
 
-let provider = process.env.DYNO_CAPTURE_PROVIDER ?? 'playwright';
-let name = process.env.DYNO_CAPTURE_BROWSER ?? 'chrome';
+let name = process.env.DYNO_CAPTURE_BROWSER ?? 'chromium';
 let browser = {
   name,
-  provider,
   ...(process.env.DYNO_CAPTURE_PATH ? { path: process.env.DYNO_CAPTURE_PATH } : {})
 };
 let surface = `
@@ -60,17 +58,19 @@ test(
   'capture finishes moving masks and document layout before measuring pixels',
   {
     timeout: 90000,
-    skip: provider === 'webdriver' && name === 'safari'
+
   },
   async (t) => {
     let fixture = await project(t, {
       config: { browser, viewport: { width: 800, height: 600 } },
-      source: `test('captures the final animated layout', async ({app,I}) => {
+      source: `describe('Workflow', () => {
+test('captures the final animated layout', async ({app,I}) => {
       ${surface}
       await app.screenshot('finished animations',{fullPage:true,animations:'disabled',caret:'hide',mask:[secret]});
       ${restored}
       await I.assert(() => app.window.innerWidth === 800 && app.window.innerHeight === 600);
-    });`
+    });
+});`
     });
     let result = await fixture.run().completion;
     assert.equal(result.code, 0, result.stdout + result.stderr);
@@ -96,14 +96,16 @@ test(
 test('a failed capture restores infinite animations and caret styling', { timeout: 90000 }, async (t) => {
   let fixture = await project(t, {
     config: { browser, viewport: { width: 800, height: 600 } },
-    source: `test('restores rendering when masks are invalid', async ({app,I}) => {
+    source: `describe('Workflow', () => {
+test('restores rendering when masks are invalid', async ({app,I}) => {
       ${surface}
       let failure;
       try { await app.screenshot('invalid mask',{animations:'disabled',caret:'hide',mask:[document.createElement('div')]}); }
       catch (error) { failure = error.message; }
       await I.assert(() => /connected elements/.test(failure), 'Invalid capture did not fail clearly');
       ${restored}
-    });`
+    });
+});`
   });
   let result = await fixture.run().completion;
   assert.equal(result.code, 0, result.stdout + result.stderr);

@@ -78,8 +78,8 @@ test('compilation preserves nested definition snapshots and derives scoped hooks
   let root = addSuite(createSuite(), next);
   let plan = compileSuite(root);
   assert.equal(file.children.length, 0);
-  assert.equal(plan[0].scopes.length, 2);
-  assert.equal(plan[0].scopes[1].beforeEach.length, 1);
+  assert.equal(plan[0].scopes.length, 1);
+  assert.equal(plan[0].scopes[0].beforeEach.length, 1);
   assert.deepEqual(plan[0].suites, ['Accounts']);
   assert.throws(() => plan[0].suites.push('changed'), TypeError);
   assert.deepEqual(compileSuite(root), plan);

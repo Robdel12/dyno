@@ -10,6 +10,7 @@ test(
   async (t) => {
     let fixture = await project(t, {
       source: `
+describe('Workflow', () => {
 afterEach(async ({app, test}) => { await app.request('/api/lifecycle', {method:'POST', body:test.name}); });
 describe('account', () => {
   afterEach(() => { throw new Error('Outer cleanup failed'); });
@@ -21,6 +22,7 @@ describe('account', () => {
 test('next workflow', async ({app, I}) => {
   let log = await (await app.request('/api/lifecycle')).json();
   await I.assert(() => log.join(',') === 'original failure', 'Cleanup did not reach the real API');
+});
 });`
     });
     let result = await fixture.run().completion;
@@ -45,6 +47,7 @@ test('only cleans entered scopes when setup fails', { timeout: 90000 }, async (t
   let fixture = await project(t, {
     source: `
 let record = (app, body) => app.request('/api/lifecycle', {method:'POST',body});
+describe('Workflow', () => {
 afterEach(({app}) => record(app, 'file cleanup'));
 describe('parent', () => {
   beforeEach(() => { throw new Error('Setup failed'); });
@@ -57,6 +60,7 @@ describe('parent', () => {
 test('recovers', async ({app,I}) => {
   let log = await (await app.request('/api/lifecycle')).json();
   await I.assert(() => log.join(',') === 'parent cleanup,file cleanup', JSON.stringify(log));
+});
 });`
   });
   let result = await fixture.run().completion;
@@ -72,6 +76,7 @@ test(
   async (t) => {
     let fixture = await project(t, {
       source: `
+describe('Workflow', () => {
 afterEach(async ({app,signal,test}) => {
   if (signal.aborted) throw new Error('Cleanup inherited the aborted test signal');
   await app.request('/api/lifecycle', {method:'POST',body:test.name});
@@ -86,6 +91,7 @@ test('app rejection', async ({app,I}) => {
 test('recovered', async ({app,I}) => {
   let log = await (await app.request('/api/lifecycle')).json();
   await I.assert(() => log.join(',') === 'hung,app rejection', JSON.stringify(log));
+});
 });`
     });
     let result = await fixture.run().completion;
@@ -102,12 +108,14 @@ test('bounds hung cleanup independently and continues with a fresh test', { time
   let fixture = await project(t, {
     config: { cleanupTimeout: 400 },
     source: `
+describe('Workflow', () => {
 afterEach(({test}) => test.name === 'hung cleanup' ? new Promise(() => {}) : undefined);
 afterEach(async ({app,test}) => { await app.request('/api/lifecycle', {method:'POST',body:test.name}); });
 test('hung cleanup', () => { throw new Error('Original failure'); });
 test('recovered', async ({app,I}) => {
   let log = await (await app.request('/api/lifecycle')).json();
   await I.assert(() => log.length === 0, 'Hook ran after cleanup deadline');
+});
 });`
   });
   let result = await fixture.run().completion;
@@ -121,14 +129,16 @@ test('recovered', async ({app,I}) => {
 });
 
 test('reporter Stop waits for bounded browser cleanup before ending the run', { timeout: 90000 }, async (t) => {
-  let name = process.env.DYNO_TEST_BROWSER ?? 'chrome';
+  let name = process.env.DYNO_TEST_BROWSER ?? 'chromium';
   let fixture = await project(t, {
-    config: { browser: { name, args: [name === 'firefox' ? '--headless' : '--headless=new'] } },
+    config: { browser: { name, args: [['firefox', 'webkit'].includes(name) ? '--headless' : '--headless=new'] } },
     source: `
+describe('Workflow', () => {
 afterEach(async ({app}) => { await app.request('/api/lifecycle', {method:'POST',body:'cleaned'}); });
 test('held workflow', async ({app}) => {
   await app.request('/api/lifecycle', {method:'POST',body:'started'});
   await app.goto('/held-app');
+});
 });`
   });
   let session = fixture.run(['--ui']);
@@ -147,8 +157,10 @@ test('held workflow', async ({app}) => {
 
 test('a hung body and hung cleanup keep both deadline failures', { timeout: 90000 }, async t => {
   let fixture = await project(t, {config:{cleanupTimeout:200},source:`
-  afterEach(() => new Promise(() => {}));
-  test('both phases hang', () => new Promise(() => {}), {timeout:500});`});
+  describe('Workflow', () => {
+afterEach(() => new Promise(() => {}));
+  test('both phases hang', () => new Promise(() => {}), {timeout:500});
+});`});
   let result = await fixture.run().completion;
   let [failed] = outcomes(result);
   assert.equal(failed.error.phase, 'timeout', result.stdout + result.stderr);

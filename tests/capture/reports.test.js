@@ -7,8 +7,7 @@ import { project } from '../helpers/project.js';
 import { inspectOfflineReport } from '../helpers/offline-report.js';
 
 let browser = {
-  provider: process.env.DYNO_CAPTURE_PROVIDER ?? 'playwright',
-  name: process.env.DYNO_CAPTURE_BROWSER ?? 'chrome',
+    name: process.env.DYNO_CAPTURE_BROWSER ?? 'chromium',
   ...(process.env.DYNO_CAPTURE_PATH ? { path: process.env.DYNO_CAPTURE_PATH } : {})
 };
 
@@ -18,7 +17,9 @@ test(
   async (t) => {
     let fixture = await project(t, {
       config: { browser },
-      source: `test('saved screenshot',async({app,I})=>{await app.goto('/visual');await I.find('$([role=status])').text('Ready');await app.screenshot('Saved app');});`
+      source: `describe('Workflow', () => {
+test('saved screenshot',async({app,I})=>{await app.goto('/visual');await I.find('$([role=status])').text('Ready');await app.screenshot('Saved app');});
+});`
     });
     let result = await fixture.run().completion;
     assert.equal(result.code, 0, result.stdout + result.stderr);
@@ -44,8 +45,10 @@ test('a removed source image is reported as unavailable without losing the run',
   let fixture = await project(t, {
     config: { browser },
     source: `
-  test('recorded image',async({app})=>{await app.goto('/visual');await app.screenshot('Removed app image');});
-  test('held after capture',async({app})=>{await app.goto('/held-app');});`
+  describe('Workflow', () => {
+test('recorded image',async({app})=>{await app.goto('/visual');await app.screenshot('Removed app image');});
+  test('held after capture',async({app})=>{await app.goto('/held-app');});
+});`
   });
   let session = fixture.run();
   let { url } = await session.waitForEvent('ready');

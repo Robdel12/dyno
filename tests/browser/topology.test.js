@@ -5,10 +5,11 @@ import { project } from '../helpers/project.js';
 
 test(
   'manual startup recovers from popup blocking and a closed controller without replacing the app tab',
-  { timeout: 90000 },
+  { timeout: 90000, skip: !['chromium', 'chrome', 'edge'].includes(process.env.DYNO_TEST_BROWSER ?? 'chromium') },
   async (t) => {
     let fixture = await project(t, {
       source: `
+describe('Workflow', () => {
 test('saves and navigates with a persistent controller', async ({ app, I }) => {
   await app.goto('/');
   await I.type('Robert').into('$(input[name=name])');
@@ -18,13 +19,14 @@ test('saves and navigates with a persistent controller', async ({ app, I }) => {
   await app.pause('Inspect the saved contact');
   await I.click('Other page');
   await I.find('Other page').visible();
+});
 });`,
     });
     let session = fixture.run(['--manual']);
     let { url } = await session.waitForEvent('ready');
     let browser = await chromium.launch({
-      channel: 'chrome',
       headless: true,
+      channel: 'chromium',
       ignoreDefaultArgs: ['--disable-popup-blocking'],
     });
     t.after(() => browser.close());

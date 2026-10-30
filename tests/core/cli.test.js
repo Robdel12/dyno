@@ -32,9 +32,9 @@ test('help, version, and browser discovery work without an app config', { timeou
     if (event.type === 'browsers') {
       assert.deepEqual(
         event.browsers.map((browser) => browser.name),
-        ['chrome', 'chromium', 'edge', 'firefox', 'safari']
+        ['chromium', 'firefox', 'webkit']
       );
-      assert.equal(event.browsers.find((browser) => browser.name === 'safari').headless, false);
+      assert.ok(event.browsers.every(browser => typeof browser.installed === 'boolean' && browser.path));
     }
   }
 });
@@ -61,9 +61,9 @@ test('each command explains its own options and examples without loading an app'
   for (let [command, present, absent] of [
     ['run', '--watch', 'Engine build to download'],
     ['doctor', '--ui', '--watch'],
-    ['install', 'webkit', '--test'],
+    ['install', '--with-deps', '--test'],
     ['init', 'without overwriting', '--browser'],
-    ['browsers', 'installed browser launchers', '--provider'],
+    ['browsers', 'installed Playwright browser builds', '--provider'],
   ]) {
     let { stdout, stderr } = await exec(process.execPath, [cli, command, '--help', '--json'], { cwd: tmpdir(), timeout: 5000 });
     let [event] = eventsFrom(stdout);
@@ -119,6 +119,7 @@ test('config typos and unsafe profile overrides fail before app startup', { time
     { timeuot: 1000 },
     { timeout: 2147483648 },
     { browser: { name: 'netscape' } },
+    { browser: { provider: 'playwright' } },
     { browser: { args: ['--user-data-dir=/some/user/profile'] } },
     { webServer: { reuseExistingServer: 'yes' } },
     { webServer: { env: { PORT: 12 } } }
@@ -135,11 +136,11 @@ test('config typos and unsafe profile overrides fail before app startup', { time
   }
 });
 
-test('Safari headless requests explain the supported mode before starting an app', { timeout: 10000 }, async (t) => {
+test('unsupported managed browsers fail before starting an app', { timeout: 10000 }, async (t) => {
   let fixture = await project(t);
   let result = await fixture.run(['--browser', 'safari']).completion;
   assert.equal(result.code, 1);
-  assert.match(result.events.at(-1).message, /Safari.*(headless|macOS)/);
+  assert.match(result.events.at(-1).message, /safari.*invalid/i);
   assert.equal(
     result.events.some((event) => event.type === 'ready'),
     false
@@ -152,7 +153,7 @@ test(
   { timeout: 15000 },
   async (t) => {
     let fixture = await project(t);
-    let result = await fixture.run(['doctor']).completion;
+    let result = await fixture.run(['doctor', '--manual']).completion;
     assert.equal(result.code, 0, result.stdout + result.stderr);
     let diagnosis = result.events.find((event) => event.type === 'diagnosis');
     assert.equal(diagnosis.ok, true);
@@ -165,14 +166,14 @@ test(
     let missing = await fixture.run(['doctor', '--browser-path', '/missing/browser']).completion;
     assert.equal(missing.code, 1);
     assert.equal(missing.events.find((event) => event.type === 'diagnosis').ok, false);
+    let absent = await fixture.run(['doctor'], { env: { ...process.env, PLAYWRIGHT_BROWSERS_PATH: join(fixture.directory, 'no-browsers') } }).completion;
+    assert.equal(absent.code, 1);
+    assert.match(absent.events.find(event => event.type === 'diagnosis').checks.find(check => check.name === 'browser').message, /dyno install --browser/);
     let manual = await fixture.run(['doctor', '--manual']).completion;
     assert.equal(manual.code, 0);
     assert.ok(
       manual.events.find((event) => event.type === 'diagnosis').checks.some((check) => check.status === 'info')
     );
-    let safari = await fixture.run(['doctor', '--browser', 'safari']).completion;
-    assert.equal(safari.code, 1);
-    assert.ok(safari.events.find(event => event.type === 'diagnosis').checks.some(check => check.name === 'browser' && check.status === 'failed'));
   }
 );
 

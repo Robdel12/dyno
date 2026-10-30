@@ -57,7 +57,7 @@ export interface Viewport {
 }
 export interface BrowserIdentity {
   readonly name: string;
-  readonly provider: 'native' | 'playwright' | 'webdriver';
+  readonly provider: 'playwright';
   readonly version?: string;
   readonly build?: string;
 }
@@ -152,7 +152,10 @@ export interface DescribeFunction {
   only(name: string, define: () => void): void;
   skip(name: string, define: () => void): void;
 }
+/** Declare tests inside a named describe block. */
 export let test: TestFunction;
 export let describe: DescribeFunction;
+/** Register setup inside the describe block that owns it. */
 export function beforeEach(run: TestCallback): void;
+/** Register cleanup inside the describe block that owns it. */
 export function afterEach(run: TestCallback): void;

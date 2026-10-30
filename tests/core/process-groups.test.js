@@ -8,11 +8,11 @@ import { tmpdir } from 'node:os';
 import { signalProcessGroup } from '../../src/process.js';
 import { exec, repository } from '../helpers/project.js';
 
-test('macOS cleanup accepts a zombie-only group and leaves its supervisor running', { timeout: 15000, skip: process.platform !== 'darwin' }, async t => {
+test('macOS cleanup accepts a zombie-only group and leaves its supervisor running', { timeout: 45000, skip: process.platform !== 'darwin' }, async t => {
   let directory = await mkdtemp(join(tmpdir(), 'dyno-process-group-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
   let binary = join(directory, 'zombie-group');
-  await exec('cc', [join(repository, 'tests/fixtures/zombie-group.c'), '-o', binary], { timeout: 10000 });
+  await exec('cc', [join(repository, 'tests/fixtures/zombie-group.c'), '-o', binary], { timeout: 30000 });
   let supervisor = spawn(binary, [], { stdio: ['pipe', 'pipe', 'pipe'] });
   let closed = once(supervisor, 'close');
   t.after(async () => { supervisor.stdin.end(); await closed; });

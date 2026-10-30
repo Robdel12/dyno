@@ -7,7 +7,7 @@ The CLI starts the app, bundles tests, serves the runner, and reports results. T
 ## What to preserve
 
 - Make the first test easy to write. One config, an app URL, and ordinary browser code.
-- Keep tests and Interactor in the browser. Optional controllers handle launch, screenshots, and window sizing.
+- Keep tests and Interactor in the browser. The included Playwright Core handles managed launch, screenshots, and window sizing; manual runs only need the URL.
 - Give the app its full, unscaled viewport. Open the reporter for inspection without moving the app.
 - Keep functions small, data immutable, and side effects at clear boundaries.
 - Test real user workflows. Wait for observable state and explain failures plainly.

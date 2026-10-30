@@ -74,10 +74,8 @@ export async function runTests(options, { signal, output }) {
       : null;
     if (browser) cleanup('Stop browser', async () => {
       let result = await browser.stop();
-      if (browserPlan.provider !== 'native') {
-        browserCleanup = result;
-        output.event({ type: 'browser-stopped', sessionId, ...result });
-      }
+      browserCleanup = result;
+      output.event({ type: 'browser-stopped', sessionId, ...result });
     });
     launchKey = browser ? randomUUID() : null;
     let setup;
@@ -145,8 +143,6 @@ export async function runTests(options, { signal, output }) {
       type: 'ready', url: captureURL.href, appURL: config.webServer.url,
       files: bundle.files, browser: browserInfo
     });
-    if (!browserPlan?.isolated && browserPlan)
-      output.log('Safari opens in your existing browser session. Its tabs and storage remain yours to manage.');
     if (['0.0.0.0', '::'].includes(config.host) && !output.json) {
       for (let entries of Object.values(networkInterfaces()))
         for (let entry of entries ?? []) {

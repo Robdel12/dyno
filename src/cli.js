@@ -17,10 +17,9 @@ function appOptions(command) {
   return command
     .addOption(valueOption('-c, --config <path>', 'Configuration file (dyno.config.js)'))
     .addOption(new Option('--browser <name>', 'Browser for the test run').choices(browserNames))
-    .addOption(new Option('--provider <name>', 'Optional browser controller').choices(['native', 'playwright', 'webdriver']))
-    .addOption(valueOption('--browser-path <path>', 'Explicit browser executable; Safari accepts an .app directory'))
+    .addOption(valueOption('--browser-path <path>', 'Explicit browser executable; Passed to Playwright as executablePath'))
     .option('--ui', 'Visible-browser mode')
-    .addOption(new Option('--manual', 'URL-only mode without a browser launcher').conflicts(['ui', 'browser', 'browserPath', 'provider']));
+    .addOption(new Option('--manual', 'URL-only mode without a browser launcher').conflicts(['ui', 'browser', 'browserPath']));
 }
 
 // Commander owns parsing/help. Only immutable options leave this boundary.
@@ -43,7 +42,7 @@ Examples:
   dyno doctor                  Check configuration and browser setup
   dyno run --help              See test filters and run options
 
-Tests, actions, and assertions execute in the browser. Safari requires --ui.`);
+Tests, actions, and assertions execute in the browser. Use --manual for Safari and other browsers.`);
   let command = (name, description, options) => program.command(name, options)
     .description(description)
     .showHelpAfterError(`\nRun 'dyno ${name} --help' for usage.`)
@@ -65,17 +64,17 @@ Examples:
   dyno --test 'saves a contact'
   dyno run --suite Authentication --file login.test.js
   dyno --manual --host 0.0.0.0
-  dyno --provider playwright --browser webkit
+  dyno --browser webkit
 
 --ui, --manual, and --watch keep the runner open. Press Ctrl-C to stop.`);
   command('init', 'Create a config and example test without overwriting existing files');
   appOptions(command('doctor', 'Check tests, app configuration, and browser prerequisites without launching'))
     .addHelpText('after', '\nUse --ui to check a visible-browser setup, or --manual for URL-only execution.');
-  command('browsers', 'List installed browser launchers');
+  command('browsers', 'List installed Playwright browser builds');
   command('install', 'Download a Playwright browser build')
+    .option('--with-deps', 'Also install browser system dependencies through Playwright')
     .addOption(new Option('--browser <name>', 'Engine build to download').choices(['chromium', 'firefox', 'webkit']).default('chromium'))
-    .addOption(new Option('--provider <name>', 'Browser downloads use Playwright').choices(['playwright']))
-    .addHelpText('after', '\nInstall playwright-core first. Branded browsers and WebDriver use their own installation tools.\nExample: dyno install --browser webkit');
+    .addHelpText('after', '\nPlaywright Core is included. Download Chromium, Firefox, or WebKit once with this command.\nExample: dyno install --browser webkit');
   try {
     program.parse(args, { from: 'user' });
   } catch (error) {
@@ -90,6 +89,6 @@ Examples:
 export function configOverrides(options) {
   return {
     port: options.port, host: options.host, browser: options.browser,
-    browserPath: options.browserPath, provider: options.provider, reportDir: options.reportDir
+    browserPath: options.browserPath, reportDir: options.reportDir
   };
 }

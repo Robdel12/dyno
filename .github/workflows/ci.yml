@@ -16,13 +16,16 @@ concurrency:
 
 jobs:
   checks:
-    name: Core / Node ${{ matrix.node }}
-    runs-on: ubuntu-latest
+    name: Core / ${{ matrix.os }} / Node ${{ matrix.node }}
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 5
     strategy:
       fail-fast: false
       matrix:
-        node: [24, 26]
+        include:
+          - { os: ubuntu-latest, node: 24 }
+          - { os: ubuntu-latest, node: 26 }
+          - { os: macos-latest, node: 24 }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -31,18 +34,21 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
       - name: Validate workflows
-        if: matrix.node == 24
+        if: matrix.node == 24 && runner.os == 'Linux'
         run: bash .github/scripts/check-workflows.sh
       - uses: ./.github/actions/test
         with:
           suite: core
-          artifact: core-node-${{ matrix.node }}
+          artifact: core-${{ matrix.os }}-node-${{ matrix.node }}
 
   package:
     name: Package install / Node 26
     needs: checks
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    container:
+      image: mcr.microsoft.com/playwright:v1.64.1-noble@sha256:47b510dd9230bf0b9bfc9b20102241e577ea7a99334ab4c3ca19f19770e9b8ea
+      options: --user pwuser --init --ipc=host
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -53,89 +59,63 @@ jobs:
       - uses: ./.github/actions/test
         with:
           suite: package
+          browser: chromium
           artifact: package-node-26
 
   browser:
-    name: Native / ${{ matrix.os }} / ${{ matrix.browser }}
-    needs: checks
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 10
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest]
-        browser: [chrome, firefox, edge]
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/setup
-      - name: Prepare hosted Edge
-        if: runner.os == 'Linux' && matrix.browser == 'edge'
-        run: bash .github/scripts/install-edge.sh
-      - run: node bin/dyno.js browsers --json
-      - uses: ./.github/actions/test
-        with:
-          suite: browser
-          browser: ${{ matrix.browser }}
-          artifact: native-${{ matrix.os }}-${{ matrix.browser }}
-      - name: Edge sandbox diagnostics
-        if: failure() && runner.os == 'Linux' && matrix.browser == 'edge'
-        run: |
-          sudo journalctl --boot --no-pager --grep='msedge|apparmor="DENIED"' --lines=20
-          sudo coredumpctl --no-pager list /opt/microsoft/msedge/msedge || true
-
-  capture:
-    name: Screenshots / ${{ matrix.provider }} / ${{ matrix.browser }}
+    name: ${{ matrix.suite }} / Linux / ${{ matrix.engine }}
     needs: checks
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 5
+    container:
+      image: mcr.microsoft.com/playwright:v1.64.1-noble@sha256:47b510dd9230bf0b9bfc9b20102241e577ea7a99334ab4c3ca19f19770e9b8ea
+      options: --user pwuser --init --ipc=host
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - { provider: playwright, browser: chromium }
-          - { provider: playwright, browser: firefox }
-          - { provider: playwright, browser: webkit }
-          - { provider: webdriver, browser: chrome }
-          - { provider: webdriver, browser: firefox }
-          - { provider: webdriver, browser: edge }
-    env:
-      DYNO_CAPTURE_PROVIDER: ${{ matrix.provider }}
-      DYNO_CAPTURE_BROWSER: ${{ matrix.browser }}
+        engine: [chromium, firefox, webkit]
+        suite: [browser, capture]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup
-      - name: Prepare hosted Edge
-        if: matrix.browser == 'edge'
-        run: bash .github/scripts/install-edge.sh
-      - name: Install matching Playwright engine
-        if: matrix.provider == 'playwright'
-        env:
-          DYNO_ENGINE: ${{ matrix.browser }}
-        run: npx --no-install playwright-core install --with-deps "$DYNO_ENGINE"
-      - name: Prepare matching WebDriver
-        if: matrix.provider == 'webdriver'
-        timeout-minutes: 3
-        run: node .github/scripts/prepare-webdriver.js
       - uses: ./.github/actions/test
-        env:
-          SE_OFFLINE: ${{ matrix.provider == 'webdriver' }}
         with:
-          suite: capture
-          artifact: screenshots-${{ matrix.provider }}-${{ matrix.browser }}
-      - name: Edge sandbox diagnostics
-        if: failure() && matrix.browser == 'edge'
-        run: |
-          sudo journalctl --boot --no-pager --grep='msedge|apparmor="DENIED"' --lines=20
-          sudo coredumpctl --no-pager list /opt/microsoft/msedge/msedge || true
+          suite: ${{ matrix.suite }}
+          browser: ${{ matrix.engine }}
+          artifact: ${{ matrix.suite }}-linux-${{ matrix.engine }}
+
+  browser-macos:
+    name: ${{ matrix.suite }} / macOS / ${{ matrix.engine }}
+    needs: checks
+    runs-on: macos-latest
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        engine: [chromium, firefox, webkit]
+        suite: [browser, capture]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - name: Install Playwright engine
+        id: install-engine
+        env:
+          DYNO_ENGINE: ${{ matrix.engine }}
+        run: node bin/dyno.js install --browser "$DYNO_ENGINE"
+      - uses: ./.github/actions/test
+        with:
+          suite: ${{ matrix.suite }}
+          browser: ${{ matrix.engine }}
+          artifact: ${{ matrix.suite }}-macos-${{ matrix.engine }}
 
   complete:
     name: CI complete
     if: ${{ always() }}
-    needs: [checks, package, browser, capture]
+    needs: [checks, package, browser, browser-macos]
     runs-on: ubuntu-latest
     timeout-minutes: 1
     steps:
