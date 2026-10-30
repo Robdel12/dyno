@@ -5,18 +5,51 @@ export interface UploadFile {
   readonly name: string;
   readonly type?: string;
 }
-type Chain<T> = { readonly then: Interactor & PromiseLike<T>['then'] };
-type Assertions = BrowserInteractor['assert'] & {
-  rendered(): Chain<boolean>;
-  readonly not: BrowserInteractor['assert']['not'] & { rendered(): Chain<boolean> };
+type Selector = Parameters<BrowserInteractor['find']>[0];
+type Actions = Record<string, (...args: any[]) => unknown>;
+type AssertionDefinitions = Parameters<typeof BrowserInteractor.defineAssertions>[0];
+type Chain<T, I = Interactor> = { readonly then: I & PromiseLike<T>['then'] };
+type AssertionArguments<T> = T extends (...args: infer A) => unknown ? A : T extends new (...args: infer A) => unknown ? A : [];
+type AssertionMethods<S, I> = { [K in keyof S]: (...args: AssertionArguments<S[K]>) => Chain<boolean, I> };
+type Rechain<F, I> = F extends (...args: infer A) => infer R ? (...args: A) => R & Chain<Awaited<R>, I> : F;
+type NativeAssertions<I> = {
+  [K in Exclude<keyof BrowserInteractor['assert'], 'not'>]: Rechain<BrowserInteractor['assert'][K], I>;
 };
-export class Interactor extends BrowserInteractor {
-  scope(selector: Parameters<BrowserInteractor['find']>[0]): Interactor;
-  fill(value: string | number): Chain<HTMLElement>;
-  upload(...files: UploadFile[]): Chain<HTMLElement>;
-  get assert(): Assertions;
-  find(selector?: Parameters<BrowserInteractor['find']>[0]): ReturnType<BrowserInteractor['find']> & Assertions & Chain<HTMLElement>;
+type AssertionChecks<S, I> = NativeAssertions<I> & AssertionMethods<S, I> & {
+  rendered(): Chain<boolean, I>;
+};
+type Assertions<S, I> = AssertionChecks<S, I> & {
+  readonly not: AssertionChecks<S, I> & BrowserInteractor['assert']['not'];
+} & BrowserInteractor['assert'];
+type Found<S, I> = Omit<ReturnType<BrowserInteractor['find']>, keyof BrowserInteractor['assert'] | 'then' | 'times'> & AssertionChecks<S, I> & {
+  readonly not: AssertionChecks<S, I> & {
+    times: Rechain<ReturnType<BrowserInteractor['find']>['times'], I>;
+  } & ReturnType<BrowserInteractor['find']>['not'];
+  times: Rechain<ReturnType<BrowserInteractor['find']>['times'], I>;
+} & Chain<HTMLElement, I>;
+export class Interactor<S extends AssertionDefinitions = {}> extends BrowserInteractor {
+  scope(selector?: Selector): this;
+  fill(value: string | number): Chain<HTMLElement, this>;
+  upload(...files: UploadFile[]): Chain<HTMLElement, this>;
+  click: (...args: Parameters<BrowserInteractor['click']>) => ReturnType<BrowserInteractor['click']> & Chain<HTMLElement, this>;
+  focus: (...args: Parameters<BrowserInteractor['focus']>) => ReturnType<BrowserInteractor['focus']> & Chain<HTMLElement, this>;
+  blur: (...args: Parameters<BrowserInteractor['blur']>) => ReturnType<BrowserInteractor['blur']> & Chain<HTMLElement, this>;
+  press: (...args: Parameters<BrowserInteractor['press']>) => ReturnType<BrowserInteractor['press']> & Chain<unknown, this>;
+  trigger: (...args: Parameters<BrowserInteractor['trigger']>) => ReturnType<BrowserInteractor['trigger']> & Chain<boolean, this>;
+  type: (...args: Parameters<BrowserInteractor['type']>) => ReturnType<BrowserInteractor['type']> & Chain<HTMLElement, this>;
+  get assert(): Assertions<S, this>;
+  find(selector?: Selector): Found<S, this>;
 }
+
+type ActionResult<T> = T extends Generator<unknown, infer R, unknown> ? ActionResult<R> : T extends PromiseLike<infer R> ? ActionResult<R> : T extends (...args: any[]) => infer R ? ActionResult<R> : T;
+export type CustomInteractor<A extends Actions, S extends AssertionDefinitions> = Interactor<S> & {
+  [K in keyof A]: (...args: Parameters<A[K]>) => Chain<ActionResult<ReturnType<A[K]>>, CustomInteractor<A, S>>;
+};
+export type InteractorContext = InstanceType<typeof BrowserInteractor.Context>;
+export function defineInteractor<A extends Actions = {}, S extends AssertionDefinitions = {}>(definition: {
+  readonly actions?: A & ThisType<CustomInteractor<A, S>>;
+  readonly assertions?: S & ThisType<CustomInteractor<A, S>>;
+}): (interactor: Interactor, selector?: Selector) => CustomInteractor<A, S>;
 
 export interface Viewport {
   readonly width: number;
