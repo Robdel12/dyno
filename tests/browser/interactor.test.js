@@ -2,6 +2,45 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { project } from '../helpers/project.js';
 
+test('pending chains cannot bind scopes or custom interactors and change the wrong contact', { timeout: 90000 }, async t => {
+  let fixture = await project(t, { source: `
+    import { defineInteractor } from 'dyno';
+    let Contact = defineInteractor({ actions: {
+      *rename(name) { yield this.find('Name').then.fill(name); },
+    } });
+    describe('Workflow', () => {
+      test('reject pending bindings', async ({ app, I }) => {
+        await app.goto('/interactor');
+        let work = I.scope('$(#work)');
+        let personal = I.scope('$(#personal)');
+        await work.find('Name').then.fill('Work contact');
+        await personal.find('Name').then.fill('Personal contact');
+        let pending = I.find('$(#personal)');
+        for (let attempt of [
+          () => pending.then.scope().find('Name').then.fill('Wrong contact'),
+          () => Contact(pending.then).rename('Wrong contact'),
+          () => Contact(pending).rename('Wrong contact'),
+        ]) {
+          let failure;
+          try { await attempt(); } catch (error) { failure = error; }
+          await I.assert(() => failure?.message.includes('not a pending chain') &&
+            failure.message.includes('I.scope(selector)') &&
+            failure.message.includes('Custom(I, selector)'),
+            'Pending bindings must explain how to bind the intended contact');
+          await work.find('Name').value('Work contact');
+          await personal.find('Name').value('Personal contact');
+        }
+        await Contact(I, '$(#personal)').rename('Updated personal contact');
+        await Contact(work).rename('Updated work contact');
+        await personal.find('Name').value('Updated personal contact');
+        await work.find('Name').value('Updated work contact');
+      });
+    });` });
+  let result = await fixture.run().completion;
+  assert.equal(result.code, 0, result.stdout + result.stderr);
+  assert.equal(result.summary.passed, 1);
+});
+
 test('custom interactors compose native actions without changing siblings, scopes, or reusable chains', { timeout: 90000 }, async t => {
   let fixture = await project(t, {
     files: {

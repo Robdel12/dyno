@@ -66,7 +66,9 @@ let publish = () => {
 };
 let update = (event) => {
   state = transition(state, event);
-  let active = ['connecting', 'discovering', 'running', 'pausing', 'resuming'].includes(state.phase);
+  let active = ['connecting', 'discovering', 'running', 'pausing', 'resuming'].includes(
+    state.phase,
+  );
   let visible = !active && state.presentation === 'reporter';
   let opening = !reporterVisible && visible;
   reporterVisible = visible;
@@ -97,14 +99,19 @@ let paint = () =>
 let appSize = () => ({ width: appWindow.innerWidth, height: appWindow.innerHeight });
 let context = (current) =>
   current
-    ? { executionId: current.id, documentId: current.documentId, revision: state.revision, ...state.viewport }
+    ? {
+        executionId: current.id,
+        documentId: current.documentId,
+        revision: state.revision,
+        ...state.viewport,
+      }
     : null;
 let syncContext = (current) => {
   let value = context(current);
   contextSync = contextSync.catch(() => {}).then(() => post('context', { context: value }));
   return contextSync;
 };
-let assertCurrent = (current, documentId, revision, metrics) => {
+let assertCurrent = (current, documentId, revision, metrics, operation = 'screenshot') => {
   controller.signal.throwIfAborted();
   let app = appWindow;
   if (
@@ -120,9 +127,12 @@ let assertCurrent = (current, documentId, revision, metrics) => {
         appWindow.devicePixelRatio !== metrics.pixelRatio))
   )
     throw new Error(
-      'App navigated or its viewport changed before screenshot completed. No attachment was accepted.',
+      `App navigated or its viewport changed before ${operation} completed.${operation === 'screenshot' ? ' No attachment was accepted.' : ''}`,
     );
-  if (reporterVisible) throw new Error('Close the reporter before taking a test screenshot.');
+  if (reporterVisible)
+    throw new Error(
+      `Close the reporter before ${operation === 'screenshot' ? 'taking a test screenshot' : 'using native input'}.`,
+    );
 };
 async function sizeViewport(viewport, current = resource, mode = 'fixed', signal) {
   current ??= null;
@@ -138,12 +148,20 @@ async function sizeViewport(viewport, current = resource, mode = 'fixed', signal
     settings.capabilities.hostViewport &&
     (appWindow.innerWidth !== viewport.width || appWindow.innerHeight !== viewport.height)
   ) {
-    await post('operations', { operation: 'resize', viewport, current: appSize() }, controller.signal);
+    await post(
+      'operations',
+      { operation: 'resize', viewport, current: appSize() },
+      controller.signal,
+    );
     await paint();
     // Browser chrome can change height when the window crosses its minimum width.
     // Correct once from the observed viewport, rather than treating an OS rect as CSS size.
     if (appWindow.innerWidth !== viewport.width || appWindow.innerHeight !== viewport.height) {
-      await post('operations', { operation: 'resize', viewport, current: appSize() }, controller.signal);
+      await post(
+        'operations',
+        { operation: 'resize', viewport, current: appSize() },
+        controller.signal,
+      );
       await paint();
     }
     if (appWindow.innerWidth !== viewport.width || appWindow.innerHeight !== viewport.height)
@@ -175,15 +193,41 @@ async function operate(current, message) {
     if (message.operation === 'activate') {
       await contextSync;
       assertCurrent(current, message.documentId, state.revision);
-      result = await post('operations', { operation: 'activate', context: context(current) }, signal);
+      result = await post(
+        'operations',
+        { operation: 'activate', context: context(current) },
+        signal,
+      );
     } else if (message.operation === 'viewport') {
       await sizeViewport(message.viewport, current, 'fixed', signal);
       result = { viewport: state.viewport, revision: state.revision };
+    } else if (message.operation === 'native') {
+      await contextSync;
+      let revision = state.revision;
+      assertCurrent(current, message.documentId, revision, undefined, 'native input');
+      result = await post(
+        'operations',
+        {
+          operation: 'native',
+          input: message.input,
+          requestId: message.requestId,
+          context: context(current),
+        },
+        signal,
+      );
+      signal.throwIfAborted();
+      if (message.input.kind !== 'key')
+        assertCurrent(current, message.documentId, revision, undefined, 'native input');
+      else if (resource !== current || current.finished)
+        throw new Error('Native input finished after its test execution ended.');
     } else if (message.operation === 'screenshot') {
       await contextSync;
       let revision = state.revision;
       assertCurrent(current, message.documentId, revision);
-      if (appWindow.innerWidth !== state.viewport.width || appWindow.innerHeight !== state.viewport.height)
+      if (
+        appWindow.innerWidth !== state.viewport.width ||
+        appWindow.innerHeight !== state.viewport.height
+      )
         throw new Error('Application viewport changed before screenshot started.');
       let metrics = {
         ...state.viewport,
@@ -210,7 +254,9 @@ async function operate(current, message) {
         signal.throwIfAborted();
         assertCurrent(current, message.documentId, revision, metrics);
         result =
-          staged.status === 'skipped' ? staged : await post('attachments/commit', { id: staged.id }, signal);
+          staged.status === 'skipped'
+            ? staged
+            : await post('attachments/commit', { id: staged.id }, signal);
         signal.throwIfAborted();
         assertCurrent(current, message.documentId, revision, metrics);
       } catch (error) {
@@ -280,7 +326,10 @@ function command(input) {
     try {
       localStorage.setItem('dyno:pause-on-failure', String(state.pauseOnFailure));
     } catch {}
-  } else if (input.command === 'viewport' && ['paused', 'completed', 'debugging'].includes(state.phase)) {
+  } else if (
+    input.command === 'viewport' &&
+    ['paused', 'completed', 'debugging'].includes(state.phase)
+  ) {
     let current = resource;
     operationQueue = operationQueue.then(() => sizeViewport(input.viewport, current));
     let work = operationQueue;
@@ -416,7 +465,9 @@ async function runtime(mode, timeout, index, testId) {
         if (message.documentId) {
           overlay('presentation', {
             visible: reporterVisible,
-            active: ['connecting', 'discovering', 'running', 'pausing', 'resuming'].includes(state.phase),
+            active: ['connecting', 'discovering', 'running', 'pausing', 'resuming'].includes(
+              state.phase,
+            ),
             interactive: state.interactive,
           });
           publish();
@@ -441,7 +492,8 @@ async function runtime(mode, timeout, index, testId) {
         operationQueue = operationQueue.then(() => cancellation);
       }
       if (message.kind === 'inspect') command({ command: 'inspect' });
-      if (message.kind === 'operation') operationQueue = operationQueue.then(() => operate(current, message));
+      if (message.kind === 'operation')
+        operationQueue = operationQueue.then(() => operate(current, message));
       if (message.kind === 'fatal') {
         let error = new Error(message.error.message);
         error.stack = message.error.stack;
@@ -449,7 +501,8 @@ async function runtime(mode, timeout, index, testId) {
       }
       if (mode === 'discover' && message.kind === 'discovered') finish(null, message.tests);
       if (mode !== 'discover' && message.kind === 'result') {
-        if (message.testId !== testId) finish(new Error('The runtime reported a different test identity.'));
+        if (message.testId !== testId)
+          finish(new Error('The runtime reported a different test identity.'));
         else {
           if (state.phase === 'debugging') update({ type: 'debug.continued' });
           finish(null, message);
@@ -523,14 +576,15 @@ try {
     sessionStorage.setItem('dyno:previous', JSON.stringify({ runId, connectionKey }));
   } catch {}
   settings = {
-    ...(await fetch(root + `settings?run=${encodeURIComponent(runId)}`, { signal: controller.signal }).then(
-      (response) => response.json(),
-    )),
+    ...(await fetch(root + `settings?run=${encodeURIComponent(runId)}`, {
+      signal: controller.signal,
+    }).then((response) => response.json())),
     ...joined,
   };
   let viewportMode = settings.viewport || settings.capabilities.hostViewport ? 'fixed' : 'browser';
   let initialViewport =
-    settings.viewport ?? (settings.capabilities.hostViewport ? settings.managedViewport : appSize());
+    settings.viewport ??
+    (settings.capabilities.hostViewport ? settings.managedViewport : appSize());
   let pauseOnFailure = false;
   try {
     pauseOnFailure = localStorage.getItem('dyno:pause-on-failure') === 'true';
@@ -583,14 +637,21 @@ try {
     controller.signal.throwIfAborted();
     if (test.skipReason) {
       let outcome = { status: 'skipped', skipReason: test.skipReason, duration: 0, output: [] };
-      await post('events', { type: 'test', testId: test.id, index: position, name: test.name, ...outcome });
+      await post('events', {
+        type: 'test',
+        testId: test.id,
+        index: position,
+        name: test.name,
+        ...outcome,
+      });
       update({ type: 'test.finished', index: test.index, outcome });
       continue;
     }
     resource?.remove();
     resource = undefined;
     await sizeViewport(
-      settings.viewport ?? (settings.capabilities.hostViewport ? settings.managedViewport : appSize()),
+      settings.viewport ??
+        (settings.capabilities.hostViewport ? settings.managedViewport : appSize()),
       null,
       viewportMode,
     );
@@ -609,6 +670,8 @@ try {
       };
     }
     await operationQueue;
+    if (settings.owned)
+      await post('operations', { operation: 'reset-native', executionId: runner.id });
     await syncContext(null);
     let { status, error, additionalErrors = [], duration, output = [], timings } = outcome;
     let reported = await post('events', {
@@ -658,6 +721,14 @@ try {
   });
   update({ type: 'completed', duration });
 } catch (error) {
+  if (resource && settings?.owned) {
+    try {
+      await operationQueue;
+      await post('operations', { operation: 'reset-native', executionId: resource.id });
+    } catch (cleanupError) {
+      error = new Error(`${error.message} Native cleanup: ${cleanupError.message}`);
+    }
+  }
   update({ type: 'failed', stopped: controller.signal.aborted, error: error.message });
   await syncContext(null).catch(() => {});
   if (controller.signal.aborted) resource?.remove();

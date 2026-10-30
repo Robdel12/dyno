@@ -7,18 +7,18 @@ import { fileURLToPath } from 'node:url';
 import { browserEngine } from '../src/browsers.js';
 
 let [suite = 'all', browser = 'chromium', ...extra] = process.argv.slice(2);
-let directories = ['core', 'browser', 'package', 'capture'];
+let directories = ['core', 'browser', 'package', 'capture', 'native'];
 let suites = ['all', ...directories];
-let needsBrowser = ['all', 'browser', 'package', 'capture'].includes(suite);
+let needsBrowser = ['all', 'browser', 'package', 'capture', 'native'].includes(suite);
 if (!suites.includes(suite) || extra.length || (!needsBrowser && process.argv[3]))
-  throw new Error('Usage: node scripts/test.js [all|core|browser|package|capture] [chromium|firefox|webkit for browser suites]');
+  throw new Error('Usage: node scripts/test.js [all|core|browser|package|capture|native] [chromium|firefox|webkit for browser suites]');
 
 let root = fileURLToPath(new URL('../', import.meta.url));
 let files = [];
 for await (let file of glob('tests/**/*.test.js', { cwd: root })) {
   let directory = file.split(sep)[1];
   if (!directories.includes(directory))
-    throw new Error(`Place ${file} under tests/core, tests/browser, tests/package, or tests/capture so CI runs it.`);
+    throw new Error(`Place ${file} under tests/core, tests/browser, tests/package, tests/capture, or tests/native so CI runs it.`);
   if (suite === 'all' || directory === suite) files.push(file);
 }
 files.sort();

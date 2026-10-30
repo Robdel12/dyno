@@ -4,12 +4,14 @@ import { join } from 'node:path';
 import { rm, writeFile, readFile } from 'node:fs/promises';
 import { project, exec, repository } from '../helpers/project.js';
 
-test('the packaged artifact installs and runs the documented first-test workflow', { timeout: 150000 }, async (t) => {
+test('the packaged artifact installs and runs the documented first-test workflow', {
+  timeout: 150000,
+}, async (t) => {
   let fixture = await project(t);
   let { stdout: packed } = await exec(
     'npm',
     ['pack', '--json', '--ignore-scripts', '--pack-destination', fixture.directory],
-    { cwd: repository, timeout: 10000 }
+    { cwd: repository, timeout: 10000 },
   );
   let [pack] = JSON.parse(packed);
   assert.ok(pack.files.some((file) => file.path === 'src/browsers.js'));
@@ -17,7 +19,7 @@ test('the packaged artifact installs and runs the documented first-test workflow
   assert.ok(pack.files.some((file) => file.path === 'docs/architecture.md'));
   assert.equal(
     pack.files.some((file) => file.path.startsWith('tests/')),
-    false
+    false,
   );
   await exec(
     'npm',
@@ -28,13 +30,16 @@ test('the packaged artifact installs and runs the documented first-test workflow
       '--no-fund',
       '--cache',
       join(fixture.directory, '.npm-cache'),
-      join(fixture.directory, pack.filename)
+      join(fixture.directory, pack.filename),
     ],
-    { cwd: fixture.directory, timeout: 60000 }
+    { cwd: fixture.directory, timeout: 60000 },
   );
   await rm(join(fixture.directory, 'dyno.config.js'));
   let bin = join(fixture.directory, 'node_modules/dyno/bin/dyno.js');
-  let { stdout: help } = await exec(process.execPath, [bin, 'run', '--help', '--json'], { cwd: fixture.directory, timeout: 5000 });
+  let { stdout: help } = await exec(process.execPath, [bin, 'run', '--help', '--json'], {
+    cwd: fixture.directory,
+    timeout: 5000,
+  });
   let helpEvent = JSON.parse(help);
   assert.equal(helpEvent.type, 'help');
   assert.match(helpEvent.text, /Usage: dyno run/);
@@ -44,103 +49,111 @@ test('the packaged artifact installs and runs the documented first-test workflow
     join(fixture.directory, 'tests/browser/home.test.js'),
     `import { describe, test } from 'dyno'; describe('Workflow', () => {
 test('installed package opens the app', async ({app,I}) => { await app.goto('/'); await I.find('Fixture app').visible(); await app.screenshot('installed app'); });
-});`
+});`,
   );
   await writeFile(
     join(fixture.directory, 'dyno.config.js'),
-    `import {defineConfig} from 'dyno/config'; export default defineConfig({port:0, browser:{name:${JSON.stringify(process.env.DYNO_TEST_BROWSER ?? 'chromium')}}, webServer:{command:[${JSON.stringify(process.execPath)},${JSON.stringify(join(repository, 'tests/fixtures/app-server.js'))}],url:'http://127.0.0.1:${fixture.port}',env:{PORT:'${fixture.port}'}}});`
+    `import {defineConfig} from 'dyno/config'; export default defineConfig({port:0, browser:{name:${JSON.stringify(process.env.DYNO_TEST_BROWSER ?? 'chromium')}}, webServer:{command:[${JSON.stringify(process.execPath)},${JSON.stringify(join(repository, 'tests/fixtures/app-server.js'))}],url:'http://127.0.0.1:${fixture.port}',env:{PORT:'${fixture.port}'}}});`,
   );
-  let { stdout, stderr } = await exec(process.execPath, [bin, '--json'], { cwd: fixture.directory, timeout: 70000 });
+  let { stdout, stderr } = await exec(process.execPath, [bin, '--json'], {
+    cwd: fixture.directory,
+    timeout: 70000,
+  });
   let events = stdout
     .trim()
     .split('\n')
     .map((line) => JSON.parse(line));
   assert.equal(events.find((event) => event.type === 'complete').passed, 2, stderr + stdout);
-  assert.equal(events.find(event => event.type === 'ready').browser.provider, 'playwright');
-  assert.ok(events.some(event => event.type === 'attachment' && event.attachment.status === 'captured'), stdout);
-  let installed = JSON.parse(await readFile(join(fixture.directory, 'node_modules/dyno/package.json'), 'utf8'));
+  assert.equal(events.find((event) => event.type === 'ready').browser.provider, 'playwright');
+  assert.ok(
+    events.some((event) => event.type === 'attachment' && event.attachment.status === 'captured'),
+    stdout,
+  );
+  let installed = JSON.parse(
+    await readFile(join(fixture.directory, 'node_modules/dyno/package.json'), 'utf8'),
+  );
   assert.ok(installed.dependencies['playwright-core']);
   assert.equal(installed.peerDependencies?.['playwright-core'], undefined);
   await assert.rejects(fetch(`http://127.0.0.1:${fixture.port}`));
 });
 
-test(
-  'a developer can install the checkout, initialize a project, and run its first browser test',
-  { timeout: 90000 },
-  async (t) => {
-    let fixture = await project(t);
-    await exec(
-      'npm',
-      [
-        'install',
-        '--offline',
-        '--ignore-scripts',
-        '--no-audit',
-        '--no-fund',
-        '--cache',
-        join(fixture.directory, '.npm-cache'),
-        repository
-      ],
-      { cwd: fixture.directory, timeout: 15000 }
-    );
-    await rm(join(fixture.directory, 'dyno.config.js'));
-    let bin = join(fixture.directory, 'node_modules/.bin/dyno');
-    await exec(bin, ['init'], { cwd: fixture.directory, timeout: 5000 });
-    assert.match(await readFile(join(fixture.directory, 'tests/browser/home.test.js'), 'utf8'), /from 'dyno'/);
-    await writeFile(
-      join(fixture.directory, 'tests/browser/home.test.js'),
-      `import { describe,  test  } from 'dyno'; describe('Workflow', () => {
+test('a developer can install the checkout, initialize a project, and run its first browser test', {
+  timeout: 90000,
+}, async (t) => {
+  let fixture = await project(t);
+  await exec(
+    'npm',
+    [
+      'install',
+      '--offline',
+      '--ignore-scripts',
+      '--no-audit',
+      '--no-fund',
+      '--cache',
+      join(fixture.directory, '.npm-cache'),
+      repository,
+    ],
+    { cwd: fixture.directory, timeout: 15000 },
+  );
+  await rm(join(fixture.directory, 'dyno.config.js'));
+  let bin = join(fixture.directory, 'node_modules/.bin/dyno');
+  await exec(bin, ['init'], { cwd: fixture.directory, timeout: 5000 });
+  assert.match(
+    await readFile(join(fixture.directory, 'tests/browser/home.test.js'), 'utf8'),
+    /from 'dyno'/,
+  );
+  await writeFile(
+    join(fixture.directory, 'tests/browser/home.test.js'),
+    `import { describe,  test  } from 'dyno'; describe('Workflow', () => {
 test('my first test', async ({ app, I }) => { await app.goto('/'); await I.find('Fixture app').visible(); });
-});`
-    );
-    await writeFile(
-      join(fixture.directory, 'dyno.config.js'),
-      `import { defineConfig } from 'dyno/config'; export default defineConfig({ port: 0, browser: {name: ${JSON.stringify(process.env.DYNO_TEST_BROWSER ?? 'chromium')}}, webServer: { command: [${JSON.stringify(process.execPath)}, ${JSON.stringify(join(repository, 'tests/fixtures/app-server.js'))}], url: 'http://127.0.0.1:${fixture.port}', env: {PORT: '${fixture.port}'} } });`
-    );
-    let { stdout, stderr } = await exec(bin, ['--json'], { cwd: fixture.directory, timeout: 70000 });
-    let events = stdout
-      .trim()
-      .split('\n')
-      .filter((line) => line.startsWith('{'))
-      .map((line) => JSON.parse(line));
-    assert.equal(events.find((event) => event.type === 'complete')?.passed, 2, stderr + stdout);
-    await assert.rejects(fetch(`http://127.0.0.1:${fixture.port}`));
-  }
-);
+});`,
+  );
+  await writeFile(
+    join(fixture.directory, 'dyno.config.js'),
+    `import { defineConfig } from 'dyno/config'; export default defineConfig({ port: 0, browser: {name: ${JSON.stringify(process.env.DYNO_TEST_BROWSER ?? 'chromium')}}, webServer: { command: [${JSON.stringify(process.execPath)}, ${JSON.stringify(join(repository, 'tests/fixtures/app-server.js'))}], url: 'http://127.0.0.1:${fixture.port}', env: {PORT: '${fixture.port}'} } });`,
+  );
+  let { stdout, stderr } = await exec(bin, ['--json'], { cwd: fixture.directory, timeout: 70000 });
+  let events = stdout
+    .trim()
+    .split('\n')
+    .filter((line) => line.startsWith('{'))
+    .map((line) => JSON.parse(line));
+  assert.equal(events.find((event) => event.type === 'complete')?.passed, 2, stderr + stdout);
+  await assert.rejects(fetch(`http://127.0.0.1:${fixture.port}`));
+});
 
-test(
-  'an installed consumer typechecks suites, app APIs, config, fixtures, and invalid calls',
-  { timeout: 90000 },
-  async (t) => {
-    let fixture = await project(t);
-    let { stdout: packed } = await exec(
-      'npm',
-      ['pack', '--json', '--ignore-scripts', '--pack-destination', fixture.directory],
-      { cwd: repository, timeout: 10000 }
-    );
-    let [pack] = JSON.parse(packed);
-    assert.ok(pack.files.some((file) => file.path === 'types/index.d.ts'));
-    assert.ok(pack.files.some((file) => file.path === 'types/config.d.ts'));
-    await exec(
-      'npm',
-      [
-        'install',
-        '--ignore-scripts',
-        '--no-audit',
-        '--no-fund',
-        '--cache',
-        join(fixture.directory, '.npm-cache'),
-        join(fixture.directory, pack.filename)
-      ],
-      { cwd: fixture.directory, timeout: 60000 }
-    );
-    await writeFile(
-      join(fixture.directory, 'consumer.ts'),
-      `
+test('an installed consumer typechecks suites, app APIs, config, fixtures, and invalid calls', {
+  timeout: 90000,
+}, async (t) => {
+  let fixture = await project(t);
+  let { stdout: packed } = await exec(
+    'npm',
+    ['pack', '--json', '--ignore-scripts', '--pack-destination', fixture.directory],
+    { cwd: repository, timeout: 10000 },
+  );
+  let [pack] = JSON.parse(packed);
+  assert.ok(pack.files.some((file) => file.path === 'types/index.d.ts'));
+  assert.ok(pack.files.some((file) => file.path === 'types/config.d.ts'));
+  await exec(
+    'npm',
+    [
+      'install',
+      '--ignore-scripts',
+      '--no-audit',
+      '--no-fund',
+      '--cache',
+      join(fixture.directory, '.npm-cache'),
+      join(fixture.directory, pack.filename),
+    ],
+    { cwd: fixture.directory, timeout: 60000 },
+  );
+  await writeFile(
+    join(fixture.directory, 'consumer.ts'),
+    `
   import {test,describe,beforeEach,afterEach,Interactor,defineInteractor,type InteractorContext} from 'dyno';
   import {defineConfig} from 'dyno/config';
   declare module 'dyno' {interface Fixtures {contactId:string}}
-  defineConfig({cleanupTimeout:1000,webServer:{url:'http://localhost:3000',command:['npm','run','dev']},browser:{name:'webkit'}});
+  defineConfig({cleanupTimeout:1000,webServer:{url:'http://localhost:3000',command:['npm','run','dev']},browser:{name:'webkit',locale:'en-US',timezoneId:'UTC'}});
   // @ts-expect-error browser management has one Playwright backend
   defineConfig({webServer:{url:'http://localhost:3000'},browser:{provider:'unknown'}});
   describe('Workflow', () => {
@@ -158,6 +171,18 @@ beforeEach(({app})=>app.request('/api/reset',{method:'POST'}));
       await I.click('Save');let response:Response=await app.request('/api');
       let image=await app.screenshot('saved',{optional:true});
       if(image.status==='captured'){let path:string=image.path;}else{let reason:string=image.reason;}
+      await I.nativePress('Tab');await I.find('Name').then.nativeHover();
+      await I.nativeMove({x:0,y:0});await app.native.setReducedMotion('reduce');
+      let dialogValue:number=await app.native.withDialog({action:'accept',message:'Delete?'},async()=>12);
+      let logs:readonly {readonly id:number;readonly type:string;readonly text:string}[]=await app.native.consoleMessages();
+      let elementImage=await app.screenshot('field',{element:await I.find('Name')});
+      await app.screenshot('masked',{maskColor:'#11151b',mask:[await I.find('Name')]});
+      // @ts-expect-error element and full page are different capture choices
+      await app.screenshot('invalid',{element:await I.find('Name'),fullPage:true});
+      // @ts-expect-error native coordinates must be numbers
+      await I.nativeMove({x:'0',y:0});
+      // @ts-expect-error dialog callback is required
+      await app.native.withDialog({action:'accept'});
       let document:Document=app.document;let window:Window=app.window;
       let custom=new Interactor({root:()=>document.body});await custom.find('Saved').visible();
       let form=I.scope('$(form)');
@@ -170,6 +195,12 @@ beforeEach(({app})=>app.request('/api/reset',{method:'POST'}));
         assertions:{named:(name:string)=>({root}:InteractorContext)=>root().querySelector('input')?.value===name},
       });
       let contact=Contact(I,'$(form)');
+      // @ts-expect-error pending find chains cannot create an independent scope
+      I.find('$(form)').then.scope();
+      // @ts-expect-error pending action chains cannot create an independent scope
+      contact.click('Save').then.scope();
+      // @ts-expect-error custom binding requires an instance, not a pending chain
+      Contact(I.find('$(form)').then);
       let outcome:string=await contact.edit('Robert');
       let field:HTMLElement=await contact.setName('Robert');
       await contact.find('Name').then.rename('Rob').then.assert.named('Rob');
@@ -202,49 +233,56 @@ beforeEach(({app})=>app.request('/api/reset',{method:'POST'}));
     });
     test.skip('later');test.only('focused',()=>{});
   });
-});`
-    );
-    await writeFile(
+});`,
+  );
+  await writeFile(
+    join(fixture.directory, 'tsconfig.json'),
+    JSON.stringify({
+      compilerOptions: {
+        target: 'ES2022',
+        module: 'ESNext',
+        moduleResolution: 'Bundler',
+        strict: true,
+        noEmit: true,
+        skipLibCheck: false,
+      },
+      files: ['consumer.ts'],
+    }),
+  );
+  await exec(
+    process.execPath,
+    [
+      join(repository, 'node_modules/typescript/bin/tsc'),
+      '--project',
       join(fixture.directory, 'tsconfig.json'),
-      JSON.stringify({
-        compilerOptions: {
-          target: 'ES2022',
-          module: 'ESNext',
-          moduleResolution: 'Bundler',
-          strict: true,
-          noEmit: true,
-          skipLibCheck: false
-        },
-        files: ['consumer.ts']
-      })
-    );
-    await exec(
-      process.execPath,
-      [join(repository, 'node_modules/typescript/bin/tsc'), '--project', join(fixture.directory, 'tsconfig.json')],
-      { cwd: fixture.directory, timeout: 15000 }
-    );
-    await writeFile(
-      join(fixture.directory, 'config-only.ts'),
-      `import {defineConfig} from 'dyno/config'; export default defineConfig({webServer:{url:'http://localhost:3000'},reportDir:'reports'});`
-    );
-    await writeFile(
+    ],
+    { cwd: fixture.directory, timeout: 15000 },
+  );
+  await writeFile(
+    join(fixture.directory, 'config-only.ts'),
+    `import {defineConfig} from 'dyno/config'; export default defineConfig({webServer:{url:'http://localhost:3000'},reportDir:'reports'});`,
+  );
+  await writeFile(
+    join(fixture.directory, 'config-check.json'),
+    JSON.stringify({
+      compilerOptions: {
+        target: 'ES2022',
+        module: 'NodeNext',
+        moduleResolution: 'NodeNext',
+        strict: true,
+        noEmit: true,
+        skipLibCheck: false,
+      },
+      files: ['config-only.ts'],
+    }),
+  );
+  await exec(
+    process.execPath,
+    [
+      join(repository, 'node_modules/typescript/bin/tsc'),
+      '--project',
       join(fixture.directory, 'config-check.json'),
-      JSON.stringify({
-        compilerOptions: {
-          target: 'ES2022',
-          module: 'NodeNext',
-          moduleResolution: 'NodeNext',
-          strict: true,
-          noEmit: true,
-          skipLibCheck: false
-        },
-        files: ['config-only.ts']
-      })
-    );
-    await exec(
-      process.execPath,
-      [join(repository, 'node_modules/typescript/bin/tsc'), '--project', join(fixture.directory, 'config-check.json')],
-      { cwd: fixture.directory, timeout: 15000 }
-    );
-  }
-);
+    ],
+    { cwd: fixture.directory, timeout: 15000 },
+  );
+});

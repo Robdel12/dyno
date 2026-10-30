@@ -13,6 +13,7 @@ export let exec = promisify(execFile);
 let appServer = join(repository, 'tests/fixtures/app-server.js');
 
 export function launch(command, args, cwd, signal, { env = process.env } = {}) {
+  let launchedAt = performance.now();
   let child = spawn(command, args, { cwd, env, detached: process.platform !== 'win32', stdio: ['ignore', 'pipe', 'pipe'] });
   let stdout = '';
   let stderr = '';
@@ -21,6 +22,7 @@ export function launch(command, args, cwd, signal, { env = process.env } = {}) {
   let subscribers = new Set();
   let closed = false;
   let spawnError;
+  let exitedAt;
   child.stdout.setEncoding('utf8');
   child.stderr.setEncoding('utf8');
   child.stdout.on('data', chunk => {
@@ -39,9 +41,29 @@ export function launch(command, args, cwd, signal, { env = process.env } = {}) {
   });
   child.stderr.on('data', chunk => { stderr += chunk; });
   child.on('error', error => { spawnError = error; });
+  child.once('exit', () => { exitedAt = performance.now(); });
   let completion = new Promise(resolve => child.once('close', (code, exitSignal) => {
     closed = true;
     for (let receive of subscribers) receive(null);
+    let completedAt = performance.now();
+    if (process.env.CI === 'true' && completedAt - launchedAt >= 5000) {
+      console.error('[fixture-session]', JSON.stringify({
+        platform: process.platform,
+        browser: events.find(event => event.type === 'ready')?.browser ?? env.DYNO_TEST_BROWSER,
+        mode: args.filter(argument => ['--manual', '--ui', '--watch'].includes(argument)),
+        tests: events.filter(event => event.type === 'test').slice(0, 3).map(event => event.name),
+        code,
+        signal: exitSignal,
+        wallDuration: completedAt - launchedAt,
+        exitToCloseDuration: exitedAt === undefined ? null : completedAt - exitedAt,
+        sessions: events.filter(event => event.type === 'session-timing').map(event => ({
+          sessionId: event.sessionId,
+          status: event.status,
+          browserCleanup: event.browserCleanup,
+          ...event.timings,
+        })),
+      }));
+    }
     resolve({ code, signal: exitSignal, stdout, stderr, events, summary: events.find(event => event.type === 'complete') });
   }));
   let stopping;

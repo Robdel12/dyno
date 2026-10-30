@@ -46,31 +46,72 @@ test('inspect midway',async({app,I})=>{
     let capture = await session.waitForEvent('capture');
     let stream = await fetch(url + 'stream?run=' + capture.runId, { signal: t.signal });
     let reader = stream.body.getReader();
-    t.after(() => reader.cancel());
-    let debugging = async () => {
+    let debugging = Promise.withResolvers();
+    let hostStatuses = [];
+    let snapshots = [];
+    let latestSnapshot;
+    let streamError;
+    let closing = false;
+    let observingSince = performance.now();
+    let observe = (async () => {
       let text = '';
-      while (!text.includes('"phase":"debugging"')) {
+      let decoder = new TextDecoder();
+      while (true) {
         let chunk = await reader.read();
-        assert.equal(chunk.done, false, `Reporter disconnected before pausing: ${text}`);
-        text += new TextDecoder().decode(chunk.value);
+        if (chunk.done) {
+          if (!closing) throw new Error('Reporter event stream closed.');
+          return;
+        }
+        text += decoder.decode(chunk.value, { stream: true });
+        let boundary;
+        while ((boundary = text.indexOf('\n\n')) !== -1) {
+          let lines = text.slice(0, boundary).split('\n');
+          text = text.slice(boundary + 2);
+          let kind = lines.find(line => line.startsWith('event: '))?.slice(7);
+          let data = lines.filter(line => line.startsWith('data: ')).map(line => line.slice(6)).join('\n');
+          if (!data) continue;
+          let value = JSON.parse(data);
+          let elapsed = performance.now() - observingSince;
+          if (kind === 'host-status') hostStatuses.push({ elapsed, ...value });
+          if (kind === 'snapshot') {
+            latestSnapshot = value;
+            snapshots.push({ elapsed, phase: value.phase, current: value.current, error: value.error });
+            if (value.phase === 'debugging') debugging.resolve();
+          }
+        }
       }
-    };
+    })().catch(error => {
+      streamError = error.message;
+      debugging.reject(error);
+    });
+    t.after(async () => {
+      closing = true;
+      await reader.cancel();
+      await observe;
+    });
+    let diagnostics = (run, responseBody) => JSON.stringify({ run, latestSnapshot, snapshots, hostStatuses, streamError, responseBody });
     let completedBeforePause = async () => {
       await session.waitForEvent('complete');
       throw new Error(`Run completed before pausing: ${JSON.stringify(await (await fetch(url + 'results')).json())}`);
     };
-    await Promise.race([debugging(), completedBeforePause()]);
+    await Promise.race([debugging.promise, completedBeforePause()]);
     // An external server holds the inspection until its own explicit deadline. This exceeds the test budget without a sleep.
     await fetch(new URL('/held-app', url), { signal: AbortSignal.timeout(11000) }).catch((error) =>
       assert.equal(error.name, 'TimeoutError')
     );
     let runs = await (await fetch(url + 'results')).json();
-    assert.equal(runs[0].outcomes.length, 0);
+    let run = runs.find(run => run.runId === capture.runId);
+    assert.ok(run, diagnostics(run));
+    assert.equal(run.status, 'running', diagnostics(run));
+    assert.equal(latestSnapshot?.phase, 'debugging', diagnostics(run));
+    assert.equal(streamError, undefined, diagnostics(run));
+    assert.equal(run.outcomes.length, 0, diagnostics(run));
     let response = await fetch(url + 'control', {
       method: 'POST',
       body: JSON.stringify({ runId: capture.runId, command: 'continue' })
     });
-    assert.equal(response.status, 200);
+    let responseBody = await response.text();
+    assert.equal(response.status, 200, diagnostics(run, responseBody));
     let result = await session.waitForEvent('complete');
     assert.equal(result.passed, 1, JSON.stringify(await (await fetch(url + 'results')).json()));
   }

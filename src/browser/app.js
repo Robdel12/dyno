@@ -1,3 +1,5 @@
+import { createNative } from './native.js';
+
 function applyLayout(document, signal) {
   return new Promise((resolve, reject) => {
     signal.throwIfAborted();
@@ -29,7 +31,8 @@ function applyLayout(document, signal) {
 function renderingPreparation(document, policy, signal) {
   let roots = [document];
   for (let root of roots)
-    for (let element of root.querySelectorAll('*')) if (element.shadowRoot) roots.push(element.shadowRoot);
+    for (let element of root.querySelectorAll('*'))
+      if (element.shadowRoot) roots.push(element.shadowRoot);
   let cleanups = [];
   let resumed = new Set();
   let handled = new Set();
@@ -50,7 +53,7 @@ function renderingPreparation(document, policy, signal) {
           handled.add(animation);
           if (handled.size > 1000)
             throw new Error(
-              'Screenshot animation handlers kept creating animations. Wait for the app to settle before capture.'
+              'Screenshot animation handlers kept creating animations. Wait for the app to settle before capture.',
             );
           if (!Number.isFinite(animation.effect.getComputedTiming().endTime)) {
             animation.cancel();
@@ -93,13 +96,13 @@ function renderingPreparation(document, policy, signal) {
           cleanups.push(() => style.remove());
           if (!style.sheet)
             throw new Error(
-              'The app Content Security Policy blocked screenshot styling. Use an explicit test policy or keep the caret unchanged.'
+              'The app Content Security Policy blocked screenshot styling. Use an explicit test policy or keep the caret unchanged.',
             );
         }
       if (policy.animations !== 'disabled') return;
       if (typeof document.getAnimations !== 'function')
         throw new Error(
-          'This browser cannot disable animations for screenshots. Keep animations unchanged or use a browser with the Web Animations API.'
+          'This browser cannot disable animations for screenshots. Keep animations unchanged or use a browser with the Web Animations API.',
         );
       for (let root of roots) {
         root.addEventListener('animationstart', handleAnimations);
@@ -120,7 +123,7 @@ function renderingPreparation(document, policy, signal) {
         if (handled.size === count && pending.size === 0) return;
       }
       throw new Error(
-        'Screenshot animation handlers kept creating animations. Wait for the app to settle before capture.'
+        'Screenshot animation handlers kept creating animations. Wait for the app to settle before capture.',
       );
     },
     restore() {
@@ -129,7 +132,7 @@ function renderingPreparation(document, policy, signal) {
         try {
           animation.play();
         } catch {}
-    }
+    },
   };
 }
 
@@ -139,17 +142,57 @@ function capturePolicy(options) {
   let fullPage = options.fullPage ?? false;
   let animations = options.animations ?? 'allow';
   let caret = options.caret ?? 'initial';
+  let color = options.maskColor === undefined ? '#ff00ff' : options.maskColor;
+  if (typeof color !== 'string' || !/^#[0-9a-f]{6}$/i.test(color))
+    throw new Error('Screenshot maskColor must be an opaque #RRGGBB color.');
+  let maskColor = Object.freeze(
+    [1, 3, 5].map((offset) => Number.parseInt(color.slice(offset, offset + 2), 16)).concat(255),
+  );
   if (
     typeof fullPage !== 'boolean' ||
     !['allow', 'disabled'].includes(animations) ||
     !['initial', 'hide'].includes(caret)
   )
     throw new Error(
-      'Screenshot options require fullPage:boolean, animations:allow|disabled, and caret:initial|hide.'
+      'Screenshot options require fullPage:boolean, animations:allow|disabled, and caret:initial|hide.',
     );
   if (options.mask !== undefined && !Array.isArray(options.mask))
     throw new Error('Screenshot masks must be an array of elements from the current app document.');
-  return Object.freeze({ fullPage, animations, caret });
+  if (
+    options.element !== undefined &&
+    (options.fullPage !== undefined || options.mask !== undefined)
+  )
+    throw new Error('Element screenshots cannot also specify fullPage or mask.');
+  return Object.freeze({
+    fullPage: options.element !== undefined || fullPage,
+    animations,
+    caret,
+    maskColor,
+  });
+}
+
+function elementClip(element, document, metrics) {
+  if (element?.nodeType !== 1 || element.ownerDocument !== document || !element.isConnected)
+    throw new Error('Element screenshots need a connected element from the current app document.');
+  let box = element.getBoundingClientRect();
+  let window = document.defaultView;
+  let left = Math.floor(box.left + window.scrollX),
+    top = Math.floor(box.top + window.scrollY);
+  let right = Math.ceil(box.right + window.scrollX),
+    bottom = Math.ceil(box.bottom + window.scrollY);
+  if (
+    ![left, top, right, bottom].every(Number.isSafeInteger) ||
+    box.width <= 0 ||
+    box.height <= 0 ||
+    left < 0 ||
+    top < 0 ||
+    right > metrics.fullWidth ||
+    bottom > metrics.fullHeight ||
+    right <= left ||
+    bottom <= top
+  )
+    throw new Error('Element screenshot bounds must fit inside the current app document.');
+  return Object.freeze({ x: left, y: top, width: right - left, height: bottom - top });
 }
 
 function maskRectangles(elements, document, policy, metrics) {
@@ -172,89 +215,115 @@ function maskRectangles(elements, document, policy, metrics) {
   });
 }
 
-export function createApp(appWindow, readState, signal, navigate, operation, pause, supportsCapture, measure) {
+export function createApp(
+  appWindow,
+  readState,
+  signal,
+  navigate,
+  operation,
+  pause,
+  supportsCapture,
+  measure,
+  nativeCapabilities,
+) {
   let captures = Promise.resolve();
   return Object.freeze({
-    goto: (path) => measure('navigation', new URL(path, location.origin).pathname, () => navigate(path)),
+    native: createNative({
+      appWindow,
+      readState,
+      signal,
+      operation,
+      measure,
+      capabilities: nativeCapabilities,
+    }),
+    goto: (path) =>
+      measure('navigation', new URL(path, location.origin).pathname, () => navigate(path)),
     pause: (message) => measure('pause', 'Debug pause', () => pause(message)),
     setViewport: (viewport) =>
       measure('viewport', `${viewport?.width} × ${viewport?.height}`, () =>
-        operation({ operation: 'viewport', viewport }, undefined, (result) => Object.freeze(result.viewport))),
-    screenshot: (name, options = {}) => measure('screenshot', name, () => {
-      let policy = capturePolicy(options);
-      let previous = captures;
-      let restore = () => {};
-      let captured = operation(
-        { operation: 'screenshot', name, optional: options.optional },
-        async () => {
-          await previous;
-          signal.throwIfAborted();
-          let document = readState().readyDocument;
-          let documentId = readState().readyId;
-          let current = () => {
+        operation({ operation: 'viewport', viewport }, undefined, (result) =>
+          Object.freeze(result.viewport),
+        ),
+      ),
+    screenshot: (name, options = {}) =>
+      measure('screenshot', name, () => {
+        let policy = capturePolicy(options);
+        let previous = captures;
+        let restore = () => {};
+        let captured = operation(
+          { operation: 'screenshot', name, optional: options.optional },
+          async () => {
+            await previous;
             signal.throwIfAborted();
-            if (
-              !document ||
-              document !== appWindow.document ||
-              readState().readyDocument !== document ||
-              readState().readyId !== documentId ||
-              appWindow.__browserTestBridge?.id !== documentId ||
-              appWindow.location.pathname === '/__dyno__/blank'
-            )
-              throw new Error(
-                'Load the app before requesting a screenshot, and keep its document open until capture finishes.'
-              );
-          };
-          current();
-          if (supportsCapture) {
-            await operation({ operation: 'activate' });
+            let document = readState().readyDocument;
+            let documentId = readState().readyId;
+            let current = () => {
+              signal.throwIfAborted();
+              if (
+                !document ||
+                document !== appWindow.document ||
+                readState().readyDocument !== document ||
+                readState().readyId !== documentId ||
+                appWindow.__browserTestBridge?.id !== documentId ||
+                appWindow.location.pathname === '/__dyno__/blank'
+              )
+                throw new Error(
+                  'Load the app before requesting a screenshot, and keep its document open until capture finishes.',
+                );
+            };
             current();
-          }
-          await document.fonts.ready;
-          current();
-          if (supportsCapture) {
-            let preparation = renderingPreparation(document, policy, signal);
-            restore = preparation.restore;
-            await preparation.prepare();
-          }
-          current();
-          let html = document.documentElement,
-            body = document.body;
-          let metrics = Object.freeze({
-            fullWidth: Math.ceil(
-              Math.max(
-                appWindow.innerWidth,
-                html.scrollWidth,
-                html.offsetWidth,
-                body?.scrollWidth ?? 0,
-                body?.offsetWidth ?? 0
-              )
-            ),
-            fullHeight: Math.ceil(
-              Math.max(
-                appWindow.innerHeight,
-                html.scrollHeight,
-                html.offsetHeight,
-                body?.scrollHeight ?? 0,
-                body?.offsetHeight ?? 0
-              )
-            )
-          });
-          return {
-            documentId,
-            metrics,
-            options: Object.freeze({
-              ...policy,
-              mask: Object.freeze(maskRectangles(options.mask, document, policy, metrics))
-            })
-          };
-        },
-        (result) => Object.freeze(result)
-      );
-      let result = captured.finally(() => restore());
-      captures = result.catch(() => {});
-      return result;
-    }),
+            if (supportsCapture) {
+              await operation({ operation: 'activate' });
+              current();
+            }
+            await document.fonts.ready;
+            current();
+            if (supportsCapture) {
+              let preparation = renderingPreparation(document, policy, signal);
+              restore = preparation.restore;
+              await preparation.prepare();
+            }
+            current();
+            let html = document.documentElement,
+              body = document.body;
+            let metrics = Object.freeze({
+              fullWidth: Math.ceil(
+                Math.max(
+                  appWindow.innerWidth,
+                  html.scrollWidth,
+                  html.offsetWidth,
+                  body?.scrollWidth ?? 0,
+                  body?.offsetWidth ?? 0,
+                ),
+              ),
+              fullHeight: Math.ceil(
+                Math.max(
+                  appWindow.innerHeight,
+                  html.scrollHeight,
+                  html.offsetHeight,
+                  body?.scrollHeight ?? 0,
+                  body?.offsetHeight ?? 0,
+                ),
+              ),
+            });
+            return {
+              documentId,
+              metrics,
+              options: Object.freeze({
+                ...policy,
+                ...(options.element !== undefined
+                  ? { clip: elementClip(options.element, document, metrics) }
+                  : {}),
+                mask: Object.freeze(maskRectangles(options.mask, document, policy, metrics)),
+              }),
+            };
+          },
+          (result) => Object.freeze(result),
+        );
+        let result = captured.finally(() => restore());
+        captures = result.catch(() => {});
+        return result;
+      }),
     get document() {
       signal.throwIfAborted();
       try {
@@ -268,7 +337,7 @@ export function createApp(appWindow, readState, signal, navigate, operation, pau
           return document;
       } catch {
         throw new Error(
-          'The app navigated cross-origin. This framework requires a cooperating app on the test gateway origin.'
+          'The app navigated cross-origin. This framework requires a cooperating app on the test gateway origin.',
         );
       }
       throw new Error('App document is navigating or its startup bridge has not loaded.');
@@ -279,9 +348,11 @@ export function createApp(appWindow, readState, signal, navigate, operation, pau
     },
     request: (path, init = {}) => {
       let url = new URL(path, location.origin);
-      if (url.origin !== location.origin) throw new Error('app.request requires a same-origin path.');
+      if (url.origin !== location.origin)
+        throw new Error('app.request requires a same-origin path.');
       return measure('request', `${init.method ?? 'GET'} ${url.pathname}`, () =>
-        fetch(url, { ...init, credentials: 'same-origin', signal }));
-    }
+        fetch(url, { ...init, credentials: 'same-origin', signal }),
+      );
+    },
   });
 }

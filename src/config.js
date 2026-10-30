@@ -11,7 +11,8 @@ let text = (value) => typeof value === 'string' && value.trim().length > 0;
 let record = (value) => value && typeof value === 'object' && !Array.isArray(value);
 function keys(input, allowed, label) {
   if (!record(input)) throw new Error(`${label} must be an object.`);
-  for (let key of Object.keys(input)) if (!allowed.includes(key)) throw new Error(`Unknown ${label} option: ${key}.`);
+  for (let key of Object.keys(input))
+    if (!allowed.includes(key)) throw new Error(`Unknown ${label} option: ${key}.`);
 }
 
 export function normalizeConfig(input, file, overrides = {}) {
@@ -32,15 +33,19 @@ export function normalizeConfig(input, file, overrides = {}) {
       'setup',
       'forbidOnly',
       'cleanupTimeout',
-      'reportDir'
+      'reportDir',
     ],
-    'config'
+    'config',
   );
   if (input.forbidOnly !== undefined && typeof input.forbidOnly !== 'boolean')
     throw new Error('forbidOnly must be a boolean.');
   let root = dirname(file);
   let webServer = input.webServer;
-  keys(webServer, ['url', 'command', 'cwd', 'env', 'ready', 'timeout', 'reuseExistingServer'], 'webServer');
+  keys(
+    webServer,
+    ['url', 'command', 'cwd', 'env', 'ready', 'timeout', 'reuseExistingServer'],
+    'webServer',
+  );
   if (!text(webServer.url)) throw new Error('webServer.url is required.');
   let url = new URL(webServer.url);
   if (
@@ -63,33 +68,66 @@ export function normalizeConfig(input, file, overrides = {}) {
     )
   )
     throw new Error('webServer.command must be a non-empty shell string or argv array.');
-  if (webServer.ready !== undefined && !text(webServer.ready) && !(webServer.ready instanceof RegExp))
+  if (
+    webServer.ready !== undefined &&
+    !text(webServer.ready) &&
+    !(webServer.ready instanceof RegExp)
+  )
     throw new Error('webServer.ready must be a non-empty string or RegExp.');
-  if (webServer.reuseExistingServer !== undefined && typeof webServer.reuseExistingServer !== 'boolean')
+  if (
+    webServer.reuseExistingServer !== undefined &&
+    typeof webServer.reuseExistingServer !== 'boolean'
+  )
     throw new Error('webServer.reuseExistingServer must be a boolean.');
   for (let key of ['testDir', 'testMatch', 'setup'])
-    if (input[key] !== undefined && !text(input[key])) throw new Error(`${key} must be a non-empty string.`);
-  if (webServer.cwd !== undefined && !text(webServer.cwd)) throw new Error('webServer.cwd must be a non-empty string.');
+    if (input[key] !== undefined && !text(input[key]))
+      throw new Error(`${key} must be a non-empty string.`);
+  if (webServer.cwd !== undefined && !text(webServer.cwd))
+    throw new Error('webServer.cwd must be a non-empty string.');
   if (webServer.env !== undefined) {
-    if (!record(webServer.env) || Object.values(webServer.env).some((value) => typeof value !== 'string'))
+    if (
+      !record(webServer.env) ||
+      Object.values(webServer.env).some((value) => typeof value !== 'string')
+    )
       throw new Error('webServer.env must contain string values.');
   }
   let browser = input.browser ?? {};
-  keys(browser, ['name', 'path', 'args', 'deviceScaleFactor'], 'browser');
+  keys(browser, ['name', 'path', 'args', 'deviceScaleFactor', 'locale', 'timezoneId'], 'browser');
   let name = overrides.browser ?? browser.name ?? 'chromium';
-  if (!browserNames.includes(name)) throw new Error(`Unknown managed browser "${name}". Choose ${browserNames.join(', ')} or use --manual for other browsers.`);
+  if (!browserNames.includes(name))
+    throw new Error(
+      `Unknown managed browser "${name}". Choose ${browserNames.join(', ')} or use --manual for other browsers.`,
+    );
   if (browser.deviceScaleFactor !== undefined && ![1, 2, 3].includes(browser.deviceScaleFactor))
     throw new Error('browser.deviceScaleFactor must be 1, 2, or 3.');
+  if (browser.locale !== undefined) {
+    try {
+      if (!text(browser.locale)) throw new Error();
+      Intl.getCanonicalLocales(browser.locale);
+    } catch {
+      throw new Error('browser.locale must be a valid locale, such as en-US.');
+    }
+  }
+  if (browser.timezoneId !== undefined) {
+    try {
+      if (!text(browser.timezoneId)) throw new Error();
+      new Intl.DateTimeFormat('en', { timeZone: browser.timezoneId });
+    } catch {
+      throw new Error('browser.timezoneId must be a valid time zone, such as UTC.');
+    }
+  }
   let viewport = null;
   if (input.viewport !== undefined) {
     keys(input.viewport, ['width', 'height'], 'viewport');
     viewport = normalizeViewport(input.viewport);
   }
-  if (input.reportDir !== undefined && !text(input.reportDir)) throw new Error('reportDir must be a non-empty path.');
+  if (input.reportDir !== undefined && !text(input.reportDir))
+    throw new Error('reportDir must be a non-empty path.');
   if (input.artifactsDir !== undefined && !text(input.artifactsDir))
     throw new Error('artifactsDir must be a non-empty path.');
   let path = overrides.browserPath ?? browser.path;
-  if (path !== undefined && !text(path)) throw new Error('browser.path must be a non-empty executable path.');
+  if (path !== undefined && !text(path))
+    throw new Error('browser.path must be a non-empty executable path.');
   if (
     browser.args !== undefined &&
     (!Array.isArray(browser.args) || browser.args.some((arg) => typeof arg !== 'string'))
@@ -97,10 +135,12 @@ export function normalizeConfig(input, file, overrides = {}) {
     throw new Error('browser.args must be an array of strings.');
   if (
     browser.args?.some((arg) =>
-      /^(--?(user-data-dir|profile|profilemanager|no-remote|new-instance)|-P)(=|$)/i.test(arg)
+      /^(--?(user-data-dir|profile|profilemanager|no-remote|new-instance)|-P)(=|$)/i.test(arg),
     )
   )
-    throw new Error('Dyno owns the browser profile. Remove profile and instance flags from browser.args.');
+    throw new Error(
+      'Dyno owns the browser profile. Remove profile and instance flags from browser.args.',
+    );
   let config = {
     root,
     file,
@@ -117,7 +157,9 @@ export function normalizeConfig(input, file, overrides = {}) {
       name,
       ...(path ? { path } : {}),
       ...(browser.deviceScaleFactor ? { deviceScaleFactor: browser.deviceScaleFactor } : {}),
-      args: Object.freeze([...(browser.args ?? [])])
+      ...(browser.locale ? { locale: browser.locale } : {}),
+      ...(browser.timezoneId ? { timezoneId: browser.timezoneId } : {}),
+      args: Object.freeze([...(browser.args ?? [])]),
     }),
     viewport,
     reportDir: resolve(root, overrides.reportDir ?? input.reportDir ?? '.dyno/reports'),
@@ -127,17 +169,23 @@ export function normalizeConfig(input, file, overrides = {}) {
       url: url.origin,
       cwd: resolve(root, webServer.cwd ?? '.'),
       timeout: webServer.timeout ?? 30000,
-      ...(Array.isArray(webServer.command) ? { command: Object.freeze([...webServer.command]) } : {}),
-      env: Object.freeze({ ...webServer.env })
+      ...(Array.isArray(webServer.command)
+        ? { command: Object.freeze([...webServer.command]) }
+        : {}),
+      env: Object.freeze({ ...webServer.env }),
     }),
-    setup: input.setup ? (isAbsolute(input.setup) ? input.setup : resolve(root, input.setup)) : null
+    setup: input.setup
+      ? isAbsolute(input.setup)
+        ? input.setup
+        : resolve(root, input.setup)
+      : null,
   };
   for (let [key, value] of Object.entries({
     timeout: config.timeout,
     cleanupTimeout: config.cleanupTimeout,
     expectTimeout: config.expectTimeout,
     runTimeout: config.runTimeout,
-    'webServer.timeout': config.webServer.timeout
+    'webServer.timeout': config.webServer.timeout,
   })) {
     if (!Number.isInteger(value) || value <= 0 || value > 2147483647)
       throw new Error(`${key} must be a positive integer in milliseconds, at most 2147483647.`);

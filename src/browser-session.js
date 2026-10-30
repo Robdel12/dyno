@@ -8,6 +8,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { startProcess } from './process.js';
 import { browserNames } from './browsers.js';
+import { nativeCapabilities } from './native.js';
 
 let execute = promisify(execFile);
 
@@ -20,15 +21,15 @@ async function stopProfileProcesses(profile) {
         '-NoProfile',
         '-NonInteractive',
         '-Command',
-        'Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,CommandLine | ConvertTo-Json -Compress'
+        'Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,CommandLine | ConvertTo-Json -Compress',
       ],
-      { timeout: 5000 }
+      { timeout: 5000 },
     );
     let rows = JSON.parse(stdout || '[]');
     processes = (Array.isArray(rows) ? rows : [rows]).map((row) => ({
       pid: row.ProcessId,
       parent: row.ParentProcessId,
-      command: row.CommandLine ?? ''
+      command: row.CommandLine ?? '',
     }));
   } else {
     let { stdout } = await execute('ps', ['-axww', '-o', 'pid=,ppid=,command='], { timeout: 5000 });
@@ -42,14 +43,17 @@ async function stopProfileProcesses(profile) {
   }
   // Playwright normally closes its browser. The profile also lets the parent
   // find a detached browser if its worker exits before that close completes.
-  let owned = new Set(processes.filter((item) => item.command.includes(profile)).map((item) => item.pid));
-  for (let size = -1; size !== owned.size;) {
+  let owned = new Set(
+    processes.filter((item) => item.command.includes(profile)).map((item) => item.pid),
+  );
+  for (let size = -1; size !== owned.size; ) {
     size = owned.size;
     for (let item of processes) if (owned.has(item.parent)) owned.add(item.pid);
   }
   for (let pid of [...owned].reverse()) {
     try {
-      if (process.platform === 'win32') await execute('taskkill', ['/pid', String(pid), '/T', '/F'], { timeout: 5000 });
+      if (process.platform === 'win32')
+        await execute('taskkill', ['/pid', String(pid), '/T', '/F'], { timeout: 5000 });
       else process.kill(pid, 'SIGKILL');
     } catch (error) {
       if (error.code === 'ESRCH') continue;
@@ -66,7 +70,9 @@ async function stopProfileProcesses(profile) {
 export async function resolveSession(browser, { headless = true } = {}) {
   let name = browser.name ?? 'chromium';
   if (!browserNames.includes(name))
-    throw new Error(`Unknown browser "${name}". Choose ${browserNames.join(', ')} or use --manual.`);
+    throw new Error(
+      `Unknown browser "${name}". Choose ${browserNames.join(', ')} or use --manual.`,
+    );
   let path = browser.path;
   if (path) {
     path = resolve(path);
@@ -82,7 +88,7 @@ export async function resolveSession(browser, { headless = true } = {}) {
     ...(path ? { path } : {}),
     provider: 'playwright',
     headless,
-    isolated: true
+    isolated: true,
   });
 }
 
@@ -91,7 +97,7 @@ export async function createBrowserSession(plan, { viewport, signal, onExit } = 
   let owned = startProcess(process.execPath, {
     shell: false,
     ipc: true,
-    args: [fileURLToPath(new URL('./providers/worker.js', import.meta.url))]
+    args: [fileURLToPath(new URL('./providers/worker.js', import.meta.url))],
   });
   let requests = new Map();
   let stopping;
@@ -116,20 +122,31 @@ export async function createBrowserSession(plan, { viewport, signal, onExit } = 
     let request = Promise.withResolvers();
     requests.set(id, request);
     let deadline = AbortSignal.any([
-      AbortSignal.timeout(method === 'initialize' || method === 'open' ? 35000 : method === 'stop' ? 3000 : 15000),
-      ...(signal && method !== 'stop' ? [signal] : []),
-      ...(operationSignal ? [operationSignal] : [])
+      AbortSignal.timeout(
+        method === 'initialize' || method === 'open' ? 35000 : method === 'stop' ? 3000 : 15000,
+      ),
+      ...(signal && !['stop', 'resetNative'].includes(method) ? [signal] : []),
+      ...(operationSignal ? [operationSignal] : []),
     ]);
+    let submitted = false;
     let abort = () => {
+      if (method === 'native' && submitted && owned.child.connected)
+        owned.child.send({ kind: 'cancel-native', input }, () => {});
       requests.delete(id);
-      request.reject(new Error(`Browser ${method} cancelled or exceeded its deadline.`, { cause: deadline.reason }));
+      request.reject(
+        new Error(`Browser ${method} cancelled or exceeded its deadline.`, {
+          cause: deadline.reason,
+        }),
+      );
     };
     deadline.addEventListener('abort', abort, { once: true });
     if (deadline.aborted) abort();
-    else
+    else {
+      submitted = true;
       owned.child.send({ id, method, input }, (error) => {
         if (error) request.reject(error);
       });
+    }
     try {
       return await request.promise;
     } finally {
@@ -150,33 +167,55 @@ export async function createBrowserSession(plan, { viewport, signal, onExit } = 
         try {
           await owned.stop();
         } finally {
-          try { await stopProfileProcesses(profile); }
-          finally { await rm(profile, { recursive: true, force: true, maxRetries: 3 }); }
+          try {
+            await stopProfileProcesses(profile);
+          } finally {
+            await rm(profile, { recursive: true, force: true, maxRetries: 3 });
+          }
         }
       }
       return Object.freeze({ graceful });
     })());
   try {
     await owned.ready;
-    let identity = Object.freeze(await invoke('initialize', { plan: { ...plan, profile }, viewport }));
+    let identity = Object.freeze(
+      await invoke('initialize', { plan: { ...plan, profile }, viewport }),
+    );
     return Object.freeze({
       identity,
-      capabilities: Object.freeze({ screenshot: true, fullPage: true, hostViewport: true }),
+      capabilities: Object.freeze({
+        screenshot: true,
+        fullPage: true,
+        hostViewport: true,
+        native: nativeCapabilities(plan.name),
+      }),
       open: (url) => invoke('open', { url }),
       activate: () => invoke('activate'),
       resize: (size, operationSignal) => invoke('resize', size, operationSignal),
       capture: async (options, operationSignal) =>
         Buffer.from(await invoke('capture', options, operationSignal), 'base64'),
+      native: (input, operationSignal) => invoke('native', input, operationSignal),
+      resetNative: async (input, operationSignal) => {
+        try {
+          await invoke('resetNative', input, operationSignal);
+        } catch (error) {
+          await stop();
+          throw error;
+        }
+      },
       stop,
       get logs() {
         return owned.logs;
-      }
+      },
     });
   } catch (error) {
     await stop();
-    let help = !plan.path && ['chromium', 'firefox', 'webkit'].includes(plan.name) && /executable.*doesn.t exist/i.test(error.message)
-      ? ` Install its Playwright build with dyno install --browser ${plan.name}.`
-      : '';
+    let help =
+      !plan.path &&
+      ['chromium', 'firefox', 'webkit'].includes(plan.name) &&
+      /executable.*doesn.t exist/i.test(error.message)
+        ? ` Install its Playwright build with dyno install --browser ${plan.name}.`
+        : '';
     throw new Error(`${error.message}${help}`, { cause: error });
   }
 }

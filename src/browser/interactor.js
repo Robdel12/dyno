@@ -9,11 +9,17 @@ export class Interactor extends BrowserInteractor {
 }
 
 function bindInteractor(interactor, selector, Type) {
-  let context = new interactor.constructor.Context(interactor[interactor.constructor.Context.Symbol]);
+  let Context = interactor?.constructor?.Context;
+  if (!Context || !Object.hasOwn(interactor, Context.Symbol))
+    throw new Error(
+      'Bind a scope or custom interactor to an Interactor instance, not a pending chain. Use I.scope(selector) or Custom(I, selector) instead of I.find(selector).then.scope().',
+    );
+  let context = new Context(interactor[Context.Symbol]);
   if (selector !== undefined) context.selector = selector;
   return new Type({
     root: () => context.$,
     signal: context.signal,
+    native: context.native,
     // Context inherits these settings; spreading assert would drop them.
     assert: {
       timeout: context.assert.timeout,
@@ -32,7 +38,12 @@ export function defineInteractor({ actions = {}, assertions = {} }) {
   return (interactor, selector) => bindInteractor(interactor, selector, CustomInteractor);
 }
 
-function dispatch(element, eventName, { bubbles = true, cancelable = true, ...properties } = {}, signal) {
+function dispatch(
+  element,
+  eventName,
+  { bubbles = true, cancelable = true, ...properties } = {},
+  signal,
+) {
   signal?.throwIfAborted();
   let window = element.ownerDocument.defaultView;
   let EventConstructor = eventName === 'click' ? window.MouseEvent : window.Event;
@@ -88,13 +99,21 @@ Interactor.defineAction('fill', function* fill(value) {
   yield this.assert(({ $ }) => !$.disabled && !$.readOnly, '#{this} is disabled or read-only');
   yield ({ $, signal }) => {
     signal?.throwIfAborted();
-    if (!['input', 'textarea'].includes($.localName)) throw new Error('fill requires an input or textarea');
+    if (!['input', 'textarea'].includes($.localName))
+      throw new Error('fill requires an input or textarea');
     let window = $.ownerDocument.defaultView;
-    let prototype = $.localName === 'textarea' ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype;
+    let prototype =
+      $.localName === 'textarea'
+        ? window.HTMLTextAreaElement.prototype
+        : window.HTMLInputElement.prototype;
     let setter = Object.getOwnPropertyDescriptor(prototype, 'value').set;
     setter.call($, String(value));
   };
-  yield this.trigger('input', { cancelable: false, inputType: 'insertReplacementText', data: String(value) });
+  yield this.trigger('input', {
+    cancelable: false,
+    inputType: 'insertReplacementText',
+    data: String(value),
+  });
   yield this.trigger('change', { cancelable: false });
   return ({ $ }) => $;
 });
@@ -103,11 +122,14 @@ Interactor.defineAction('upload', function* upload(...files) {
   yield this.assert.not.disabled();
   yield ({ $, signal }) => {
     signal?.throwIfAborted();
-    if ($.localName !== 'input' || $.type !== 'file') throw new Error('upload requires a file input');
-    if (files.length > 1 && !$.multiple) throw new Error('Multiple files require a multiple file input');
+    if ($.localName !== 'input' || $.type !== 'file')
+      throw new Error('upload requires a file input');
+    if (files.length > 1 && !$.multiple)
+      throw new Error('Multiple files require a multiple file input');
     let window = $.ownerDocument.defaultView;
     let transfer = new window.DataTransfer();
-    for (let { bytes, name, type = '' } of files) transfer.items.add(new window.File([bytes], name, { type }));
+    for (let { bytes, name, type = '' } of files)
+      transfer.items.add(new window.File([bytes], name, { type }));
     $.files = transfer.files;
   };
   yield this.trigger('input', { cancelable: false });
@@ -115,9 +137,33 @@ Interactor.defineAction('upload', function* upload(...files) {
   return ({ $ }) => $;
 });
 
+function nativeBrowser(native) {
+  if (!native)
+    throw new Error('Native browser input requires an Interactor bound to the current app.');
+  return native;
+}
+
+Interactor.defineAction('nativePress', function* nativePress(key) {
+  return yield ({ native }) => nativeBrowser(native).press(key);
+});
+
+Interactor.defineAction('nativeMove', function* nativeMove(point) {
+  return yield ({ native }) => nativeBrowser(native).move(point);
+});
+
+Interactor.defineAction('nativeHover', function* nativeHover(options) {
+  yield this.assert.rendered();
+  return yield async ({ $, native }) => {
+    await nativeBrowser(native).hover($, options);
+    return $;
+  };
+});
+
 Interactor.defineAssertion(
   'rendered',
-  () => ({ $ }) => isDisplayed($) && [...$.getClientRects()].some(rect => rect.width > 0 && rect.height > 0),
+  () =>
+    ({ $ }) =>
+      isDisplayed($) && [...$.getClientRects()].some((rect) => rect.width > 0 && rect.height > 0),
   '#{this} is not rendered',
   '#{this} is rendered',
 );
@@ -174,5 +220,10 @@ Interactor.defineAssertion(
 );
 
 export function createInteractor(app, signal, timeout) {
-  return new Interactor({ root: () => app.document.body, signal, assert: { timeout } });
+  return new Interactor({
+    root: () => app.document.body,
+    signal,
+    native: app.native,
+    assert: { timeout },
+  });
 }

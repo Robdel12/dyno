@@ -14,8 +14,8 @@ export async function boot() {
   let send = (kind, data = {}) =>
     parent.postMessage({ channel: 'dyno', runId, executionId, kind, ...data }, location.origin);
   try {
-    let settings = await fetch(`/__dyno__/settings?run=${encodeURIComponent(runId)}`).then((response) =>
-      response.json()
+    let settings = await fetch(`/__dyno__/settings?run=${encodeURIComponent(runId)}`).then(
+      (response) => response.json(),
     );
     let tests = getSuite({ forbidOnly: settings.forbidOnly });
     if (parameters.get('mode') === 'discover') {
@@ -26,7 +26,8 @@ export async function boot() {
     let selectedId = parameters.get('id');
     let test = tests.find((test) => test.id === selectedId);
     if (!test) throw new Error(`Test definition disappeared after discovery: ${selectedId}`);
-    if (test.skipReason) throw new Error(`Test selection changed after discovery: ${test.skipReason}`);
+    if (test.skipReason)
+      throw new Error(`Test selection changed after discovery: ${test.skipReason}`);
     let timings = createTimings();
     let steps = new Set();
     let controller = new AbortController();
@@ -44,7 +45,12 @@ export async function boot() {
         seen.add(error);
       }
       let failurePhase = kinds.get(error) ?? fallback;
-      failurePhase = failurePhase === 'reset' ? 'beforeEach' : failurePhase === 'drain' ? 'cleanup' : failurePhase;
+      failurePhase =
+        failurePhase === 'reset'
+          ? 'beforeEach'
+          : failurePhase === 'drain'
+            ? 'cleanup'
+            : failurePhase;
       failures = [...failures, failureRecord(error, failurePhase, location)];
     };
     let outputStarted = performance.now();
@@ -67,7 +73,8 @@ export async function boot() {
     let state = Object.freeze({ readyDocument: null, readyId: null, expectedName: null });
     let waiters = new Set();
     let fail = (error, kind = phase) => {
-      if (finished || error === ended || (error && typeof error === 'object' && seen.has(error))) return;
+      if (finished || error === ended || (error && typeof error === 'object' && seen.has(error)))
+        return;
       if (!error || typeof error !== 'object') error = new Error(String(error));
       kinds.set(error, kind);
       if (!activeController.signal.aborted) activeController.abort(error);
@@ -99,7 +106,11 @@ export async function boot() {
       });
     let receive = (event) => {
       let message = event.data;
-      if (event.origin !== location.origin || event.source !== appWindow || message?.channel !== 'dyno')
+      if (
+        event.origin !== location.origin ||
+        event.source !== appWindow ||
+        message?.channel !== 'dyno'
+      )
         return;
       if (
         message.runId !== runId ||
@@ -130,7 +141,7 @@ export async function boot() {
         send('context', { documentId: message.id });
         send('location', {
           index,
-          path: appWindow.location.pathname + appWindow.location.search + appWindow.location.hash
+          path: appWindow.location.pathname + appWindow.location.search + appWindow.location.hash,
         });
         for (let resolve of waiters) resolve();
       }
@@ -147,12 +158,18 @@ export async function boot() {
       });
     let navigate = async (path, signal, internal = false) => {
       let target = new URL(path, location.origin);
-      if (target.origin !== location.origin || (!internal && target.pathname.startsWith('/__dyno__/')))
+      if (
+        target.origin !== location.origin ||
+        (!internal && target.pathname.startsWith('/__dyno__/'))
+      )
         throw new Error('app.goto requires an app path on the gateway origin.');
       signal.throwIfAborted();
       let current;
       try {
-        if (state.readyDocument === appWindow.document && state.readyId === appWindow.__browserTestBridge?.id)
+        if (
+          state.readyDocument === appWindow.document &&
+          state.readyId === appWindow.__browserTestBridge?.id
+        )
           current = new URL(appWindow.location.href);
       } catch {}
       if (
@@ -180,7 +197,7 @@ export async function boot() {
       state = Object.freeze({
         readyDocument: null,
         readyId: null,
-        expectedName: `dyno-${runId}-${index}-${[...crypto.getRandomValues(new Uint32Array(2))].join('-')}`
+        expectedName: `dyno-${runId}-${index}-${[...crypto.getRandomValues(new Uint32Array(2))].join('-')}`,
       });
       send('context', { documentId: null });
       appWindow.name = JSON.stringify({
@@ -188,7 +205,7 @@ export async function boot() {
         controller: parent.name,
         runId,
         executionId,
-        appName: state.expectedName
+        appName: state.expectedName,
       });
       let resolveReady;
       let ready = new Promise((resolve) => {
@@ -221,7 +238,9 @@ export async function boot() {
       pending.delete(message.requestId);
       request.detach();
       if (message.error)
-        request.reject(Object.assign(new Error(message.error.message), { stack: message.error.stack }));
+        request.reject(
+          Object.assign(new Error(message.error.message), { stack: message.error.stack }),
+        );
       else {
         try {
           request.resolve(request.select(message.result));
@@ -243,7 +262,7 @@ export async function boot() {
         ...Promise.withResolvers(),
         select,
         signal,
-        detach: () => signal.removeEventListener('abort', aborted)
+        detach: () => signal.removeEventListener('abort', aborted),
       };
       pending.set(requestId, request);
       signal.addEventListener('abort', aborted, { once: true });
@@ -261,11 +280,13 @@ export async function boot() {
       return request.promise;
     };
     let requireFinishedOperations = (signal) => {
-      if ([...steps].some(step => step.signal === signal))
+      if ([...steps].some((step) => step.signal === signal))
         throw new Error('Await step() before finishing a test or hook.');
       if (debugResume) throw new Error('Await app.pause() before finishing the test.');
       if ([...pending.values()].some((request) => request.signal === signal))
-        throw new Error('Await app.screenshot() and app.setViewport() before finishing a test or hook.');
+        throw new Error(
+          'Await app.screenshot(), app.setViewport(), and native browser operations before finishing a test or hook.',
+        );
     };
     let debugResume;
     let executionDeadline;
@@ -311,21 +332,37 @@ export async function boot() {
         (input, prepare, select) => operation(input, prepare, select, signal),
         pause,
         Boolean(parent.__dynoController?.capabilities?.screenshot),
-        (kind, name, work) => timings.measure(kind, name, work, { signal, phase })
+        (kind, name, work) => timings.measure(kind, name, work, { signal, phase }),
+        parent.__dynoController?.capabilities?.native,
       );
       let step = (name, work) => {
         signal.throwIfAborted();
-        if (typeof name !== 'string' || !name.trim() || name.length > 200 || typeof work !== 'function')
+        if (
+          typeof name !== 'string' ||
+          !name.trim() ||
+          name.length > 200 ||
+          typeof work !== 'function'
+        )
           throw new Error('step() needs a name (1–200 characters) and a callback.');
         let running = { signal };
         steps.add(running);
-        let result = timings.measure('step', name, () => {
-          let value = work();
-          if (value && typeof value.next === 'function')
-            throw new Error('step() callbacks must use ordinary or async functions, not generators.');
-          return value;
-        }, { signal, phase });
-        result.then(() => steps.delete(running), () => steps.delete(running));
+        let result = timings.measure(
+          'step',
+          name,
+          () => {
+            let value = work();
+            if (value && typeof value.next === 'function')
+              throw new Error(
+                'step() callbacks must use ordinary or async functions, not generators.',
+              );
+            return value;
+          },
+          { signal, phase },
+        );
+        result.then(
+          () => steps.delete(running),
+          () => steps.delete(running),
+        );
         return result;
       };
       return Object.freeze({
@@ -334,14 +371,16 @@ export async function boot() {
         I: createInteractor(app, signal, settings.expectTimeout),
         signal,
         fixtures: settings.fixtures,
-        test: testDescriptor(test)
+        test: testDescriptor(test),
       });
     };
     let invoke = async (run, context) => {
       context.signal.throwIfAborted();
       let result = run(context);
       if (result && typeof result.next === 'function')
-        throw new Error('Test callbacks and hooks must use ordinary or async functions, not generators.');
+        throw new Error(
+          'Test callbacks and hooks must use ordinary or async functions, not generators.',
+        );
       await abortable(result, context.signal);
       requireFinishedOperations(context.signal);
       context.signal.throwIfAborted();
@@ -354,7 +393,7 @@ export async function boot() {
 
     let executionExpired = () => {
       let error = new Error(
-        `Test exceeded ${test.timeout ?? settings.timeout} ms. Check blocked scripts, application startup, or unresolved test work.`
+        `Test exceeded ${test.timeout ?? settings.timeout} ms. Check blocked scripts, application startup, or unresolved test work.`,
       );
       kinds.set(error, 'timeout');
       controller.abort(error);
@@ -369,18 +408,30 @@ export async function boot() {
     send('runtime-ready');
     try {
       phase = 'reset';
-      await timings.measure('reset', 'Fresh app document', () => navigate('/__dyno__/blank', controller.signal, true), { signal: controller.signal });
+      await timings.measure(
+        'reset',
+        'Fresh app document',
+        () => navigate('/__dyno__/blank', controller.signal, true),
+        { signal: controller.signal },
+      );
       for (let scope of test.scopes) {
         entered.push(scope);
         for (let hook of scope.beforeEach) {
           phase = 'beforeEach';
           declaration = hook.declaration;
-          await timings.measure('beforeEach', `${hook.run.name || 'beforeEach'} #${++beforeEachNumber}`, () => invoke(hook.run, context), { signal: controller.signal, phase });
+          await timings.measure(
+            'beforeEach',
+            `${hook.run.name || 'beforeEach'} #${++beforeEachNumber}`,
+            () => invoke(hook.run, context),
+            { signal: controller.signal, phase },
+          );
         }
       }
       phase = 'test';
       declaration = test.declaration;
-      await timings.measure('test', 'Test body', () => invoke(test.run, context), { signal: controller.signal });
+      await timings.measure('test', 'Test body', () => invoke(test.run, context), {
+        signal: controller.signal,
+      });
     } catch (error) {
       recordFailure(error);
     } finally {
@@ -390,7 +441,7 @@ export async function boot() {
       let cleanupDeadline = AbortSignal.timeout(settings.cleanupTimeout);
       let cleanupExpired = () => {
         let error = new Error(
-          `Cleanup exceeded ${settings.cleanupTimeout} ms. Remaining hooks were not invoked.`
+          `Cleanup exceeded ${settings.cleanupTimeout} ms. Remaining hooks were not invoked.`,
         );
         kinds.set(error, 'cleanup');
         cleanup.abort(error);
@@ -407,7 +458,12 @@ export async function boot() {
           phase = 'afterEach';
           declaration = hook.declaration;
           try {
-            await timings.measure('afterEach', `${hook.run.name || 'afterEach'} #${++afterEachNumber}`, () => invoke(hook.run, contextFor(signal)), { signal, phase });
+            await timings.measure(
+              'afterEach',
+              `${hook.run.name || 'afterEach'} #${++afterEachNumber}`,
+              () => invoke(hook.run, contextFor(signal)),
+              { signal, phase },
+            );
           } catch (error) {
             recordFailure(error);
           } finally {
@@ -419,7 +475,9 @@ export async function boot() {
       activeController = drain;
       try {
         phase = 'drain';
-        await timings.measure('drain', 'Deliver queued app errors', () => checkpoint(), { signal: AbortSignal.any([cleanup.signal, drain.signal]) });
+        await timings.measure('drain', 'Deliver queued app errors', () => checkpoint(), {
+          signal: AbortSignal.any([cleanup.signal, drain.signal]),
+        });
         if (drain.signal.aborted) throw drain.signal.reason;
       } catch (error) {
         recordFailure(error, 'cleanup');
@@ -446,7 +504,7 @@ export async function boot() {
       duration: measured.duration,
       timings: measured,
       ...failureOutcome(failures),
-      output
+      output,
     });
   } catch (error) {
     send('fatal', { error: serialize(error) });

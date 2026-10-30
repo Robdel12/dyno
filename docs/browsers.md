@@ -1,6 +1,6 @@
 # Browser setup
 
-Playwright Core ships with Dyno. It handles managed browser launch, screenshots, and viewport sizing. Tests and Interactor still execute in the browser.
+Playwright Core ships with Dyno. It handles managed browser launch, screenshots, and viewport sizing. Tests and Interactor still execute in the browser. Explicit native operations use that same managed session.
 
 Download a browser build once, then run:
 
@@ -37,6 +37,23 @@ Dyno owns a fresh browser profile and its processes. Playwright keeps the origin
 Screenshots are PNGs of the original app page with the reporter hidden. `fullPage: true` preserves the app viewport and captures the whole page. Masks change only the PNG. Animation suppression and caret hiding are prepared in the browser and restored afterward. See the [screenshot API](guide.md#screenshots).
 
 `browser.deviceScaleFactor` accepts `1`, `2`, or `3`. Viewport dimensions describe desktop layout; they don't emulate a phone's input or operating system.
+
+## Native capabilities
+
+| Feature | Chromium / Chrome / Edge | Firefox | WebKit | Manual URL |
+| --- | --- | --- | --- | --- |
+| Native keys and pointer | Yes | Yes | Yes | Unavailable |
+| Dialog handling and browser console | Yes | Yes | Yes | Unavailable |
+| Reduced motion | Yes | Yes | Yes | Unavailable |
+| Clipboard permission grants | Read/write | Unavailable | Read only | Unavailable |
+| Virtual authenticator | Yes | Unavailable | Unavailable | Unavailable |
+| App network offline | Yes | Unavailable | Unavailable | Unavailable |
+
+Capabilities describe the provider API; they don't make an unsupported engine silently pass a required test. Use `app.native.capabilities` and keep browser-specific coverage explicit. An authenticator is virtual browser hardware; your app still owns its real registration, challenge, and signature validation.
+
+App offline blocks the original app page's requests while companion HTTP remains connected. Chromium also changes the companion's navigator.onLine signal. This is not fully isolated offline state. Context-wide Playwright offline would disconnect the runner too, so Dyno doesn't use it.
+
+Managed config accepts `browser.locale` and `browser.timezoneId`, for example `en-US` and `UTC`. These apply when creating the browser context. Native state resets between tests; cookies and backend state still belong to the project. Managed Firefox disables background timer throttling, matching Playwright’s BiDi defaults, so the companion’s Interactor retries keep running while the app is active. Manual browsers retain their own background policies.
 
 ## Custom executables
 

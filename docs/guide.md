@@ -129,11 +129,33 @@ await contact.find('Photos').then.upload({ name: 'note.txt', bytes: 'Storm notes
 await contact.find('Saved').rendered();
 ```
 
-`scope(selector)` returns another Interactor rooted in that element. Scopes resolve against the current app document, even after navigation, and retain the assertion settings and cancellation signal. Nest them for page objects. A missing scope fails instead of searching elsewhere.
+`scope(selector)` returns another Interactor rooted in that element. Scopes resolve against the current app document, even after navigation, and retain the assertion settings and cancellation signal. Nest them for page objects. A missing scope fails instead of searching elsewhere. Create scopes before chaining: use `I.scope(selector)`, not `I.find(selector).then.scope()`. Pending chains cannot bind scopes or custom interactors; Dyno rejects them before they can target the wrong element.
 
 `fill(value)` waits for an editable input or textarea, replaces its value, and sends input/change events. Empty strings and number inputs work too. Use upstream `type()` and `press()` when individual keys matter. `upload(...files)` sets a file input's selection and sends input/change events; each file needs `name` and `bytes`, with an optional MIME `type`. Pass no files to clear it. Load fixture bytes through your project's setup or `app.request`.
 
 `rendered()` checks that content has layout and is displayed, including below the fold. Transparent parents count as hidden. It doesn't scroll or require viewport visibility; use `visible()` for that. Both keep Interactor's normal retries and stability settings. Upstream text/CSS selectors, `find(...).times(count)`, `not.overflows('x')`, option clicks, and custom selector functions work directly. Keep page objects focused on your app's workflows.
+
+### Native browser behavior
+
+Use native input when the browser's default behavior is the thing being tested. Keep ordinary clicks, fields, and assertions in Interactor.
+
+```js
+await I.find('Name').then.focus();
+await I.nativePress('Tab');
+await I.find('Notes').focused();
+await I.find('Account menu').then.nativeHover();
+await I.nativeMove({ x: 0, y: 0 });
+```
+
+These actions compose with scopes and custom interactors. `nativePress` sends a real key to the app's focused element; it doesn't focus a selector for you. Follow navigation-producing input with an Interactor assertion on the destination. Hover scrolls the element into view and uses a visible point that receives pointer input. A stale or covered target fails.
+
+`app.native.withDialog({ action: 'accept', message: 'Delete this note?' }, async () => { await I.click('Delete'); })` handles a real browser dialog around that action. It checks the optional exact message and preserves the callback result; `dismiss` and prompt `text` are supported too. Await the scope, including when its callback navigates.
+
+`app.native.consoleMessages()` reads up to 100 recent browser console entries, including browser-generated warnings. Each has an increasing `id`, `type`, and `text` (up to 4,000 characters). Record the highest ID before a workflow to inspect only newer messages. These entries aren't automatically copied to reports.
+
+`app.native` also provides `grantPermissions([...])`, `enableVirtualAuthenticator()`, `disableVirtualAuthenticator()`, `setOffline(boolean)`, and `setReducedMotion('reduce' | 'no-preference')`. Settings can run in setup before `app.goto`. Permissions, authenticators, network state, and media changes reset before the next test, including after failure. Failed cleanup ends the managed browser session. Each call appears in the timing report.
+
+`app.native.capabilities` describes this browser's support. Required calls fail when unavailable; there is no synthetic fallback. Keyboard, pointer, and media use managed Playwright browsers. Virtual authenticators and app network offline require Chromium. Clipboard permission support varies by engine. Manual URL runs don't have native capabilities. Chromium offline keeps companion HTTP working, but its browser online-state signal can also change in the companion. See [browser limits](browsers.md).
 
 ### Custom interactors
 
@@ -178,7 +200,7 @@ let reply = Composer(Post(I, postSelector(words)), '$([aria-label="Reply"])');
 await reply.write('I remember this storm.');
 ```
 
-Use async actions and await each operation when composing fields or child components. Native generator actions remain available; their yielded operations share the current subject. Assertion callbacks receive `$` for that subject and `root()` for the component root. Custom assertions support `.not` and Interactor's failure-message objects. Actions keep native `.then` chaining; deriving a chain doesn't change the original one. `scope()` retains custom methods.
+Use async actions and await each operation when composing fields or child components. Native generator actions remain available; their yielded operations share the current subject. Assertion callbacks receive `$` for that subject and `root()` for the component root. Custom assertions support `.not` and Interactor's failure-message objects. Predicates must return a boolean, including `false` for missing content; Interactor treats `undefined` as success to support callbacks that throw on failure. Actions keep native `.then` chaining; deriving a chain doesn't change the original one. `scope()` retains custom methods.
 
 Keep navigation, fixture I/O, screenshots, and named steps in workflow functions. Share action functions or combine action/assertion maps with object spread. TypeScript infers custom method arguments and chain methods; import `InteractorContext` when annotating assertion callbacks.
 
@@ -257,13 +279,15 @@ In a manual run, required capture fails. Use `await app.screenshot('dashboard', 
 
 Reported images remain on disk after cleanup. Interrupted runs discard images that weren't reported. JSON attachment events and test results include the path, browser/provider/version, viewport, and pixel ratio. The reporter links to the PNG while the gateway is running.
 
-Capture options are `fullPage` (default `false`), `mask` (an array of app `Element` objects), `animations` (`'allow'` or `'disabled'`, default `'allow'`), and `caret` (`'initial'` or `'hide'`, default `'initial'`). Masks cover those elements in the PNG; pass current elements from the app document. All managed targets support full-page capture.
+For one element, use `app.screenshot('card', { element: await I.find('$(.card)') })`. It captures the element's document bounds, including content below the fold, without scrolling or resizing. Fractional edges round outward. Element capture cannot combine `fullPage` or `mask`.
+
+Capture options are `fullPage` (default `false`), `mask` (an array of app `Element` objects), `animations` (`'allow'` or `'disabled'`, default `'allow'`), and `caret` (`'initial'` or `'hide'`, default `'initial'`). `maskColor` accepts an opaque `#RRGGBB` color (default `#ff00ff`). Masks cover those elements in the PNG; pass current elements from the app document. All managed targets support full-page capture.
 
 Screenshots are attachments, without baseline comparison. They record a rendered frame during the request; they don't freeze other app work. Animation suppression finishes finite animations and suspends infinite ones before measuring the document and masks. Temporary styles are removed and suspended animations restart afterward. Use Interactor to wait for the state you want first.
 
 ## Find slow work
 
-Timings are always recorded. Open **Slowest tests** in the reporter, then a test’s **Timings** tab. It separates fresh-document setup, hooks, the body, and queued errors. Individual hooks keep their function name and execution order. Navigation, requests, screenshots, viewport changes, and debug pauses have their own intervals.
+Timings are always recorded. Open **Slowest tests** in the reporter, then a test’s **Timings** tab. It separates fresh-document setup, hooks, the body, and queued errors. Individual hooks keep their function name and execution order. Navigation, requests, screenshots, viewport changes, native calls, and debug pauses have their own intervals.
 
 Custom Interactor actions and assertions are included in the enclosing test or hook duration. They don't get separate timing rows automatically. Wrap meaningful workflows in `step()` to give them named intervals:
 
@@ -324,7 +348,7 @@ If the app URL already returns an HTTP response, Dyno reuses it only with `reuse
 
 The server must log after it starts listening. Set `webServer.ready` to match that message. Process output triggers an HTTP HEAD check; even a 404 or 401 confirms a responding server. There is no fixed startup sleep or timed polling loop.
 
-The app receives `DYNO_URL`, the gateway origin. Root-relative URLs are easiest to use. OAuth callbacks, absolute asset hosts, and other origin-sensitive features may need app-specific test settings.
+The app receives `DYNO_URL`, the gateway origin. Use it for the app’s public URL setting when testing OAuth or WebAuthn. The gateway forwards the upstream Host and rewrites its own Origin header, while browser credentials contain the gateway origin. Root-relative URLs are easiest to use.
 
 App exit, startup failure, browser exit, signals, and completed headless runs go through cleanup. Dyno stops its own processes and descendants, with a bounded grace period before forceful termination. Reused servers and manually opened browsers remain yours.
 
@@ -371,8 +395,8 @@ This example is optional. `npm test` uses the self-contained fixture app.
 
 The runner uses ES2022 syntax and modern APIs, including `AbortSignal.timeout`, `AbortSignal.any`, `Promise.withResolvers`, `crypto.getRandomValues`, and `EventSource`. Older browsers, including historical WebOS builds, need compatibility work. See [browser setup](browsers.md#known-limits) for verification gaps.
 
-Interactions use DOM methods and synthetic events. They don't prove physical pointer hit-testing or satisfy every API requiring trusted user input. Closed shadow roots, native dialogs, downloads, video capture, visual baselines, parallel scheduling and HTTPS gateway serving are outside this version. Companion popups and background execution on iOS, phones, and TVs still need real-device verification; URL-only execution across browsers remains the goal.
+Ordinary Interactor actions use DOM methods and synthetic events. Use explicit native actions when a workflow needs browser defaults or trusted input. Closed shadow roots, native dialogs, downloads, video capture, visual baselines, parallel scheduling and HTTPS gateway serving are outside this version. Companion popups and background execution on iOS, phones, and TVs still need real-device verification; URL-only execution across browsers remains the goal.
 
-The gateway uses HTTP. Secure cookies and secure-context-only features may need a different test origin. The app and test contexts share an origin and aren't a security sandbox. An infinite loop can freeze the browser; the Node deadline can stop a browser it owns but can't recover a manual browser's event loop.
+The gateway uses HTTP. Secure cookies and secure-context-only features may need a different test origin. Cooperating HTML routes, including test fixtures, need the same opener and agent-cluster isolation headers as the app; changing them can sever the companion even on the same origin. The app and test contexts share an origin and aren't a security sandbox. An infinite loop can freeze the browser; the Node deadline can stop a browser it owns but can't recover a manual browser's event loop.
 
 The gateway rejects unknown Host headers and foreign WebSocket origins. Events and commands are limited to 1 MB, observer snapshots to 8 MB, and active browser runs to 20. New joins fail at capacity; finished runs can be removed to make room.

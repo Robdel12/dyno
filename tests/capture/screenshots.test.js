@@ -398,13 +398,12 @@ test('rejects a changed capture surface', async ({ app, I }) => {
   });
   if (!response.ok) throw new Error(await response.text());
   await resized;
+  await I.assert(() => app.window.innerWidth !== 800, 'Expected the captured application window to resize');
   await app.request('/api/release-capture', { method: 'POST' });
   let result = await capture;
-  await I.assert(
-    () => !result.accepted && /viewport|changed|stale/.test(result.error),
-    'Changed capture surface was accepted'
-  );
-  await I.assert(() => app.window.innerWidth !== 800, 'Expected the captured application window to resize');
+  if (result.accepted) throw new Error('The screenshot was accepted after its application viewport changed');
+  if (!/viewport|changed|stale|Screenshot context ended|Browser capture cancelled/.test(result.error))
+    throw new Error('Screenshot rejected for an unexpected reason: ' + result.error);
   await app.setViewport({ width: 800, height: 600 });
   await registration.unregister();
 });

@@ -21,6 +21,8 @@ export interface Config {
     path?: string;
     args?: readonly string[];
     deviceScaleFactor?: 1 | 2 | 3;
+    locale?: string;
+    timezoneId?: string;
   };
   webServer: {
     url: string;

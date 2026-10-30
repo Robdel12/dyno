@@ -23,7 +23,9 @@ async function reporterInput(request, limit = 1_000_000) {
     chunks = size <= limit ? [...chunks, chunk] : [];
   }
   if (size > limit)
-    throw Object.assign(new Error(`Reporter event exceeds ${limit / 1_000_000} MB.`), { status: 413 });
+    throw Object.assign(new Error(`Reporter event exceeds ${limit / 1_000_000} MB.`), {
+      status: 413,
+    });
   try {
     return JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
   } catch {
@@ -130,14 +132,15 @@ export async function createGateway(
             target: config.webServer.url,
             gatewayOrigin: `http://${request.headers.host}`,
           });
-      for (let [name, value] of Object.entries(documentPolicy)) response.setHeader(name, value);
+        for (let [name, value] of Object.entries(documentPolicy)) response.setHeader(name, value);
         response.setHeader('Cache-Control', 'no-store');
         let route = url.pathname.slice(prefix.length);
         let send = (type, content, status = 200) => {
           response.writeHead(status, { 'Content-Type': type });
           response.end(content);
         };
-        if (route === '' && request.method === 'GET') return send('text/html; charset=utf-8', start);
+        if (route === '' && request.method === 'GET')
+          return send('text/html; charset=utf-8', start);
         if (route === 'controller' && request.method === 'GET')
           return send('text/html; charset=utf-8', shell);
         if (route === 'blank' && request.method === 'GET')
@@ -199,7 +202,10 @@ export async function createGateway(
             await readFile(new URL(`./browser/${route}`, import.meta.url), 'utf8'),
           );
         if (route === 'suite-model.js')
-          return send('text/javascript', await readFile(new URL('./suite.js', import.meta.url), 'utf8'));
+          return send(
+            'text/javascript',
+            await readFile(new URL('./suite.js', import.meta.url), 'utf8'),
+          );
         if (['suite.js', 'suite.js.map'].includes(route)) {
           let run = url.searchParams.get('run');
           let snapshot = bundles.get(run);
@@ -208,7 +214,8 @@ export async function createGateway(
             ? send('application/json', JSON.stringify(snapshot.map))
             : send(
                 'text/javascript',
-                snapshot.code + `\n//# sourceMappingURL=suite.js.map?run=${encodeURIComponent(run)}`,
+                snapshot.code +
+                  `\n//# sourceMappingURL=suite.js.map?run=${encodeURIComponent(run)}`,
               );
         }
         if (route === 'bridge.js') return send('text/javascript', bundle.bridge);
@@ -233,7 +240,9 @@ export async function createGateway(
             let snapshot = rebuild ? await rebuild() : bundle;
             requireOpen();
             while (runs.size >= 20) {
-              let finished = [...runs.values()].find((run) => ['completed', 'failed'].includes(run.status));
+              let finished = [...runs.values()].find((run) =>
+                ['completed', 'failed'].includes(run.status),
+              );
               if (!finished) {
                 send(
                   'text/plain',
@@ -247,10 +256,24 @@ export async function createGateway(
               bundles.delete(finished.runId);
             }
             let runId = randomUUID();
-            runs.set(runId, Object.freeze({ ...createRun(runId), startedAt: new Date().toISOString() }));
+            let joined = await control.join(runId, joining.launchKey, joining.previous);
+            try {
+              requireOpen();
+            } catch (error) {
+              control.drop(runId);
+              throw error;
+            }
+            runs.set(
+              runId,
+              Object.freeze({ ...createRun(runId), startedAt: new Date().toISOString() }),
+            );
             bundles.set(runId, snapshot);
-            let joined = control.join(runId, joining.launchKey, joining.previous);
-            onEvent({ type: 'capture', runId, owned: joined.owned, previousRunId: joined.previousRunId });
+            onEvent({
+              type: 'capture',
+              runId,
+              owned: joined.owned,
+              previousRunId: joined.previousRunId,
+            });
             return send('application/json', JSON.stringify({ runId, ...joined }));
           }
           let input = await reporterInput(request);
@@ -260,7 +283,10 @@ export async function createGateway(
           control.authorize(input);
           let { connectionKey, ...eventInput } = input;
           if (input.type === 'test')
-            eventInput = { ...eventInput, attachments: control.attachments(input.runId, input.executionId) };
+            eventInput = {
+              ...eventInput,
+              attachments: control.attachments(input.runId, input.executionId),
+            };
           let mapFailure = (error) => {
             let stack =
               typeof error?.stack === 'string'
@@ -272,20 +298,51 @@ export async function createGateway(
                 : undefined;
             if (declaration && !stack?.includes(config.testDir))
               stack = `${stack ?? error.message}\nDeclared at:\n${declaration}`;
-            let mapped = { ...error, ...(stack ? { stack } : {}), ...(declaration ? { declaration } : {}) };
-            return { ...mapped, source: sourceContext(mapped, bundles.get(input.runId), config.root) };
+            let mapped = {
+              ...error,
+              ...(stack ? { stack } : {}),
+              ...(declaration ? { declaration } : {}),
+            };
+            return {
+              ...mapped,
+              source: sourceContext(mapped, bundles.get(input.runId), config.root),
+            };
           };
           if (input.error) eventInput = { ...eventInput, error: mapFailure(input.error) };
           if (Array.isArray(input.additionalErrors))
-            eventInput = { ...eventInput, additionalErrors: input.additionalErrors.map(mapFailure) };
-          let { run, event } = acceptEvent(runs.get(input.runId), eventInput);
+            eventInput = {
+              ...eventInput,
+              additionalErrors: input.additionalErrors.map(mapFailure),
+            };
+          let previous = runs.get(input.runId);
+          let { run, event } = acceptEvent(previous, eventInput);
           runs.set(run.runId, run);
           if (event.type === 'test') control.acceptAttachments(event.runId, event.executionId);
           // Browser-side post-capture checks have finished before a test reports.
           // Publish only attachments that survived those checks and persistence.
           for (let attachment of event.attachments ?? [])
-            onEvent({ type: 'attachment', runId: run.runId, executionId: event.executionId, attachment });
-          if (['complete', 'fatal'].includes(event.type)) await persist(run);
+            onEvent({
+              type: 'attachment',
+              runId: run.runId,
+              executionId: event.executionId,
+              attachment,
+            });
+          if (['complete', 'fatal'].includes(event.type)) {
+            try {
+              await control.finish(event.runId);
+            } catch (error) {
+              let message = event.error
+                ? `${event.error.message} Native cleanup: ${error.message}`
+                : `Native browser cleanup failed: ${error.message}`;
+              ({ run, event } = acceptEvent(previous, {
+                runId: input.runId,
+                type: 'fatal',
+                error: mapFailure({ ...event.error, message, phase: 'runtime' }),
+              }));
+              runs.set(run.runId, run);
+            }
+            await persist(run);
+          }
           send(
             'application/json',
             JSON.stringify({
@@ -294,13 +351,13 @@ export async function createGateway(
               attachments: event.attachments,
             }),
           );
-          if (['complete', 'fatal'].includes(event.type)) control.finish(event.runId);
           onEvent(event);
           return;
         }
         send('text/plain', 'Unknown browser test route', 404);
       } catch (error) {
-        if (!response.headersSent) response.writeHead(error.status ?? 400, { 'Content-Type': 'text/plain' });
+        if (!response.headersSent)
+          response.writeHead(error.status ?? 400, { 'Content-Type': 'text/plain' });
         response.end(error.message);
       }
     },
@@ -324,18 +381,24 @@ export async function createGateway(
       socket.destroy();
     }
   });
-  server.listen(config.port, config.host);
+  // Keep localhost's browser origin while avoiding different address-family
+  // choices between Node clients and the listener on the same machine.
+  server.listen(config.port, config.host === 'localhost' ? '127.0.0.1' : config.host);
   try {
     await once(server, 'listening');
   } catch (error) {
-    throw new Error(`Cannot listen on ${config.host}:${config.port}: ${error.code ?? error.message}`, {
-      cause: error,
-    });
+    throw new Error(
+      `Cannot listen on ${config.host}:${config.port}: ${error.code ?? error.message}`,
+      {
+        cause: error,
+      },
+    );
   }
   let host = config.host === '0.0.0.0' ? '127.0.0.1' : config.host === '::' ? '::1' : config.host;
   origin = `http://${host.includes(':') ? `[${host}]` : host}:${server.address().port}`;
   let hosts = [host];
-  if (['127.0.0.1', '::1', 'localhost'].includes(host)) hosts = [...hosts, '127.0.0.1', '::1', 'localhost'];
+  if (['127.0.0.1', '::1', 'localhost'].includes(host))
+    hosts = [...hosts, '127.0.0.1', '::1', 'localhost'];
   if (['0.0.0.0', '::'].includes(config.host))
     hosts = [
       ...hosts,
@@ -344,7 +407,9 @@ export async function createGateway(
         .map((entry) => entry.address),
     ];
   allowedHosts = new Set(
-    hosts.map((host) => `${host.includes(':') ? `[${host}]` : host}:${server.address().port}`.toLowerCase()),
+    hosts.map((host) =>
+      `${host.includes(':') ? `[${host}]` : host}:${server.address().port}`.toLowerCase(),
+    ),
   );
   let closing;
   return {
@@ -353,8 +418,16 @@ export async function createGateway(
     setDocumentPolicy(headers) {
       requireOpen();
       if (runs.size) throw new Error('App document policy must be known before a browser joins.');
-      let names = ['cross-origin-opener-policy', 'cross-origin-embedder-policy', 'origin-agent-cluster'];
-      documentPolicy = Object.freeze(Object.fromEntries(names.filter(name => headers[name]).map(name => [name, headers[name]])));
+      let names = [
+        'cross-origin-opener-policy',
+        'cross-origin-embedder-policy',
+        'origin-agent-cluster',
+      ];
+      documentPolicy = Object.freeze(
+        Object.fromEntries(
+          names.filter((name) => headers[name]).map((name) => [name, headers[name]]),
+        ),
+      );
     },
     attachSession: control.attach,
     reload: control.reload,
@@ -383,14 +456,22 @@ export async function createGateway(
         }
         let pending = await Promise.allSettled([...pendingReports]);
         failures.push(
-          ...pending.filter((result) => result.status === 'rejected').map((result) => result.reason),
+          ...pending
+            .filter((result) => result.status === 'rejected')
+            .map((result) => result.reason),
         );
-        await control.close();
-        await new Promise((resolve) => {
-          server.close(resolve);
-          for (let socket of sockets) socket.destroy();
-        });
-        if (failures.length) throw new AggregateError(failures, 'Could not save interrupted Dyno reports.');
+        try {
+          await control.close();
+        } catch (error) {
+          failures.push(error);
+        } finally {
+          await new Promise((resolve) => {
+            server.close(resolve);
+            for (let socket of sockets) socket.destroy();
+          });
+        }
+        if (failures.length)
+          throw new AggregateError(failures, 'Could not finish Dyno reports and cleanup.');
       })();
       return closing;
     },
