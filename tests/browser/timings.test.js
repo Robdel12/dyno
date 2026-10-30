@@ -10,17 +10,25 @@ let browser = { name: process.env.DYNO_TEST_BROWSER ?? 'chrome', provider: 'nati
 test('a developer can identify slow work in JSON, the live reporter, and an offline report', { timeout: 90000 }, async t => {
   let fixture = await project(t, {
     config: { setup: './setup.js' },
-    files: { 'setup.js': 'export default () => ({ fixtures: { contact: "Robert" }, teardown() {} });' },
+    files: {
+      'setup.js': 'export default () => ({ fixtures: { contact: "Robert" }, teardown() {} });',
+      'tests/browser/contacts.js': `
+import { defineInteractor } from 'dyno';
+export let Contact = defineInteractor({ actions: {
+  async save(name) {
+    await this.find('$(input[name=name])').then.fill(name);
+    await this.click('Save');
+    await this.find('$([role=status])').text('Saved ' + name + ' · 1');
+    return 'saved';
+  },
+} });`,
+    },
     source: `
+import { Contact } from './contacts.js';
 beforeEach(async ({app,step}) => { await step('Open contacts', () => app.goto('/?token=never-record-this-query')); });
 afterEach(async ({app,step}) => { await step('Reset contacts', () => app.request('/api/lifecycle', {method:'POST',body:'never-record-this-body'})); });
 test('saves a contact', async ({app,I,step,fixtures}) => {
-  let saved = await step('Save <contact>', async () => {
-    await I.type(fixtures.contact).into('$(input[name=name])');
-    await I.click('Save');
-    await I.find('$([role=status])').text('Saved Robert · 1');
-    return 'saved';
-  });
+  let saved = await step('Save <contact>', () => Contact(I).save(fixtures.contact));
   await I.assert(() => saved === 'saved');
 });
 test('failed save', async ({step}) => { await step('Failed save', () => { throw new Error('Cannot save'); }); });

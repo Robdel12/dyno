@@ -2,6 +2,82 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { project } from '../helpers/project.js';
 
+test('custom interactors compose native actions without changing siblings, scopes, or reusable chains', { timeout: 90000 }, async t => {
+  let fixture = await project(t, {
+    files: {
+      'tests/browser/contacts.js': `
+        import { defineInteractor } from 'dyno';
+        export let Contact = defineInteractor({
+          actions: {
+            *rename(name) { yield this.find('Name').then.fill(name); },
+            async edit(name, notes) {
+              await this.rename(name);
+              await this.find('Notes').then.fill(notes);
+              await this.assert.named(name);
+            },
+          },
+          assertions: {
+            named: name => ({ root }) => ({
+              assertion: root().querySelector('input').value === name,
+              failureMessage: 'Expected contact name ' + name + ', got ' + root().querySelector('input').value,
+            }),
+          },
+        });
+        export let OtherContact = defineInteractor({
+          actions: { *rename(name) { yield this.find('Name').then.fill('Other ' + name); } },
+          assertions: {
+            named: name => ({ root }) => root().querySelector('input').value === 'Other ' + name,
+          },
+        });`,
+    },
+    source: `
+      import { Contact, OtherContact } from './contacts.js';
+      test('edit independent contacts', async ({app,I}) => {
+        let work = Contact(I, '$(#work)');
+        let personal = OtherContact(I.scope('$(#personal)'));
+        await app.goto('/interactor');
+        let rename = work.rename('Robert');
+        let addNotes = rename.then.find('Notes').then.fill('Keep this note');
+        await addNotes;
+        await work.find('Notes').value('Keep this note');
+        await work.find('Name').then.fill('Temporary');
+        await rename;
+        await work.assert.named('Robert');
+        await work.find('Notes').value('Keep this note');
+        await personal.rename('Robert');
+        await personal.assert.named('Robert');
+        await work.assert.not.named('Other Robert');
+        await I.assert(() => !('rename' in I) && !('named' in I.assert), 'Custom definitions must stay local');
+        await Contact(I).scope('$(#work)').rename('Nested');
+        await work.assert.named('Nested');
+        await app.goto('/interactor');
+        await work.edit('New document', 'Fresh notes');
+        await work.find('$(output)').text('Fresh notes');
+        await work.find('Notes').value('Fresh notes');
+        await personal.find('Name').value('');
+      });`,
+  });
+  let result = await fixture.run().completion;
+  assert.equal(result.code, 0, result.stdout + result.stderr);
+  assert.equal(result.summary.passed, 1);
+});
+
+test('custom interactors never search outside a missing root', { timeout: 90000 }, async t => {
+  let fixture = await project(t, { config: { expectTimeout: 150 }, source: `
+    import { defineInteractor } from 'dyno';
+    let Contact = defineInteractor({ actions: {
+      *rename(name) { yield this.find('Name').then.fill(name); },
+    } });
+    test('missing custom contact', async ({app,I}) => {
+      await app.goto('/interactor');
+      await Contact(I, '$(#missing)').rename('Wrong contact');
+    });` });
+  let result = await fixture.run().completion;
+  assert.equal(result.code, 1);
+  let failure = result.events.find(event => event.type === 'test');
+  assert.match(failure.error.message, /missing/);
+});
+
 test('Interactor scopes compose, retain the current document, and isolate same-named fields', { timeout: 90000 }, async t => {
   let fixture = await project(t, { source: `
     test('edit contacts', async ({ app, I }) => {

@@ -4,19 +4,32 @@ export class Interactor extends BrowserInteractor {
   static Assert = class extends BrowserInteractor.Assert {};
 
   scope(selector) {
-    let context = new this.constructor.Context(this[this.constructor.Context.Symbol]);
-    context.selector = selector;
-    return new this.constructor({
-      root: () => context.$,
-      signal: context.signal,
-      // Context inherits these settings; spreading assert would drop them.
-      assert: {
-        timeout: context.assert.timeout,
-        frequency: context.assert.frequency,
-        reliability: context.assert.reliability,
-      },
-    });
+    return bindInteractor(this, selector, this.constructor);
   }
+}
+
+function bindInteractor(interactor, selector, Type) {
+  let context = new interactor.constructor.Context(interactor[interactor.constructor.Context.Symbol]);
+  if (selector !== undefined) context.selector = selector;
+  return new Type({
+    root: () => context.$,
+    signal: context.signal,
+    // Context inherits these settings; spreading assert would drop them.
+    assert: {
+      timeout: context.assert.timeout,
+      frequency: context.assert.frequency,
+      reliability: context.assert.reliability,
+    },
+  });
+}
+
+export function defineInteractor({ actions = {}, assertions = {} }) {
+  class CustomInteractor extends Interactor {
+    static Assert = class extends Interactor.Assert {};
+  }
+  CustomInteractor.defineActions(actions);
+  CustomInteractor.defineAssertions(assertions);
+  return (interactor, selector) => bindInteractor(interactor, selector, CustomInteractor);
 }
 
 function dispatch(element, eventName, { bubbles = true, cancelable = true, ...properties } = {}, signal) {

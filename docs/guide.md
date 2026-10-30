@@ -128,6 +128,53 @@ await contact.find('Saved').rendered();
 
 `rendered()` checks that content has layout and is displayed, including below the fold. Transparent parents count as hidden. It doesn't scroll or require viewport visibility; use `visible()` for that. Both keep Interactor's normal retries and stability settings. Upstream text/CSS selectors, `find(...).times(count)`, `not.overflows('x')`, option clicks, and custom selector functions work directly. Keep page objects focused on your app's workflows.
 
+### Custom interactors
+
+Define and export custom interactors at module scope in your app's test support, or beside the components they exercise. Tests import those definitions and bind them to their own `I`. `defineInteractor` uses Interactor's native custom actions and assertions, without changing the test's `I` or other definitions.
+
+```js
+import { defineInteractor } from 'dyno';
+
+// tests/interactors/login.js
+export let LoginForm = defineInteractor({
+  actions: {
+    async enterCredentials({ email, password }) {
+      await this.find('Email').then.fill(email);
+      await this.find('Password').then.fill(password);
+    },
+    async signIn(user) {
+      await this.enterCredentials(user);
+      await this.click('"Log in" $(button)');
+    },
+  },
+  assertions: {
+    hasError: message => ({ root }) =>
+      root().querySelector('[role=alert]')?.innerText === message,
+  },
+});
+```
+
+Bind the imported definition to `I` inside a test or hook. Each call creates an independent scope with that test's assertion settings and cancellation signal. Share definitions between tests, not bound instances. Queries follow the app after navigation; elements aren't cached.
+
+```js
+import { LoginForm } from './interactors/login.js';
+
+let login = LoginForm(I, '$(form)');
+await step('Sign in', () => login.signIn(user));
+await login.assert.hasError('Check your password');
+```
+
+Components can bind inside other components. With project-defined `Post`, `Composer`, and `postSelector`:
+
+```js
+let reply = Composer(Post(I, postSelector(words)), '$([aria-label="Reply"])');
+await reply.write('I remember this storm.');
+```
+
+Use async actions and await each operation when composing fields or child components. Native generator actions remain available; their yielded operations share the current subject. Assertion callbacks receive `$` for that subject and `root()` for the component root. Custom assertions support `.not` and Interactor's failure-message objects. Actions keep native `.then` chaining; deriving a chain doesn't change the original one. `scope()` retains custom methods.
+
+Keep navigation, fixture I/O, screenshots, and named steps in workflow functions. Share action functions or combine action/assertion maps with object spread. TypeScript infers custom method arguments and chain methods; import `InteractorContext` when annotating assertion callbacks.
+
 ## Suites and selection
 
 Use `describe(name, callback)` to group tests. Its callback is synchronous; put async work in hooks or tests. Top-level hooks belong to their file. Nested `beforeEach` hooks run from the file inward, and `afterEach` hooks run from the inner suite outward.
@@ -209,7 +256,7 @@ Screenshots are attachments, without baseline comparison. They record a rendered
 
 Timings are always recorded. Open **Slowest tests** in the reporter, then a test’s **Timings** tab. It separates fresh-document setup, hooks, the body, and queued errors. Individual hooks keep their function name and execution order. Navigation, requests, screenshots, viewport changes, and debug pauses have their own intervals.
 
-Name meaningful work around your Interactor page objects:
+Custom Interactor actions and assertions are included in the enclosing test or hook duration. They don't get separate timing rows automatically. Wrap meaningful workflows in `step()` to give them named intervals:
 
 ```js
 test('saves a contact', async ({ app, I, step }) => {

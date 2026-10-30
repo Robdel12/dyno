@@ -127,7 +127,7 @@ test(
     await writeFile(
       join(fixture.directory, 'consumer.ts'),
       `
-  import {test,describe,beforeEach,afterEach,Interactor} from 'dyno';
+  import {test,describe,beforeEach,afterEach,Interactor,defineInteractor,type InteractorContext} from 'dyno';
   import {defineConfig} from 'dyno/config';
   declare module 'dyno' {interface Fixtures {contactId:string}}
   defineConfig({cleanupTimeout:1000,webServer:{url:'http://localhost:3000',command:['npm','run','dev']},browser:{provider:'playwright',name:'webkit'}});
@@ -150,6 +150,32 @@ test(
       let document:Document=app.document;let window:Window=app.window;
       let custom=new Interactor({root:()=>document.body});await custom.find('Saved').visible();
       let form=I.scope('$(form)');
+      let Contact=defineInteractor({
+        actions:{
+          *rename(name:string){yield this.find('Name').then.fill(name);},
+          setName(name:string){return this.find('Name').then.fill(name);},
+          async edit(name:string){await this.rename(name);await this.assert.named(name);return 'saved';},
+        },
+        assertions:{named:(name:string)=>({root}:InteractorContext)=>root().querySelector('input')?.value===name},
+      });
+      let contact=Contact(I,'$(form)');
+      let outcome:string=await contact.edit('Robert');
+      let field:HTMLElement=await contact.setName('Robert');
+      await contact.find('Name').then.rename('Rob').then.assert.named('Rob');
+      await contact.find('Name').value('Robert').then.rename('Rob');
+      await contact.find('Name').not.disabled().then.rename('Rob');
+      await contact.click('Save').then.rename('Robert');
+      await contact.scope('$(section)').rename('Robert');
+      await contact.assert.not.named('Someone else');
+      await contact.find('$(form)').named('Robert');
+      // @ts-expect-error custom action arguments retain their types
+      await contact.rename(123);
+      // @ts-expect-error custom assertion arguments retain their types
+      await contact.assert.named(123);
+      // @ts-expect-error custom methods do not leak into the test root
+      await I.rename('Robert');
+      // @ts-expect-error unknown custom methods must fail
+      await contact.removeContact();
       await form.find('Name').then.fill('Robert');
       await form.find('Name').then.fill(12);
       await form.find('Saved').rendered();await form.find('Hidden').not.rendered();
