@@ -10,7 +10,7 @@ import { project, reportPayload } from '../helpers/project.js';
 
 test('browser selection reaches a real browser and missing exact test names explain the filter', { timeout: 150000 }, async t => {
   let fixture = await project(t);
-  let result = await fixture.run(['--browser', process.env.DYNO_TEST_BROWSER ?? 'chrome']).completion;
+  let result = await fixture.run(['run', '--browser', process.env.DYNO_TEST_BROWSER ?? 'chrome']).completion;
   assert.equal(result.code, 0, result.stderr + result.stdout);
   assert.equal(result.summary.passed, 1);
   assert.equal(result.events.find(event => event.type === 'ready').browser.isolated, true);

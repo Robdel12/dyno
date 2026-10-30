@@ -12,8 +12,8 @@ export let repository = fileURLToPath(new URL('../../', import.meta.url));
 export let exec = promisify(execFile);
 let appServer = join(repository, 'tests/fixtures/app-server.js');
 
-export function launch(command, args, cwd, signal) {
-  let child = spawn(command, args, { cwd, detached: process.platform !== 'win32', stdio: ['ignore', 'pipe', 'pipe'] });
+export function launch(command, args, cwd, signal, { env = process.env } = {}) {
+  let child = spawn(command, args, { cwd, env, detached: process.platform !== 'win32', stdio: ['ignore', 'pipe', 'pipe'] });
   let stdout = '';
   let stderr = '';
   let pending = '';
@@ -120,8 +120,8 @@ export async function project(t, { source = "test('opens the app', async ({ app,
   }
   return Object.freeze({
     directory, port,
-    run(args = []) {
-      let session = launch(process.execPath, [join(repository, 'bin/dyno.js'), '--json', ...args], directory, t.signal);
+    run(args = [], options) {
+      let session = launch(process.execPath, [join(repository, 'bin/dyno.js'), '--json', ...args], directory, t.signal, options);
       sessions = [...sessions, session];
       return session;
     }

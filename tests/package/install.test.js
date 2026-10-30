@@ -34,6 +34,11 @@ test('the packaged artifact installs and runs the documented first-test workflow
   );
   await rm(join(fixture.directory, 'dyno.config.js'));
   let bin = join(fixture.directory, 'node_modules/dyno/bin/dyno.js');
+  let { stdout: help } = await exec(process.execPath, [bin, 'run', '--help', '--json'], { cwd: fixture.directory, timeout: 5000 });
+  let helpEvent = JSON.parse(help);
+  assert.equal(helpEvent.type, 'help');
+  assert.match(helpEvent.text, /Usage: dyno run/);
+  assert.match(helpEvent.text, /--suite/);
   await exec(process.execPath, [bin, 'init'], { cwd: fixture.directory, timeout: 5000 });
   await writeFile(
     join(fixture.directory, 'tests/browser/home.test.js'),

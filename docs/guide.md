@@ -50,7 +50,11 @@ dyno --config path/to/config.js
 dyno --json                       # one JSON event per stdout line
 ```
 
-Exit codes are 0 for passing tests, 1 for failures, 130 for SIGINT, and 143 for SIGTERM. `--ui` and `--manual` keep the gateway available for reruns; Ctrl-C stops it. App and setup logs belong on stderr when using `--json`.
+`dyno` runs tests by default; `dyno run` is the explicit form. Use `dyno --help` for commands and `dyno run --help`, `dyno doctor --help`, or `dyno install --help` for their options and examples. Put command-specific options after the command name. Usage errors suggest likely flag corrections and point to the relevant help. JSON errors also include Commander's error code.
+
+Exit codes are 0 for passing tests, 1 for failures, 130 for SIGINT, and 143 for SIGTERM. Cleanup failures exit 1 even when interrupted. `--ui` and `--manual` keep the gateway available for reruns; Ctrl-C stops it. Browser installation uses the same interruption and process cleanup.
+
+With `--json`, stdout contains one JSON event per line. Project `console` messages from config, setup, and teardown go to stderr, as does app-server output. Project code that writes directly to a stream should use `process.stderr`. Errors remain available as JSON events and stderr diagnostics. Use the process exit code for the final CLI outcome; a failure can emit an error after `session-timing`.
 
 Open the start URL at `/__dyno__/`. Dyno opens a companion window for test execution, then loads the app in the original window. If the popup is blocked, click **Start**. Keep both windows open: tests stay in the companion while the app navigates normally.
 
@@ -66,7 +70,7 @@ Console capture keeps the first 100 messages per test, up to 2,000 characters ea
 
 ## Editing and debugging
 
-`dyno doctor` checks config, bundles tests, locates the selected browser/provider, and checks the app URL without launching anything. Add `--manual` for a URL-only setup. It cannot prove that a configured server command starts successfully; the run checks its output and HTTP readiness.
+`dyno doctor` checks config, bundles tests, locates the selected browser/provider, and checks the app URL without launching anything. It validates headless mode by default; add `--ui` for a visible browser or `--manual` for a URL-only setup. It cannot prove that a configured server command starts successfully; the run checks its output and HTTP readiness.
 
 `--watch` keeps the app server and browser session alive. It watches test files and imported project helpers using filesystem events. Edits during a run queue one rebuild of the latest files. Build errors leave the previous results available; fixing the file runs again. Config and Node setup changes need a CLI restart. App code keeps its own hot reload.
 
@@ -328,7 +332,7 @@ Paths are relative to the config file unless noted. See `dyno --help` for CLI ov
 | `timeout` | `10000` | Test deadline, including runtime startup and hooks |
 | `cleanupTimeout` | `5000` | Total budget for cleanup after execution ends |
 | `expectTimeout` | `min(2000, timeout / 2)`, rounded down | Interactor assertion timeout |
-| `runTimeout` | `60000` | Headless run deadline |
+| `runTimeout` | `60000` | Headless browser opening and results deadline, after app readiness |
 | `host`, `port` | `127.0.0.1`, `7357` | Gateway address; port 0 chooses a free port |
 | `browser.name`, `path`, `args` | `chrome`, discovered path, `[]` | Browser and launch arguments |
 | `browser.provider` | `native` | `native`, `playwright`, or `webdriver` |
@@ -347,7 +351,7 @@ Paths are relative to the config file unless noted. See `dyno --help` for CLI ov
 
 ### Node setup
 
-The setup module exports an async function receiving `{ config, signal }`. Return `{ env, fixtures, teardown }`: app environment overrides, JSON-safe data for browser tests, and an async cleanup function. Log to stderr, and keep real credentials out of browser fixtures. If setup throws before returning, it must clean up resources it already created.
+The setup module exports an async function receiving `{ config, signal }`. Return `{ env, fixtures, teardown }`: app environment overrides, JSON-safe data for browser tests, and an async cleanup function. Honor the signal during long work, and keep real credentials out of browser fixtures. Console messages go to stderr. If setup throws before returning, it must clean up resources it already created.
 
 ## Vizzly example
 

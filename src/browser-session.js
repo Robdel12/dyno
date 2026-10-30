@@ -170,8 +170,8 @@ export async function createBrowserSession(plan, { viewport, signal, onExit } = 
         try {
           await owned.stop();
         } finally {
-          await stopProfileProcesses(profile);
-          await rm(profile, { recursive: true, force: true, maxRetries: 3 });
+          try { await stopProfileProcesses(profile); }
+          finally { await rm(profile, { recursive: true, force: true, maxRetries: 3 }); }
         }
       }
       return Object.freeze({ graceful });
