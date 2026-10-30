@@ -7,6 +7,22 @@ import { project } from '../helpers/project.js';
 let browser = process.env.DYNO_TEST_BROWSER ?? 'chrome';
 let visible = { browser: { name: browser, args: [browser === 'firefox' ? '--headless' : '--headless=new'] } };
 
+test('stopping watch during a rebuild releases the app without reporting a cancelled build as an error', { timeout: 15000 }, async t => {
+  let fixture = await project(t);
+  let session = fixture.run(['--manual', '--watch']);
+  await session.waitForEvent('ready');
+  let file = join(fixture.directory, 'tests/browser/workflow.test.js');
+  await writeFile(file, `test('updated workflow', async ({app,I}) => { await app.goto('/'); await I.find('Fixture app').visible(); });`);
+  await session.waitForEvent('watch', event => event.status === 'building');
+  session.child.kill('SIGTERM');
+  let result = await session.completion;
+  assert.equal(result.code, 143, result.stdout + result.stderr);
+  assert.equal(result.events.some(event => event.type === 'watch' && event.status === 'error'), false);
+  let timingIndex = result.events.findIndex(event => event.type === 'session-timing');
+  assert.deepEqual(result.events.slice(timingIndex + 1).map(event => event.type), ['stopped']);
+  await assert.rejects(fetch(`http://127.0.0.1:${fixture.port}`));
+});
+
 test(
   'debug pause preserves the app and test, suspends its deadline, and resumes through the reporter',
   { timeout: 90000 },

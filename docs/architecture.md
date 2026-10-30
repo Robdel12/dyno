@@ -2,6 +2,16 @@
 
 Node manages processes, bundles, and output. The browser executes tests and Interactor actions. A driver is optional.
 
+## CLI boundaries
+
+[bin/dyno.js](../bin/dyno.js) owns process signals, exit codes, and terminal streams. [cli.js](../src/cli.js) builds a fresh Commander command tree for parsing, validation, and generated help. Its output and exit hooks return control to Dyno; only immutable options or help/version results leave the parser. [commands.js](../src/commands.js) dispatches those options; [cli-run.js](../src/cli-run.js) owns a test session's resources and reverse-order cleanup. [cli-output.js](../src/cli-output.js) formats human output and JSON events. Project console output goes to stderr.
+
+[watch-session.js](../src/watch-session.js) coordinates the filesystem watcher and immutable watch transitions. It serializes builds, retains queued edits, and waits for an active build during shutdown. Cancelled builds don't emit spurious failures; reload failures explain how to reconnect the browser.
+
+Every command shares cancellation, including browser installation. Shutdown cancels execution before draining cleanup and finalizing session timing. Browser-result deadlines also cancel managed browser opening. There is one command path for each operation.
+
+## Interactor
+
 The exported `Interactor` and each test's `I` use the same app-aware class. Its public Interactor extension points supply app-realm events/files, form replacement, rendered assertions, and dynamic scopes. Scopes create independent contexts with the same assertion settings and signal; they resolve their roots again after navigation. Interactor.js still owns selectors, chaining, retries, and stability checks. Apps keep domain page objects and fixture I/O.
 
 `defineInteractor({ actions, assertions })` registers native extensions on a private subclass with its own assertion class. Its returned function binds that definition to an existing Interactor and optional selector. Definitions never register methods on `I` or siblings. Binding and `scope()` share one context-copy path; neither caches app elements. The small subclass isolates native registration rather than introducing another interaction engine.

@@ -44,6 +44,7 @@
   },
   "dependencies": {
     "@jridgewell/trace-mapping": "0.3.31",
+    "commander": "15.0.0",
     "esbuild": "0.28.2",
     "interactor.js": "3.6.2",
     "parse5": "8.0.0",

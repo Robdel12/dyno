@@ -1,7 +1,7 @@
 import { buildSuite } from './build.js';
 import { resolveSession } from './browser-session.js';
 
-export async function diagnose(config, { manual = false } = {}) {
+export async function diagnose(config, { manual = false, ui = false } = {}) {
   let checks = [{ name: 'config', status: 'passed', message: `Loaded ${config.file}` }];
   let check = async (name, inspect) => {
     try {
@@ -22,7 +22,7 @@ export async function diagnose(config, { manual = false } = {}) {
     ];
   else
     await check('browser', async () => {
-      let plan = await resolveSession(config.browser, { headless: false });
+      let plan = await resolveSession(config.browser, { headless: !ui });
       return `${config.browser.name} · ${config.browser.provider} · ${plan.path ?? 'provider-managed build'}`;
     });
   await check('app', async () => {
