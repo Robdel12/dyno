@@ -301,17 +301,29 @@ test(
       config,
       source: `
 describe('Cancelled native input', () => {
-  test('forgets to await a dialog and input', async ({app,I}) => {
+  test('forgets to await a dialog', async ({app,I}) => {
     await app.goto('/');
-    await I.find('Save note').then.focus();
     let armed = Promise.withResolvers();
     void app.native.withDialog({action:'accept'}, () => armed.resolve()).catch(() => {});
     await armed.promise;
-    await I.find('Save note').focused();
+  });
+  test('forgets to await queued input', async ({app,I}) => {
+    await app.goto('/');
+    await I.find('Save note').then.focus();
+    let claimed = new Promise(resolve => {
+      if (parent.navigator.serviceWorker.controller) resolve();
+      else parent.navigator.serviceWorker.addEventListener('controllerchange', resolve, { once: true });
+    });
+    await app.window.navigator.serviceWorker.register('/native-cancellation-gate.js');
+    await app.window.navigator.serviceWorker.ready;
+    await claimed;
     void app.native.press('Space').catch(() => {});
+    await app.request('/api/native-queued');
   });
   test('still has no saved note and can use native input', async ({app,I}) => {
     await app.goto('/');
+    let cancelled = await (await app.request('/api/native-cancelled')).json();
+    await I.assert(() => cancelled.status === 409, 'Stale queued input must be rejected before dispatch');
     let records = await (await app.request('/api/records')).json();
     await I.assert(() => records.length === 0, 'Cancelled queued input saved a note');
     await I.find('Name').then.focus();
@@ -322,11 +334,13 @@ describe('Cancelled native input', () => {
     });
     let result = await fixture.run().completion;
     assert.equal(result.code, 1, result.stdout + result.stderr);
-    assert.equal(result.summary?.failed, 1, result.stdout + result.stderr);
+    assert.equal(result.summary?.failed, 2, result.stdout + result.stderr);
     assert.equal(result.summary?.passed, 1, result.stdout + result.stderr);
     assert.match(
       result.events.find((event) => event.type === 'test').error.message,
       /Await.*native/,
     );
+    for (let event of result.events.filter(event => event.type === 'test' && event.status === 'failed'))
+      assert.match(event.error.message, /Await.*native/);
   },
 );

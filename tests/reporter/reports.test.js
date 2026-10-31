@@ -4,6 +4,7 @@ import { readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { project } from '../helpers/project.js';
 import { inspectOfflineReport } from '../helpers/offline-report.js';
+import { acceptObserverFrame } from '../../src/browser/reporting.js';
 
 let browser = { name: process.env.DYNO_TEST_BROWSER ?? 'chromium' };
 
@@ -21,6 +22,32 @@ test('interrupt preserves active browser output in JSON and the actual offline r
   let session = fixture.run();
   let ready = await session.waitForEvent('ready');
   await fetch(new URL('/api/browser-waiting', ready.url), { signal: t.signal });
+  let { runId } = await session.waitForEvent('capture');
+  let observer = new AbortController();
+  let stream = await fetch(new URL('/__dyno__/stream?run=' + encodeURIComponent(runId), ready.url), {
+    signal: AbortSignal.any([t.signal, observer.signal]),
+  });
+  assert.equal(stream.status, 200);
+  let reader = stream.body.getReader(), decoder = new TextDecoder(), pending = '', state;
+  try {
+    while (!state?.view?.tests.some((test) => test.output.some((entry) =>
+      entry.text === 'Last contact output before interruption 🦖'))) {
+      let chunk = await reader.read();
+      assert.equal(chunk.done, false, 'Reporter closed before delivering the active test output.');
+      pending += decoder.decode(chunk.value, { stream: true });
+      let end;
+      while ((end = pending.indexOf('\n\n')) !== -1) {
+        let frame = pending.slice(0, end);
+        pending = pending.slice(end + 2);
+        let kind = /^event: (.+)$/m.exec(frame)?.[1], data = /^data: (.+)$/m.exec(frame)?.[1];
+        if (data && ['view-start', 'view-tests', 'snapshot', 'view-change'].includes(kind))
+          state = acceptObserverFrame(state, kind, JSON.parse(data));
+      }
+    }
+  } finally {
+    observer.abort();
+    await reader.cancel().catch(() => {});
+  }
   let result = await session.stop();
   assert.equal(result.code, 143, result.stdout + result.stderr);
   let saved = result.events.find((event) => event.type === 'report-saved');

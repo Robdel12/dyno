@@ -35,4 +35,4 @@ The interactive probe exercised first opening, output while closed, reopening on
 
 Suite registration itself took a median 1.7 ms at this scale. Loading only the selected file would change cross-file focus behavior, so full registration stays. Full snapshots still cross from the controller to Node; that remaining cost has not been redesigned.
 
-The next measurement is the complete, uninstrumented Vizzly suite with the same outcomes, services, and visual checkpoints.
+The [complete Vizzly follow-up](scenario-setup.md) measures the remaining snapshot cost, scenario setup, and Interactor readiness checks. It keeps all 339 outcomes and 232 image checkpoints.

@@ -3,6 +3,7 @@ import { createServer } from 'node:http';
 let records = [];
 let statusReads = 0;
 let mediaPreference;
+let queuedNative = Promise.withResolvers(), cancelledNative = Promise.withResolvers();
 let html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Native fixture</title>
 <style>
 body{font:16px system-ui;margin:24px}label{display:block;margin:12px 0}
@@ -65,6 +66,52 @@ document.querySelector('#load').onclick=async()=>{
 let server = createServer(async (request, response) => {
   response.setHeader('Cache-Control', 'no-store');
   let path = new URL(request.url, 'http://localhost').pathname;
+  if (path === '/native-cancellation-gate.js') {
+    response.setHeader('Content-Type', 'text/javascript');
+    response.end(`
+      let held;
+      self.addEventListener('install', event => event.waitUntil(self.skipWaiting()));
+      self.addEventListener('activate', event => event.waitUntil(self.clients.claim()));
+      self.addEventListener('fetch', event => {
+        let url = new URL(event.request.url);
+        if (event.request.method !== 'POST' || !['/__dyno__/operations', '/__dyno__/operations/cancel'].includes(url.pathname)) return;
+        event.respondWith((async () => {
+          let input = await event.request.clone().json();
+          if (url.pathname === '/__dyno__/operations' && input.operation === 'native' && input.input.kind === 'key' && input.input.key === 'Space') {
+            held = { requestId: input.requestId, sent: Promise.withResolvers(), ...Promise.withResolvers() };
+            await fetch('/api/native-queued', { method: 'POST' });
+            await held.promise;
+            // Deliver the real stale request even though its original client
+            // fetch was aborted. The gateway must reject it before dispatch.
+            let response = await fetch(new Request(event.request, { signal: new AbortController().signal }));
+            held.sent.resolve(response.status);
+            return response;
+          }
+          let response = await fetch(event.request);
+          if (url.pathname === '/__dyno__/operations/cancel' && input.requestId === held?.requestId) {
+            if (!response.ok) throw new Error('Native cancellation was not acknowledged');
+            held.resolve();
+            let status = await held.sent.promise;
+            await fetch('/api/native-cancelled', { method: 'POST', body: String(status) });
+          }
+          return response;
+        })());
+      });
+    `);
+    return;
+  }
+  if (['/api/native-queued', '/api/native-cancelled'].includes(path)) {
+    let observed = path === '/api/native-queued' ? queuedNative : cancelledNative;
+    if (request.method === 'POST') {
+      let body = ''; for await (let chunk of request) body += chunk;
+      observed.resolve(body);
+      response.end('recorded');
+    } else {
+      response.setHeader('Content-Type', 'application/json');
+      response.end(JSON.stringify({ status: Number(await observed.promise) }));
+    }
+    return;
+  }
   if (path === '/api/media-preference') {
     if (request.method === 'POST') {
       let chunks = [];
