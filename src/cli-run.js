@@ -6,7 +6,7 @@ import { loadConfig } from './config.js';
 import { buildSuite } from './build.js';
 import { startWebServer } from './process.js';
 import { createGateway } from './server.js';
-import { resolveSession, createBrowserSession } from './browser-session.js';
+import { resolveSession, createBrowserPool } from './browser-session.js';
 import { createCleanup } from './cleanup.js';
 import { defaultViewport } from './browser/viewport.js';
 import { createWatchSession } from './watch-session.js';
@@ -65,18 +65,18 @@ export async function runTests(options, { signal, output }) {
   try {
     let bundle = await measure('Bundle tests', () => buildSuite(config));
     runSignal.throwIfAborted();
-    let browser = browserPlan
-      ? await measure('Prepare browser', () => createBrowserSession(browserPlan, {
-          viewport: config.viewport ?? defaultViewport,
+    let pool = browserPlan
+      ? await measure('Prepare browser', () => createBrowserPool(browserPlan, {
           signal: runSignal,
           onExit: failed
         }))
       : null;
-    if (browser) cleanup('Stop browser', async () => {
-      let result = await browser.stop();
+    if (pool) cleanup('Stop browser', async () => {
+      let result = await pool.stop();
       browserCleanup = result;
       output.event({ type: 'browser-stopped', sessionId, ...result });
     });
+    let browser = pool ? await pool.createWorker('0', { viewport: config.viewport ?? defaultViewport }) : null;
     launchKey = browser ? randomUUID() : null;
     let setup;
     if (config.setup) {

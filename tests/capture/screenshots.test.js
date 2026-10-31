@@ -2,7 +2,6 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import { tmpdir } from 'node:os';
 import { PNG } from 'pngjs';
 import { project, exec } from '../helpers/project.js';
 
@@ -286,7 +285,6 @@ test('waits for a provider failure', async ({ app }) => {
 
 });`,
     });
-    let priorProfiles = new Set(await readdir(tmpdir()));
     let session = fixture.run();
     await session.waitForEvent('start');
     let { stdout } = await exec('ps', ['-axo', 'pid=,ppid=,command=']);
@@ -298,8 +296,13 @@ test('waits for a provider failure', async ({ app }) => {
           Number(parent) === session.child.pid && command.join(' ').endsWith('/src/providers/worker.js'),
       );
     assert.ok(worker, 'Expected an owned provider worker');
-    let ownedProfiles = (await readdir(tmpdir())).filter(name => name.startsWith(`dyno-playwright-${session.child.pid}-`) && !priorProfiles.has(name));
-    assert.equal(ownedProfiles.length, 1, 'Expected one new provider profile');
+    let processes = stdout.split('\n').map((line) => line.trim().split(/\s+/));
+    let ownedPids = new Set([session.child.pid]);
+    for (let size = -1; size !== ownedPids.size;) {
+      size = ownedPids.size;
+      for (let [pid, parent] of processes) if (ownedPids.has(Number(parent))) ownedPids.add(Number(pid));
+    }
+    assert.ok(ownedPids.size > 3, 'Expected the CLI, app, IPC worker and real browser processes');
     process.kill(Number(worker[0]), 'SIGKILL');
     let result = await session.completion;
     assert.equal(result.code, 1, result.stdout + result.stderr);
@@ -307,17 +310,14 @@ test('waits for a provider failure', async ({ app }) => {
     assert.deepEqual(result.events.filter(event => event.type === 'error' && event.phase === 'cleanup'), [], result.stdout + result.stderr);
     assert.equal(result.events.find(event => event.type === 'browser-stopped')?.graceful, false);
     await assert.rejects(fetch('http://127.0.0.1:' + fixture.port));
-    let profiles = await readdir(tmpdir());
-    assert.equal(
-      profiles.some((name) => ownedProfiles.includes(name)),
-      false,
-      'Provider profile survived crash cleanup',
-    );
+    for (let pid of ownedPids) {
+      assert.throws(() => process.kill(pid, 0), { code: 'ESRCH' }, `Owned process ${pid} survived cleanup`);
+    }
   },
 );
 
 test(
-  'interrupting after persistence removes an unacknowledged image and owned profile',
+  'interrupting after persistence removes an unacknowledged image and closes the browser',
   managedOptions,
   async (t) => {
     let fixture = await project(t, {
@@ -337,7 +337,6 @@ test('waits for capture acknowledgement', async ({ app }) => {
 
 });`,
     });
-    let priorProfiles = new Set(await readdir(tmpdir()));
     let session = fixture.run();
     let { url } = await session.waitForEvent('ready');
     await fetch(new URL('/api/capture-committed', url), { signal: t.signal });
@@ -349,10 +348,7 @@ test('waits for capture acknowledgement', async ({ app }) => {
       false,
     );
     assert.deepEqual(await readdir(join(fixture.directory, '.dyno/artifacts')), []);
-    assert.equal(
-      (await readdir(tmpdir())).some((name) => !priorProfiles.has(name) && name.startsWith(`dyno-playwright-${session.child.pid}-`)),
-      false,
-    );
+    assert.equal(result.events.find((event) => event.type === 'browser-stopped')?.graceful, true, result.stdout + result.stderr);
   },
 );
 

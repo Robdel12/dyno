@@ -32,7 +32,7 @@ A URL-only browser can't capture screenshots or resize its own tab. Required scr
 
 ## Managed runs
 
-Dyno owns a fresh browser profile and its processes. Playwright keeps the original app page for capture and sizing, even when the companion is active. Closing the app interrupts its run. Shutdown closes the browser; Dyno also removes processes left by a crashed worker.
+Dyno owns a fresh browser server and an isolated context for the run. Playwright keeps the original app page for capture and sizing, even when the companion is active. Closing the app interrupts its run. Shutdown closes contexts, then the browser server. The parent retains the SDK shutdown handle even if the IPC worker crashes.
 
 Screenshots are PNGs of the original app page with the reporter hidden. `fullPage: true` preserves the app viewport and captures the whole page. Masks change only the PNG. Animation suppression and caret hiding are prepared in the browser and restored afterward. See the [screenshot API](guide.md#screenshots).
 

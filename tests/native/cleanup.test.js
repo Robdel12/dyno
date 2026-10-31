@@ -6,7 +6,7 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { loadConfig } from '../../src/config.js';
 import { buildSuite } from '../../src/build.js';
-import { createBrowserSession, resolveSession } from '../../src/browser-session.js';
+import { createBrowserPool, resolveSession } from '../../src/browser-session.js';
 import { startWebServer } from '../../src/process.js';
 import { createGateway } from '../../src/server.js';
 import { createReportWriter } from '../../src/reports.js';
@@ -59,7 +59,6 @@ async function crashOwnedProvider() {
     size = owned.size;
     for (let item of processes) if (owned.has(item.parent)) owned.add(item.pid);
   }
-  assert.ok(owned.size > 1, 'Expected the owned provider to have a real browser process');
   let signal = (pid, value) => {
     try {
       process.kill(pid, value);
@@ -67,9 +66,8 @@ async function crashOwnedProvider() {
       if (error.code !== 'ESRCH') throw error;
     }
   };
-  // Freeze the owned process tree before crashing it. Graceful browser shutdown
-  // can run the controller's pagehide beacon and finish this run before the
-  // HTTP client below submits the terminal event being tested.
+  // Crash the IPC worker while its browser server remains owned by the parent.
+  // Native cleanup must fail clearly and still close that server.
   try {
     for (let pid of owned) signal(pid, 'SIGSTOP');
   } finally {
@@ -103,7 +101,7 @@ describe('Native cleanup failure', () => {
         let writer = createReportWriter(config.reportDir);
         let notifications = new EventEmitter();
         let events = [];
-        let app, session, gateway;
+        let app, session, gateway, pool;
         try {
           app = await startWebServer(config.webServer, { signal: t.signal });
           gateway = await createGateway(config, bundle, {
@@ -114,7 +112,9 @@ describe('Native cleanup failure', () => {
                 notifications.emit('terminal', event);
             },
           });
-          session = await createBrowserSession(await resolveSession(browser), { signal: t.signal });
+          pool = await createBrowserPool(await resolveSession(browser), { signal: t.signal });
+          t.after(pool.stop);
+          session = await pool.createWorker('0');
           let launchKey = randomUUID();
           gateway.attachSession(session, launchKey);
           let url = new URL(gateway.url);
@@ -152,7 +152,6 @@ describe('Native cleanup failure', () => {
           // Crash the real owned provider without allowing browser unload JS.
           // Cleanup still crosses IPC to a stopped worker, with no fake session.
           await crashOwnedProvider();
-          await session.stop();
           let response = await post(
             terminalType === 'fatal'
               ? { type: 'fatal', error: { message: 'Browser ended while native state was active.' } }
@@ -176,7 +175,7 @@ describe('Native cleanup failure', () => {
           await gateway.close();
           gateway = undefined;
         } finally {
-          let cleanup = await Promise.allSettled([gateway?.close(), session?.stop(), app?.stop()]);
+          let cleanup = await Promise.allSettled([gateway?.close(), pool?.stop(), app?.stop()]);
           let failures = cleanup
             .filter((result) => result.status === 'rejected')
             .map((result) => result.reason);
