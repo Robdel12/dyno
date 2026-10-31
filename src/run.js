@@ -1,6 +1,7 @@
 import { validFailure, snapshotFailure } from './failures.js';
 import { testId, testDescriptor } from './suite.js';
 import { validTimings, snapshotTimings, performanceSummary } from './browser/timings.js';
+import { validOutput, snapshotOutput } from './browser/reporting.js';
 
 function snapshotEvent(event) {
   return Object.freeze({
@@ -18,7 +19,7 @@ function snapshotEvent(event) {
           )
         }
       : {}),
-    ...(event.output ? { output: Object.freeze(event.output.map((entry) => Object.freeze({ ...entry }))) } : {}),
+    ...(event.output ? { output: snapshotOutput(event.output) } : {}),
     ...(event.error ? { error: snapshotFailure(event.error, event.type === 'test' ? 'test' : 'runtime') } : {}),
     ...(event.additionalErrors
       ? { additionalErrors: Object.freeze(event.additionalErrors.map((error) => snapshotFailure(error, 'afterEach'))) }
@@ -49,22 +50,7 @@ export function acceptEvent(run, input) {
   )
     throw new Error('Invalid additional failures.');
 
-  if (
-    input.output !== undefined &&
-    (!Array.isArray(input.output) ||
-      input.output.length > 100 ||
-      input.output.some(
-        (entry) =>
-          !entry ||
-          !['app', 'test'].includes(entry.source) ||
-          !['log', 'info', 'warn', 'error', 'debug'].includes(entry.level) ||
-          typeof entry.text !== 'string' ||
-          entry.text.length > 2000 ||
-          typeof entry.elapsed !== 'number' ||
-          !Number.isFinite(entry.elapsed) ||
-          entry.elapsed < 0
-      ))
-  )
+  if (input.output !== undefined && !validOutput(input.output))
     throw new Error('Invalid console output.');
 
   if (input.type === 'start') {
@@ -114,7 +100,7 @@ export function acceptEvent(run, input) {
     if (input.status === 'failed' && !input.error) throw new Error('A failed test requires an error.');
     if (input.status === 'skipped' && (typeof input.skipReason !== 'string' || !input.skipReason.trim()))
       throw new Error('A skipped test requires a reason.');
-    let event = snapshotEvent({ ...input, file: run.tests[input.index].file, suites: run.tests[input.index].suites });
+    let event = snapshotEvent({ ...input, output: input.output ?? [], file: run.tests[input.index].file, suites: run.tests[input.index].suites });
     return { run: Object.freeze({ ...run, outcomes: Object.freeze([...run.outcomes, event]) }), event };
   }
   if (input.type === 'complete') {
@@ -127,8 +113,17 @@ export function acceptEvent(run, input) {
   }
   if (input.type === 'fatal') {
     if (!input.error) throw new Error('A fatal event requires an error.');
-    let event = snapshotEvent(input);
-    return { run: Object.freeze({ ...run, status: 'failed', error: event.error }), event };
+    if (input.stopped !== undefined && typeof input.stopped !== 'boolean') throw new Error('Invalid stopped status.');
+    let partial = input.partial ?? [];
+    if (!Array.isArray(partial) || partial.length > run.tests.length ||
+      new Set(partial.map((test) => test?.id)).size !== partial.length ||
+      partial.some((test) => !test || !run.tests.some((item) => item.id === test.id) ||
+        run.outcomes.some((item) => item.testId === test.id) || !validOutput(test.output)))
+      throw new Error('Invalid interrupted test output.');
+    partial = Object.freeze(partial.map((test) => Object.freeze({ id: test.id,
+      output: snapshotOutput(test.output) })));
+    let event = snapshotEvent({ ...input, partial });
+    return { run: Object.freeze({ ...run, status: 'failed', stopped: input.stopped === true, error: event.error, partial }), event };
   }
   throw new Error('Unknown reporter event.');
 }

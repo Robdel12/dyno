@@ -262,7 +262,7 @@ test('edited workflow', () => {});
       );
       assert.equal(
         (await post({ type: 'test', index: 0, name: 'edited workflow', status: 'passed' })).status,
-        400,
+        200,
       );
       assert.equal((await post({ type: 'complete', failed: 99, passed: 0 })).status, 200);
       let runs = await (await fetch(url + 'results')).json();

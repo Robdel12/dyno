@@ -1,5 +1,6 @@
 import { timingText } from './timing-format.js';
 import { createReporter, selectedTest, testOutput, reporterRoute, reporterHref } from './reporter.js';
+import { acceptObserverFrame } from './reporting.js';
 
 let parameters = new URLSearchParams(location.search);
 let runId = parameters.get('run');
@@ -19,9 +20,22 @@ let state = Object.freeze({
 });
 let pending;
 let lastCommand;
-let update = (patch) => {
-  state = Object.freeze({ ...state, ...patch });
+let renderScheduled = false;
+let renderer = new MessageChannel();
+let renderNow = () => {
+  renderScheduled = false;
   if (!embedded || !window.frameElement?.hidden) render(state);
+};
+renderer.port1.onmessage = () => { if (renderScheduled) renderNow(); };
+let update = (patch) => {
+  let immediate = (patch.route && patch.route !== state.route) || (patch.command && patch.command !== state.command);
+  state = Object.freeze({ ...state, ...patch });
+  if (embedded && window.frameElement?.hidden) return;
+  if (immediate || ['completed', 'error', 'stopped', 'paused', 'debugging'].includes(state.phase)) renderNow();
+  else if (!renderScheduled) {
+    renderScheduled = true;
+    renderer.port2.postMessage(null);
+  }
 };
 let acknowledge = (message) => {
   if (!pending || message.requestId !== pending.id) return;
@@ -122,8 +136,27 @@ if (embedded) {
   parent.postMessage({ channel: 'dyno-reporter', kind: 'ready', runId }, location.origin);
 } else if (runId) {
   let stream = new EventSource(`/__dyno__/stream?run=${encodeURIComponent(runId)}`);
+  let observed;
+  let accept = (kind, event) => {
+    try {
+      let data = JSON.parse(event.data);
+      observed = acceptObserverFrame(observed, kind, data);
+      if (!observed.pending && observed.view) {
+        if (observed.view.runId !== runId) throw new Error('Reporter view belongs to another run.');
+        receive(observed.view);
+      }
+    } catch (error) {
+      stream.close();
+      update({ connection: 'closed', error: error.message });
+    }
+  };
   stream.addEventListener('open', () => update({ connection: 'connected' }));
-  stream.addEventListener('snapshot', (event) => receive(JSON.parse(event.data)));
+  for (let kind of ['view-start', 'view-tests', 'snapshot', 'view-change'])
+    stream.addEventListener(kind, (event) => accept(kind, event));
+  stream.addEventListener('reporter-error', (event) => {
+    stream.close();
+    update({ connection: 'closed', error: JSON.parse(event.data).message });
+  });
   stream.addEventListener('watch', (event) => update({ watch: JSON.parse(event.data) }));
   stream.addEventListener('host-status', (event) =>
     update({ connection: JSON.parse(event.data).connected ? 'connected' : 'closed' })
