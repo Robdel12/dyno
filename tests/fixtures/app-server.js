@@ -46,6 +46,7 @@ let lifecycle = [];
 let inspection = Promise.withResolvers();
 let browserWaiting = Promise.withResolvers();
 let releaseBrowser = Promise.withResolvers();
+let reportingFault = Promise.withResolvers();
 let captureGate = readFileSync(new URL('./capture-gate.js', import.meta.url));
 let captureBefore = Promise.withResolvers();
 let captureStaged = Promise.withResolvers();
@@ -71,6 +72,54 @@ let server = http.createServer(async (request, response) => {
   if (process.env.COOP) response.setHeader('Cross-Origin-Opener-Policy', process.env.COOP);
   if (process.env.COEP) response.setHeader('Cross-Origin-Embedder-Policy', process.env.COEP);
   response.setHeader('Cache-Control', 'no-store');
+  if (request.url === '/reporting-fault.js') {
+    response.writeHead(200, { 'Content-Type': 'text/javascript' });
+    response.end(`
+      let armed;
+      self.addEventListener('install', event => event.waitUntil(self.skipWaiting()));
+      self.addEventListener('activate', event => event.waitUntil(self.clients.claim()));
+      self.addEventListener('message', event => {
+        armed = event.data.route;
+        event.ports[0].postMessage('armed');
+        event.ports[0].close();
+      });
+      self.addEventListener('fetch', event => {
+        if (armed === 'clock' && new URL(event.request.url).pathname === '/__dyno__/reporter-client.js') {
+          event.respondWith((async () => {
+            let response = await fetch(event.request);
+            let source = await response.text();
+            return new Response('window.requestAnimationFrame = () => 1; window.cancelAnimationFrame = () => {};\\n' + source,
+              { headers: { 'Content-Type': 'text/javascript' } });
+          })());
+          return;
+        }
+        if (event.request.method !== 'POST' || new URL(event.request.url).pathname !== '/__dyno__/' + armed) return;
+        let route = armed;
+        armed = null;
+        event.respondWith((async () => {
+          if (route === 'events' && (await event.request.clone().json()).type !== 'test') {
+            armed = route;
+            return fetch(event.request);
+          }
+          // Commit to the real gateway, then lose its actual response in transit.
+          let response = await fetch(event.request);
+          await response.arrayBuffer();
+          await fetch('/api/reporting-fault-seen', { method: 'POST', body: route });
+          throw new Error('Deliberately lost reporting acknowledgement');
+        })());
+      });`);
+    return;
+  }
+  if (request.url === '/api/reporting-fault-seen') {
+    if (request.method === 'POST') {
+      let body = '';
+      for await (let chunk of request) body += chunk;
+      console.log('REPORT_ACK_DROPPED ' + body);
+      reportingFault.resolve();
+    } else await reportingFault.promise;
+    response.end('fault observed');
+    return;
+  }
   if (request.url === '/api/browser-waiting') { if(request.method==='POST')browserWaiting.resolve();else await browserWaiting.promise;response.end('waiting');return; }
   if (request.url === '/api/release-browser') { if(request.method==='POST')releaseBrowser.resolve();else await releaseBrowser.promise;response.end('released');return; }
   if (request.url === '/capture-gate.js') {

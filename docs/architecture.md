@@ -45,6 +45,12 @@ Before each test, default sizing runs only when configured, actual, or observed 
 
 The reporter owns its route, search, and filter. Its iframe is created on first inspection and retained on close, preserving its route. Closed reporters do not render snapshots; reopening receives current state through the existing ready and presentation messages. Command acknowledgements still arrive while closed. Separate reporter URLs receive server events and send HTTP commands. Both use the same UI.
 
+Live progress carries changed fields and new output through one ordered publisher. The gateway validates each whole change before applying it. Accepted events own final test data; progress cannot finish a run or overwrite an accepted outcome. Fatal results retain unfinished console output without pretending the test completed. Pure reporting helpers create immutable views from those sources.
+
+Standalone observers receive sequenced batches of changed test records. They commit a batch only after its final marker; a reconnect starts a new snapshot. Slow readers retain one in-flight batch and one latest view, with backpressure between records. Each encoded record is limited to 8 MB, with a shared 32 MB reservation for its string and encoded buffer. Object/transport overhead is separate. Command queues and connection counts are bounded too. Exceeding a delivery limit closes that reporter with an explanation; results and saved reports continue independently.
+
+Rendering coalesces through a message turn, so a suspended background animation clock cannot stall the reporter. Route, command and terminal changes render immediately.
+
 A private `window.name` binds the original app window across navigation and survives project calls to `sessionStorage.clear()`. Names route the bootstrap; they do not authenticate messages. Origin, exact source window, run, execution, and current document are checked before accepting messages or operation results. Old unload messages cannot invalidate a newer document.
 
 Test frames and the app have separate documents and globals. They share an origin and storage, so this is not a security boundary against hostile code.
@@ -92,6 +98,8 @@ The real browser workflows in [tests](../tests) cover image pixels, resizing, na
 The gateway owns accepted run snapshots. On completion or interruption, a pure report model selects public result fields; formatters produce versioned JSON, JUnit, and standalone HTML. The writer copies accepted images into a temporary run folder and renames it into place after all files finish. Missing source images become explicit unavailable attachments.
 
 Shutdown closes admission before waiting for pending writes. Joins already rebundling must recheck admission before creating a run. The CLI waits for report persistence before releasing the gateway. Saved HTML needs neither a driver nor a running server.
+
+Normal completion, browser replacement and shutdown share terminal cleanup and persistence. Final state becomes visible after the write succeeds. A failed save reports an infrastructure error while preserving accepted outcomes. Event delivery uses bounded exact-replay receipts; live delivery retains its last sequence digest. The browser can repeat one outstanding reporting request after a network failure, without repeating test callbacks, actions or native operations. Changed replays and sequence gaps fail plainly.
 
 ## Timings
 

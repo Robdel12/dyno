@@ -1,9 +1,11 @@
-import { randomUUID } from 'node:crypto';
+import { randomUUID, createHash } from 'node:crypto';
 import { mkdir, writeFile, rename, rm, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { PNG } from 'pngjs';
 import { validViewport } from './browser/viewport.js';
 import { nativeCapabilities, normalizeNative } from './native.js';
+import { createObserver } from './observer.js';
+import { applyLiveChange, runView } from './browser/reporting.js';
 
 let problem = (status, message) => Object.assign(new Error(message), { status });
 let sameContext = (left, right) =>
@@ -141,11 +143,12 @@ function appImage(bytes, metrics, options) {
   return { bytes: PNG.sync.write(image), ...target, pixelRatio };
 }
 
-export function createBrowserControl({ artifactsDir, onReplaced = () => {} }) {
+export function createBrowserControl({ artifactsDir, onReplaced = () => {}, getRun }) {
   let session, launchKey, ownedRun;
   let connections = new Map(),
     contexts = new Map(),
     views = new Map(),
+    viewSequences = new Map(),
     streams = new Map(),
     records = new Map(),
     nativeExecutions = new Map(),
@@ -153,6 +156,12 @@ export function createBrowserControl({ artifactsDir, onReplaced = () => {} }) {
     requests = new Set(),
     canceled = new Set();
   let pending = new Set();
+  let observerBytes = 0;
+  let reserveObserverBytes = (bytes) => {
+    if (observerBytes + bytes > 32_000_000) return null;
+    observerBytes += bytes;
+    return () => { observerBytes -= bytes; };
+  };
   let joins = Promise.resolve();
   let closed = false;
   let track = async (work) => {
@@ -174,8 +183,8 @@ export function createBrowserControl({ artifactsDir, onReplaced = () => {} }) {
     }
   };
   let broadcast = (runId, type, value) => {
-    let event;
-    for (let { response, role } of streams.get(runId) ?? []) {
+    for (let listener of streams.get(runId) ?? []) {
+      let { response, role } = listener;
       if (
         (type === 'snapshot' && role === 'host') ||
         (type === 'command' && role !== 'host') ||
@@ -183,12 +192,8 @@ export function createBrowserControl({ artifactsDir, onReplaced = () => {} }) {
         response.writableEnded
       )
         continue;
-      if (response.writableLength > 8_000_000) {
-        response.end();
-        continue;
-      }
-      event ??= `event: ${type}\ndata: ${JSON.stringify(value)}\n\n`;
-      response.write(event);
+      if (type === 'snapshot') listener.publish(value);
+      else listener.send(type, value);
     }
   };
   let authorize = (input) => {
@@ -268,6 +273,20 @@ export function createBrowserControl({ artifactsDir, onReplaced = () => {} }) {
       return joined;
     },
     authorize,
+    view(runId) { return views.get(runId); },
+    recordEvent(event, run) {
+      let view = runView(views.get(run.runId), run);
+      let connection = connections.get(run.runId);
+      if (event.type === 'start') view = Object.freeze({ ...view, phase: 'running' });
+      view = Object.freeze({ ...view,
+        identity: connection?.owned ? session.identity : null,
+        capabilities: connection?.owned ? session.capabilities : {
+          screenshot: false, fullPage: false, hostViewport: false, native: nativeCapabilities(),
+        },
+      });
+      views.set(run.runId, view);
+      broadcast(run.runId, 'snapshot', view);
+    },
     notify(runId, kind, value) {
       broadcast(runId, kind, value);
     },
@@ -308,6 +327,7 @@ export function createBrowserControl({ artifactsDir, onReplaced = () => {} }) {
       invalidate(runId, true);
       connections.delete(runId);
       views.delete(runId);
+      viewSequences.delete(runId);
       for (let record of records.values())
         if (record.runId === runId && record.status === 'accepted') records.delete(record.id);
       for (let key of canceled) if (key.startsWith(`${runId}:`)) canceled.delete(key);
@@ -323,6 +343,9 @@ export function createBrowserControl({ artifactsDir, onReplaced = () => {} }) {
       if (route === 'stream' && request.method === 'GET') {
         let runId = url.searchParams.get('run');
         if (!connections.has(runId)) throw problem(404, 'Unknown browser run.');
+        if ((streams.get(runId)?.size ?? 0) >= 8 ||
+          [...streams.values()].reduce((total, entries) => total + entries.size, 0) >= 64)
+          throw problem(429, 'Too many reporter connections. Close a reporter and reconnect.');
         response.writeHead(200, {
           'Content-Type': 'text/event-stream',
           'Cache-Control': 'no-store',
@@ -330,20 +353,17 @@ export function createBrowserControl({ artifactsDir, onReplaced = () => {} }) {
         });
         response.write(': connected\n\n');
         let role = url.searchParams.get('role') === 'host' ? 'host' : 'observer';
-        if (role === 'observer' && views.has(runId))
-          response.write(`event: snapshot\ndata: ${JSON.stringify(views.get(runId))}\n\n`);
-        let listener = { response, role };
+        let listener = { response, role, ...createObserver(response, reserveObserverBytes) };
         let listeners = streams.get(runId) ?? new Set();
         listeners.add(listener);
         streams.set(runId, listeners);
+        if (role === 'observer' && views.has(runId)) listener.publish(views.get(runId));
         let hostConnected = () =>
           [...listeners].some(
             (item) =>
               item.role === 'host' && !item.response.destroyed && !item.response.writableEnded,
           );
-        response.write(
-          `event: host-status\ndata: ${JSON.stringify({ connected: hostConnected() })}\n\n`,
-        );
+        listener.send('host-status', { connected: hostConnected() });
         if (role === 'host') broadcast(runId, 'host-status', { connected: true });
         response.on('close', () => {
           listeners.delete(listener);
@@ -418,11 +438,21 @@ export function createBrowserControl({ artifactsDir, onReplaced = () => {} }) {
         return true;
       }
       if (route === 'view') {
-        if (!input.view || typeof input.view !== 'object' || !Array.isArray(input.view.tests))
-          throw problem(400, 'Invalid execution snapshot.');
-        views.set(input.runId, Object.freeze(input.view));
-        broadcast(input.runId, 'snapshot', input.view);
-        send({});
+        let last = viewSequences.get(input.runId);
+        let digest = createHash('sha256').update(JSON.stringify(input.change) ?? '').digest('hex');
+        if (input.sequence === last?.sequence && digest === last.digest) {
+          send({ sequence: last.sequence });
+          return true;
+        }
+        if (['completed', 'failed'].includes(getRun(input.runId).status))
+          throw problem(409, 'Live progress cannot change a finished run.');
+        if (!Number.isSafeInteger(input.sequence) || input.sequence !== (last?.sequence ?? 0) + 1)
+          throw problem(409, 'Live reporting sequence is out of order.');
+        let view = applyLiveChange(views.get(input.runId), input.change, getRun(input.runId));
+        views.set(input.runId, view);
+        viewSequences.set(input.runId, Object.freeze({ sequence: input.sequence, digest }));
+        broadcast(input.runId, 'snapshot', view);
+        send({ sequence: input.sequence });
         return true;
       }
       if (route === 'context') {

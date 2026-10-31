@@ -1,6 +1,7 @@
 import { createExecution, transition } from './execution.js';
 import { normalizeViewport } from './viewport.js';
 import { selectTests } from './suite-model.js';
+import { liveChange } from './reporting.js';
 
 let root = '/__dyno__/';
 let id = () => [...crypto.getRandomValues(new Uint32Array(4))].join('-');
@@ -29,16 +30,64 @@ let observedViewport = {
 };
 let execution = document.getElementById('execution');
 
-let latestView, publishing;
+let latestView, publishedView, publishing, publishError;
+let reportSequence = 0;
+let publishScheduled = false;
+let publisher = new MessageChannel();
 let post = async (route, input = {}, signal) => {
-  let response = await fetch(root + route, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ runId, connectionKey, ...input }),
-    signal: AbortSignal.any([AbortSignal.timeout(20000), ...(signal ? [signal] : [])]),
-  });
-  if (!response.ok) throw new Error(await response.text());
-  return response.json();
+  if (route === 'events') {
+    if (input.type === 'fatal') {
+      try { await flushViews(); } catch {}
+      input = { ...input, partial: state.tests.filter((test) =>
+        !['passed', 'failed', 'skipped'].includes(test.status) && test.output.length)
+        .map(({ id, output }) => ({ id, output })) };
+    } else await flushViews();
+  }
+  let body = JSON.stringify({ runId, connectionKey, ...input });
+  let requestSignal = AbortSignal.any([AbortSignal.timeout(20000), ...(signal ? [signal] : [])]);
+  for (let attempt = 0; ; attempt++) {
+    try {
+      let response = await fetch(root + route, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body, signal: requestSignal,
+      });
+      if (!response.ok) throw new Error(await response.text());
+      let result = await response.json();
+      if (route === 'events' && input.type === 'complete' && result.error)
+        throw new Error(result.error.message);
+      return result;
+    } catch (error) {
+      // Only idempotent reporting requests can repeat after a lost response.
+      // Actions and test callbacks are never retried.
+      if (attempt || !['events', 'view'].includes(route) || requestSignal.aborted ||
+        error.name !== 'TypeError') throw error;
+    }
+  }
+};
+let drainViews = () => {
+  if (publishError) return Promise.reject(publishError);
+  if (publishing) return publishing;
+  publishing = (async () => {
+    while (latestView) {
+      let view = latestView;
+      latestView = undefined;
+      let change = liveChange(publishedView, view);
+      if (change) {
+        await post('view', { sequence: reportSequence + 1, change });
+        reportSequence++;
+      }
+      publishedView = view;
+    }
+  })().catch((error) => { publishError = error; throw error; })
+    .finally(() => { publishing = undefined; });
+  return publishing;
+};
+let flushViews = async () => {
+  if (publishError) throw publishError;
+  while (latestView || publishing) await drainViews();
+};
+publisher.port1.onmessage = () => {
+  publishScheduled = false;
+  void drainViews().catch((error) => console.error('Reporter connection:', error.message));
 };
 let publish = () => {
   let view = {
@@ -50,19 +99,10 @@ let publish = () => {
   };
   if (reporterVisible) overlay('snapshot', { view });
   latestView = view;
-  publishing ??= (async () => {
-    try {
-      while (latestView) {
-        let view = latestView;
-        latestView = undefined;
-        await post('view', { view });
-      }
-    } catch (error) {
-      console.error('Reporter connection:', error.message);
-    } finally {
-      publishing = undefined;
-    }
-  })();
+  if (!publishScheduled) {
+    publishScheduled = true;
+    publisher.port2.postMessage(null);
+  }
 };
 let update = (event) => {
   state = transition(state, event);
@@ -740,7 +780,7 @@ try {
   update({ type: 'failed', stopped: controller.signal.aborted, error: error.message });
   await syncContext(null).catch(() => {});
   if (controller.signal.aborted) resource?.remove();
-  if (runId) await post('events', { type: 'fatal', error: serialized(error) }).catch(() => {});
+  if (runId) await post('events', { type: 'fatal', stopped: controller.signal.aborted, error: serialized(error) }).catch(() => {});
   if (!runId) {
     let notice = document.getElementById('host-error');
     notice.hidden = false;

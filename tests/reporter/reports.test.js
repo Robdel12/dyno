@@ -7,6 +7,32 @@ import { inspectOfflineReport } from '../helpers/offline-report.js';
 
 let browser = { name: process.env.DYNO_TEST_BROWSER ?? 'chromium' };
 
+test('interrupt preserves active browser output in JSON and the actual offline reporter', { timeout: 90000 }, async t => {
+  let fixture = await project(t, { source: `
+    describe('Interrupted contact save', () => {
+      test('completed prerequisite', () => { console.log('Prerequisite completed'); });
+      test('waiting for the user', async ({ app }) => {
+        await app.goto('/');
+        console.log('Last contact output before interruption 🦖');
+        await app.request('/api/browser-waiting', { method: 'POST' });
+        await new Promise(() => {});
+      });
+    });` });
+  let session = fixture.run();
+  let ready = await session.waitForEvent('ready');
+  await fetch(new URL('/api/browser-waiting', ready.url), { signal: t.signal });
+  let result = await session.stop();
+  assert.equal(result.code, 143, result.stdout + result.stderr);
+  let saved = result.events.find((event) => event.type === 'report-saved');
+  assert.ok(saved, result.stdout + result.stderr);
+  let report = JSON.parse(await readFile(saved.json));
+  assert.deepEqual(report.tests.map((test) => test.status), ['passed', 'not-run']);
+  assert.ok(report.tests[1].output.some((entry) => entry.text === 'Last contact output before interruption 🦖'));
+  let inspection = await inspectOfflineReport(t, saved.html, browser, { interruptedOutput: 'Last contact output before interruption 🦖' });
+  assert.equal(inspection.error, undefined, JSON.stringify(inspection));
+  assert.equal(inspection.ok, true);
+});
+
 test(
   'CLI saves escaped JSON, JUnit, and HTML that still works offline after app shutdown',
   { timeout: 90000 },

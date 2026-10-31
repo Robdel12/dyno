@@ -7,7 +7,7 @@ import { build } from 'esbuild';
 import { createBrowserSession, resolveSession } from '../../src/browser-session.js';
 import { repository } from './project.js';
 
-export async function inspectOfflineReport(t, path, browser, { images = 0, timings = false } = {}) {
+export async function inspectOfflineReport(t, path, browser, { images = 0, timings = false, interruptedOutput } = {}) {
   let result = Promise.withResolvers();
   let server = createServer(async (request, response) => {
     let chunks = [];
@@ -45,6 +45,10 @@ export async function inspectOfflineReport(t, path, browser, { images = 0, timin
       }
       await UI.assert(()=>[...document.images].every(image=>image.complete && image.naturalWidth>0),'Offline PNG did not load');
       await UI.assert(()=>!window.injectedReportCode && !document.querySelector('script[data-untrusted]'),'Report content executed as HTML');
+      ${interruptedOutput ? `step='interrupted output';
+      await UI.click('$(.saved-test[data-status="not-run"] summary)');
+      await UI.assert(()=>document.querySelector('.saved-test[data-status="not-run"] pre').innerText.includes(${JSON.stringify(interruptedOutput)}),'Interrupted output is missing');
+      await UI.find('$(.saved-test[data-status="not-run"] pre)').visible();` : ''}
       ${timings ? `step='timings';
       await UI.click('$(.saved-test summary)');
       await UI.click('$(.saved-test .saved-timings summary)');
