@@ -65,7 +65,11 @@ Unload messages are best effort. The gateway connection and bounded run deadline
 
 ## Managed browsers
 
-[browser-session.js](../src/browser-session.js) exposes `open`, `activate`, `resize`, `capture`, `stop`, identity, and capabilities. One owned worker uses Playwright Core for launch and page operations. The SDK owns browser discovery, channels, downloads, and normal browser shutdown. Dyno owns its test session, temporary profile, operation deadlines, and forced cleanup after worker failure. There is no native or WebDriver launch path.
+[browser-session.js](../src/browser-session.js) owns one Playwright browser server and a bounded pool of private contexts. Each context exposes `open`, `activate`, `resize`, `capture`, `retire`, `stop`, identity and capabilities. One IPC process connects through the SDK and keeps a separate operation queue per context, so a waiting operation cannot block another worker. The CLI currently uses one context; native test scheduling is still being implemented.
+
+The parent owns the public SDK server handle, including forced shutdown after IPC failure. Contexts close before that server. The SDK owns browser discovery, channels, downloads, temporary profiles and browser process cleanup. Dyno owns operation deadlines and signal handling. There is no process-name discovery, native launcher or WebDriver path.
+
+Retirement closes companion/test pages and navigates the original app tab to the gateway blank document. Keeping that tab preserves session storage along with origin cookies, local storage and IndexedDB. Failed retirement or native restoration closes the pool before reuse. This stops document JavaScript; service workers and backend work still need project-owned draining. Interactive inspection must finish before retirement releases an execution.
 
 Each launched browser has a private launch token. Each browser that joins gets its own run. Manual visitors can't use another run's controller. Reruns replace the old run and notify its observers.
 

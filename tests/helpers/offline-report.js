@@ -4,7 +4,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { build } from 'esbuild';
-import { createBrowserSession, resolveSession } from '../../src/browser-session.js';
+import { createBrowserPool, resolveSession } from '../../src/browser-session.js';
 import { repository } from './project.js';
 
 export async function inspectOfflineReport(t, path, browser, { images = 0, timings = false, interruptedOutput } = {}) {
@@ -82,12 +82,12 @@ export async function inspectOfflineReport(t, path, browser, { images = 0, timin
       () => `<script type="module">${script.outputFiles[0].text}</script></body>`
     )
   );
-  let session = await createBrowserSession(await resolveSession(browser), {
-    viewport: { width: 390, height: 844 },
+  let pool = await createBrowserPool(await resolveSession(browser), {
     signal: t.signal,
     onExit: () => result.reject(new Error('Offline browser closed before inspection.'))
   });
-  t.after(session.stop);
+  t.after(pool.stop);
+  let session = await pool.createWorker('offline-report', { viewport: { width: 390, height: 844 } });
   await session.open(pathToFileURL(inspection).href);
   return result.promise;
 }
