@@ -2,6 +2,39 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { project } from '../helpers/project.js';
 
+test('controlled selects keep the chosen value through UI updates and save it to the server', { timeout: 90000 }, async t => {
+  let fixture = await project(t, { source: `
+    describe('Project settings', () => {
+      test('select and save a project', async ({ app, I }) => {
+        await app.goto('/controlled-select');
+        await I.find('$(#frame)').not.text('0');
+        let selected = await I.click('"Bravo"$(option)');
+        await I.assert(() => selected.localName === 'select', 'Option actions return the select');
+        await I.find('$(#project)').value('Bravo');
+        await I.find('$(#selected-project)').text('Selected project: Bravo');
+        await I.find('$(#events)').text('input:Bravo, change:Bravo');
+        await I.click('Save project');
+        await I.find('$([role=status])').text('Saved project: Bravo');
+        await I.click('"Alpha"$(option)');
+        await I.find('$(#selected-project)').text('Selected project: Alpha');
+        await I.find('$(#events)').text('input:Bravo, change:Bravo, input:Alpha, change:Alpha');
+      });
+      test('toggle multiple reviewers', async ({ app, I }) => {
+        await app.goto('/controlled-select');
+        await I.find('$(#frame)').not.text('0');
+        await I.click('"Robert"$(option)');
+        await I.find('$(#selected-reviewers)').text('Reviewers: Robert');
+        await I.click('"Will"$(option)');
+        await I.find('$(#selected-reviewers)').text('Reviewers: Robert, Will');
+        await I.click('"Robert"$(option)');
+        await I.find('$(#selected-reviewers)').text('Reviewers: Will');
+      });
+    });` });
+  let result = await fixture.run().completion;
+  assert.equal(result.code, 0, result.stdout + result.stderr);
+  assert.equal(result.summary.passed, 2);
+});
+
 test('pending chains cannot bind scopes or custom interactors and change the wrong contact', { timeout: 90000 }, async t => {
   let fixture = await project(t, { source: `
     import { defineInteractor } from 'dyno';

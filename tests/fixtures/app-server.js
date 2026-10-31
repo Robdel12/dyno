@@ -92,6 +92,49 @@ let server = http.createServer(async (request, response) => {
     response.end('<!doctype html><style>p{width:179px;font:20px/1.5 system-ui}#large{height:200vh}#hidden{visibility:hidden}#cover{position:fixed;inset:0;background:white;pointer-events:none;display:none}</style><p>Start here with a <a href="/other">Create an account to document history</a></p><section id="large">A large section</section><button id="hidden">Hidden</button>');
     return;
   }
+  if (request.url === '/controlled-select') {
+    response.writeHead(200, { 'Content-Type': 'text/html' });
+    response.end(`<!doctype html><meta charset="utf-8"><h1>Project settings</h1>
+      <form><label>Project<select id="project"><option>Alpha</option><option>Bravo</option></select></label><button>Save project</button></form>
+      <label>Reviewers<select id="reviewers" multiple><option>Robert</option><option>Will</option></select></label>
+      <p id="selected-project">Selected project: Alpha</p><p id="selected-reviewers">Reviewers: none</p>
+      <p role="status">Not saved</p><output id="events"></output><output id="frame">0</output>
+      <script>
+        let project = 'Alpha', reviewers = [], frame = 0, events = [];
+        let select = document.querySelector('#project'), multiple = document.querySelector('#reviewers');
+        // Like a controlled form, unrelated UI updates render the current state.
+        let render = () => {
+          select.value = project;
+          for (let option of multiple.options) option.selected = reviewers.includes(option.value);
+          document.querySelector('#frame').textContent = ++frame;
+          requestAnimationFrame(render);
+        };
+        for (let element of [select, multiple]) {
+          element.addEventListener('input', event => {
+            events.push(event instanceof Event ? 'input:' + event.target.value : 'Wrong event realm');
+          });
+          element.addEventListener('change', event => {
+            events.push(event instanceof Event ? 'change:' + event.target.value : 'Wrong event realm');
+            if (element === select) {
+              project = select.value;
+              document.querySelector('#selected-project').textContent = 'Selected project: ' + project;
+            } else {
+              reviewers = [...multiple.selectedOptions].map(option => option.value);
+              document.querySelector('#selected-reviewers').textContent = 'Reviewers: ' + (reviewers.join(', ') || 'none');
+            }
+            document.querySelector('#events').textContent = events.join(', ');
+          });
+        }
+        document.querySelector('form').onsubmit = async event => {
+          event.preventDefault();
+          let response = await fetch('/api/save', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name:project}) });
+          let saved = await response.json();
+          document.querySelector('[role=status]').textContent = 'Saved project: ' + saved.name;
+        };
+        requestAnimationFrame(render);
+      </script>`);
+    return;
+  }
   if (request.url === '/interactor') {
     response.writeHead(200, { 'Content-Type': 'text/html' });
     response.end(`<!doctype html><h1>Contacts</h1>
