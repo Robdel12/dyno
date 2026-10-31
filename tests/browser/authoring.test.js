@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { project } from '../helpers/project.js';
+import { acceptObserverFrame } from '../../src/browser/reporting.js';
 
 let browser = process.env.DYNO_TEST_BROWSER ?? 'chromium';
 let visible = { browser: { name: browser, args: [['firefox', 'webkit'].includes(browser) ? '--headless' : '--headless=new'] } };
@@ -50,6 +51,7 @@ test('inspect midway',async({app,I})=>{
     let hostStatuses = [];
     let snapshots = [];
     let latestSnapshot;
+    let observed;
     let streamError;
     let closing = false;
     let observingSince = performance.now();
@@ -73,10 +75,12 @@ test('inspect midway',async({app,I})=>{
           let value = JSON.parse(data);
           let elapsed = performance.now() - observingSince;
           if (kind === 'host-status') hostStatuses.push({ elapsed, ...value });
-          if (kind === 'snapshot') {
-            latestSnapshot = value;
-            snapshots.push({ elapsed, phase: value.phase, current: value.current, error: value.error });
-            if (value.phase === 'debugging') debugging.resolve();
+          if (['view-start', 'view-tests', 'snapshot', 'view-change'].includes(kind)) {
+            observed = acceptObserverFrame(observed, kind, value);
+            if (observed.pending) continue;
+            latestSnapshot = observed.view;
+            snapshots.push({ elapsed, phase: latestSnapshot.phase, current: latestSnapshot.current, error: latestSnapshot.error });
+            if (latestSnapshot.phase === 'debugging') debugging.resolve();
           }
         }
       }

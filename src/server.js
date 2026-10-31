@@ -1,13 +1,14 @@
 import http from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { once } from 'node:events';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, createHash } from 'node:crypto';
 import { networkInterfaces } from 'node:os';
 import { proxyRequest, proxyUpgrade } from './proxy.js';
 import { mapStack, sourceContext } from './stack.js';
 import { createRun, acceptEvent } from './run.js';
 import { defaultViewport } from './browser/viewport.js';
 import { createBrowserControl } from './browser-control.js';
+import { partialOutput, validOutput } from './browser/reporting.js';
 
 let prefix = '/__dyno__/';
 let page = (title, body, script, stylesheet = 'runtime.css') =>
@@ -65,6 +66,22 @@ export async function createGateway(
   );
   let documentPolicy = Object.freeze({});
   let runs = new Map();
+  let eventQueues = new Map();
+  let receipts = new Map();
+  let serializeEvent = (runId, work) => {
+    let queued = (eventQueues.get(runId) ?? Promise.resolve()).catch(() => {}).then(work);
+    eventQueues.set(runId, queued);
+    let clear = () => { if (eventQueues.get(runId) === queued) eventQueues.delete(runId); };
+    queued.then(clear, clear);
+    return queued;
+  };
+  let remember = (runId, key, digest, reply) => {
+    let history = new Map(receipts.get(runId));
+    history.set(key, { digest, reply });
+    while (history.size > 64 || [...history.values()].reduce((total, item) => total + Buffer.byteLength(item.reply), 0) > 1_000_000)
+      history.delete(history.keys().next().value);
+    receipts.set(runId, history);
+  };
   let bundles = new Map();
   let sockets = new Set();
   let stopping = false;
@@ -86,20 +103,48 @@ export async function createGateway(
   };
   let control = createBrowserControl({
     artifactsDir: config.artifactsDir,
+    getRun: (runId) => runs.get(runId),
     onReplaced: (runId) => {
-      let previous = runs.get(runId);
-      if (previous && !['completed', 'failed'].includes(previous.status)) {
-        let { run, event } = acceptEvent(previous, {
-          runId,
-          type: 'fatal',
-          error: { message: 'Browser left the test run before completion.' },
-        });
-        runs.set(runId, run);
-        void persist(run).catch(() => {});
-        onEvent(event);
-      }
+      void serializeEvent(runId, async () => {
+        let previous = runs.get(runId);
+        if (previous && !['completed', 'failed'].includes(previous.status)) {
+          let { run, event } = acceptEvent(previous, {
+            runId,
+            type: 'fatal',
+            partial: partialOutput(control.view(runId), previous),
+            error: { message: 'Browser left the test run before completion.' },
+          });
+          ({ event } = await commitTerminal(previous, { run, event }));
+          onEvent(event);
+        }
+      }).catch(() => {});
     },
   });
+  let commitTerminal = async (previous, candidate) => {
+    let { run, event } = candidate;
+    try { await control.finish(run.runId); }
+    catch (error) {
+      let message = event.error
+        ? `${event.error.message} Native cleanup: ${error.message}`
+        : `Native browser cleanup failed: ${error.message}`;
+      ({ run, event } = acceptEvent(previous, {
+        runId: run.runId, type: 'fatal', partial: run.partial ?? partialOutput(control.view(run.runId), previous),
+        error: { ...event.error, message, phase: 'runtime' },
+      }));
+    }
+    try { await persist(run); }
+    catch (error) {
+      let failed = Object.freeze({ ...previous, status: 'failed',
+        error: Object.freeze({ phase: 'runtime', message: error.message }),
+        partial: run.partial ?? partialOutput(control.view(run.runId), previous) });
+      runs.set(run.runId, failed);
+      control.recordEvent({ type: 'fatal' }, failed);
+      throw Object.assign(error, { status: 503 });
+    }
+    runs.set(run.runId, run);
+    control.recordEvent(event, run);
+    return { run, event };
+  };
   let origin;
   let allowedHosts;
   let settings = {
@@ -165,10 +210,17 @@ export async function createGateway(
         ) {
           if (request.headers.origin && request.headers.origin !== `http://${request.headers.host}`)
             throw new Error('Browser commands must be same-origin.');
-          let input = await reporterInput(request, route === 'view' ? 8_000_000 : 1_000_000);
+          let input = await reporterInput(request);
           requireOpen();
           if (!input || typeof input !== 'object' || Array.isArray(input))
             throw new Error('Browser commands must be objects.');
+          if (route === 'view') {
+            await serializeEvent(input.runId, () => {
+              requireOpen();
+              return control.handle(route, url, request, response, input);
+            });
+            return;
+          }
           if (await control.handle(route, url, request, response, input)) return;
         }
         if (await control.handle(route, url, request, response)) return;
@@ -191,6 +243,7 @@ export async function createGateway(
             'timing-format.js',
             'reporter-client.js',
             'execution.js',
+            'reporting.js',
             'viewport.js',
             'shell.js',
             'bootstrap.js',
@@ -242,7 +295,7 @@ export async function createGateway(
             requireOpen();
             while (runs.size >= 20) {
               let finished = [...runs.values()].find((run) =>
-                ['completed', 'failed'].includes(run.status),
+                ['completed', 'failed'].includes(run.status) && !eventQueues.has(run.runId),
               );
               if (!finished) {
                 send(
@@ -254,6 +307,7 @@ export async function createGateway(
               }
               control.drop(finished.runId);
               runs.delete(finished.runId);
+              receipts.delete(finished.runId);
               bundles.delete(finished.runId);
             }
             let runId = randomUUID();
@@ -280,79 +334,87 @@ export async function createGateway(
           let input = await reporterInput(request);
           if (!input || typeof input !== 'object' || Array.isArray(input))
             throw new Error('Reporter event must be an object.');
-          requireOpen();
-          control.authorize(input);
-          let { connectionKey, ...eventInput } = input;
-          if (input.type === 'test')
-            eventInput = {
-              ...eventInput,
-              attachments: control.attachments(input.runId, input.executionId),
-            };
-          let mapFailure = (error) => {
-            let stack =
-              typeof error?.stack === 'string'
-                ? mapStack(error.stack, bundles.get(input.runId)?.map, config.root)
-                : undefined;
-            let declaration =
-              typeof error?.declaration === 'string'
-                ? mapStack(error.declaration, bundles.get(input.runId)?.map, config.root)
-                : undefined;
-            if (declaration && !stack?.includes(config.testDir))
-              stack = `${stack ?? error.message}\nDeclared at:\n${declaration}`;
-            let mapped = {
-              ...error,
-              ...(stack ? { stack } : {}),
-              ...(declaration ? { declaration } : {}),
-            };
-            return {
-              ...mapped,
-              source: sourceContext(mapped, bundles.get(input.runId), config.root),
-            };
-          };
-          if (input.error) eventInput = { ...eventInput, error: mapFailure(input.error) };
-          if (Array.isArray(input.additionalErrors))
-            eventInput = {
-              ...eventInput,
-              additionalErrors: input.additionalErrors.map(mapFailure),
-            };
-          let previous = runs.get(input.runId);
-          let { run, event } = acceptEvent(previous, eventInput);
-          runs.set(run.runId, run);
-          if (event.type === 'test') control.acceptAttachments(event.runId, event.executionId);
-          // Browser-side post-capture checks have finished before a test reports.
-          // Publish only attachments that survived those checks and persistence.
-          for (let attachment of event.attachments ?? [])
-            onEvent({
-              type: 'attachment',
-              runId: run.runId,
-              executionId: event.executionId,
-              attachment,
-            });
-          if (['complete', 'fatal'].includes(event.type)) {
-            try {
-              await control.finish(event.runId);
-            } catch (error) {
-              let message = event.error
-                ? `${event.error.message} Native cleanup: ${error.message}`
-                : `Native browser cleanup failed: ${error.message}`;
-              ({ run, event } = acceptEvent(previous, {
-                runId: input.runId,
-                type: 'fatal',
-                error: mapFailure({ ...event.error, message, phase: 'runtime' }),
-              }));
-              runs.set(run.runId, run);
+          await serializeEvent(input.runId, async () => {
+            requireOpen();
+            control.authorize(input);
+            let receiptKey = input.type === 'test' ? 'test:' + input.testId : input.type;
+            let digest = createHash('sha256').update(JSON.stringify(input)).digest('hex');
+            let receipt = receipts.get(input.runId)?.get(receiptKey);
+            if (receipt) {
+              if (receipt.digest !== digest) throw Object.assign(new Error('Changed replay of an accepted event.'), { status: 409 });
+              send('application/json', receipt.reply);
+              return;
             }
-            await persist(run);
-          }
-          send(
-            'application/json',
-            JSON.stringify({
-              error: event.error,
-              additionalErrors: event.additionalErrors,
-              attachments: event.attachments,
-            }),
-          );
-          onEvent(event);
+            let { connectionKey, ...eventInput } = input;
+            if (input.type === 'test')
+              eventInput = {
+                ...eventInput,
+                attachments: control.attachments(input.runId, input.executionId),
+              };
+            let mapFailure = (error) => {
+              let stack =
+                typeof error?.stack === 'string'
+                  ? mapStack(error.stack, bundles.get(input.runId)?.map, config.root)
+                  : undefined;
+              let declaration =
+                typeof error?.declaration === 'string'
+                  ? mapStack(error.declaration, bundles.get(input.runId)?.map, config.root)
+                  : undefined;
+              if (declaration && !stack?.includes(config.testDir))
+                stack = `${stack ?? error.message}\nDeclared at:\n${declaration}`;
+              let mapped = {
+                ...error,
+                ...(stack ? { stack } : {}),
+                ...(declaration ? { declaration } : {}),
+              };
+              return {
+                ...mapped,
+                source: sourceContext(mapped, bundles.get(input.runId), config.root),
+              };
+            };
+            if (input.error) eventInput = { ...eventInput, error: mapFailure(input.error) };
+            if (Array.isArray(input.additionalErrors))
+              eventInput = {
+                ...eventInput,
+                additionalErrors: input.additionalErrors.map(mapFailure),
+              };
+            let previous = runs.get(input.runId);
+            if (input.type === 'fatal') {
+              let partial = new Map(partialOutput(control.view(input.runId), previous).map((test) => [test.id, test]));
+              if (input.partial !== undefined) {
+                if (!Array.isArray(input.partial) || input.partial.length > previous.tests.length ||
+                  new Set(input.partial.map((test) => test?.id)).size !== input.partial.length ||
+                  input.partial.some((test) => !test || !previous.tests.some((item) => item.id === test.id) || !validOutput(test.output)))
+                  throw new Error('Invalid interrupted test output.');
+                for (let test of input.partial) {
+                  if (previous.outcomes.some((outcome) => outcome.testId === test.id)) continue;
+                  partial.set(test.id, test);
+                }
+              }
+              eventInput = { ...eventInput, partial: [...partial.values()] };
+            }
+            let { run, event } = acceptEvent(previous, eventInput);
+            if (!['complete', 'fatal'].includes(event.type)) {
+              runs.set(run.runId, run);
+              control.recordEvent(event, run);
+            }
+            if (event.type === 'test') control.acceptAttachments(event.runId, event.executionId);
+            // Browser-side post-capture checks have finished before a test reports.
+            // Publish only attachments that survived those checks and persistence.
+            for (let attachment of event.attachments ?? [])
+              onEvent({
+                type: 'attachment',
+                runId: run.runId,
+                executionId: event.executionId,
+                attachment,
+              });
+            if (['complete', 'fatal'].includes(event.type))
+              ({ run, event } = await commitTerminal(previous, { run, event }));
+            let reply = JSON.stringify({ error: event.error, additionalErrors: event.additionalErrors, attachments: event.attachments });
+            remember(run.runId, receiptKey, digest, reply);
+            send('application/json', reply);
+            onEvent(event);
+          });
           return;
         }
         send('text/plain', 'Unknown browser test route', 404);
@@ -437,20 +499,21 @@ export async function createGateway(
       stopping = true;
       closing ??= (async () => {
         let failures = [];
+        await Promise.allSettled([...eventQueues.values()]);
         for (let previous of runs.values()) {
           if (['completed', 'failed'].includes(previous.status)) continue;
-          let { run } = acceptEvent(previous, {
+          let candidate = acceptEvent(previous, {
             runId: previous.runId,
             type: 'fatal',
+            partial: partialOutput(control.view(previous.runId), previous),
             error: {
               phase: 'runtime',
               message: `Dyno stopped before the browser run completed.${error ? ' ' + error.message : ''}`,
               ...(error?.stack ? { stack: error.stack } : {}),
             },
           });
-          runs.set(run.runId, run);
           try {
-            await persist(run);
+            await commitTerminal(previous, candidate);
           } catch (error) {
             failures.push(error);
           }

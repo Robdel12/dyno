@@ -23,6 +23,7 @@ let errorSnapshot = (error) =>
 export function createReport(run) {
   let tests = run.tests.map((test) => {
     let outcome = run.outcomes.find((outcome) => outcome.testId === test.id);
+    let output = outcome?.output ?? run.partial?.find((item) => item.id === test.id)?.output ?? [];
     return freeze({
       ...testDescriptor(test),
       suites: freeze([...test.suites]),
@@ -33,7 +34,7 @@ export function createReport(run) {
       ...(outcome?.error ? { error: errorSnapshot(outcome.error) } : {}),
       additionalErrors: freeze((outcome?.additionalErrors ?? []).map(errorSnapshot)),
       output: freeze(
-        (outcome?.output ?? []).map((entry) =>
+        output.map((entry) =>
           freeze({ source: entry.source, level: entry.level, text: entry.text, elapsed: entry.elapsed })
         )
       ),

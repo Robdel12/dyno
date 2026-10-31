@@ -44,20 +44,29 @@ test('inspects the timings', async ({app,I}) => {
   app.document.body.append(observer); await loaded;
   let UI = new Interactor({root:()=>observer.contentDocument.body});
   await UI.click('$(#slow-tests summary)');
-  await UI.assert(()=>observer.contentDocument.querySelector('#slow-test-list').textContent.includes('cancelled wait'));
+  await UI.assert(()=>observer.contentDocument.querySelector('#slow-test-list').textContent.includes('cancelled wait'),
+    ()=> 'Expected the timed-out test in the slow-test list: ' + observer.contentDocument.querySelector('#slow-test-list').textContent);
   await UI.click('$(a[aria-label="Passed: saves a contact"])');
   await UI.click('Timings');
   await UI.find('$(#timings)').contains('Save <contact>');
   await UI.find('$(#timings)').contains('Setup hook');
   await UI.find('$(#timings)').contains('Cleanup hook');
   await UI.assert(()=>!observer.contentDocument.querySelector('contact'),'Timing label was inserted as HTML');
-  await UI.assert(()=>observer.contentWindow.location.hash.endsWith('/timings'));
-  await UI.assert(()=>observer.contentDocument.documentElement.scrollWidth<=390,'Timings overflow the mobile viewport');
+  await UI.assert(()=>observer.contentWindow.location.hash.endsWith('/timings'),
+    ()=> 'Expected the timings route, got ' + observer.contentWindow.location.hash);
+  await UI.assert(()=>observer.contentDocument.documentElement.scrollWidth<=390,
+    ()=> 'Timings overflow the mobile viewport: ' + JSON.stringify({
+      width: observer.contentWindow.innerWidth,
+      scrollWidth: observer.contentDocument.documentElement.scrollWidth,
+      overflowing: [...observer.contentDocument.querySelectorAll('body *')].filter(element=>element.getBoundingClientRect().right>390)
+        .map(element=>({tag:element.localName,id:element.id,width:element.getBoundingClientRect().width,text:element.textContent.slice(0,80)}))
+    }));
 });
 });`
   });
   let result = await fixture.run().completion;
   assert.equal(result.code, 1, result.stdout + result.stderr);
+  assert.ok(result.summary, result.stdout + result.stderr);
   assert.deepEqual([result.summary.passed, result.summary.failed, result.summary.skipped], [2, 3, 1], JSON.stringify(result.events.filter(event=>event.type==='test').map(event=>({name:event.name,error:event.error})),null,2));
   let saved = result.events.find(event => event.type === 'report-saved');
   let report = JSON.parse(await readFile(saved.json, 'utf8'));
