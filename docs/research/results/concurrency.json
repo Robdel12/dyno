@@ -1,0 +1,2976 @@
+{
+  "date": "2026-10-31",
+  "status": "complete",
+  "artifactRoot": "/private/tmp/dyno-concurrency-spike-uD5YrQ",
+  "scope": "Disposable concurrency/randomization investigation. No production runtime, Vizzly PR, CI, publication or baseline acceptance.",
+  "conditions": {
+    "cpu": "Apple M4 Max",
+    "node": "v24.22.1",
+    "platform": "darwin",
+    "arch": "arm64",
+    "playwrightCore": "1.64.1",
+    "browser": "Chromium156.0.8078.4",
+    "appViewport": {
+      "width": 1920,
+      "height": 1080
+    },
+    "reporter": "closed",
+    "fullCommandHardCapMS": 300000,
+    "retries": 0,
+    "shards": false,
+    "timedWork": "Fixed-total full338browser cases plus one real Node factory case. One shared build; separate app/gateway/DB/Redis/storage per worker. Browser context/process ownership differs explicitly by variant.",
+    "commandClock": "Shared OCR/Vite build plus all CLI workers including their setup/migrations/app/browser startup/run/cleanup. Shared-context variant also counts master launch/close. Docker setup/cleanup, checkout copies and final artifact decoding/analysis are separate.",
+    "parallelism": "Intentional workers inside each experiment; independent browser/service experiments never overlap.",
+    "sourceVersions": [
+      "original-select",
+      "atomic-select-private-browsers",
+      "atomic-select-shared-browser-contexts",
+      "atomic-select-private-browsers-ordinary-contexts"
+    ],
+    "baselineDynoRevision": "a39080350b95d66ae724b743bef7b167ed9e16f0",
+    "vizzlyRevision": "f066c176e90875a6d40be8656587c00e2a69e9a3",
+    "upstreamPrerequisites": "Includes previous reporting/scenario/readiness prototype and corrected Interactor retry result. Not a shippable Dyno fork."
+  },
+  "runs": [
+    {
+      "kind": "multiple-CLI-isolated-worker-throughput-prototype",
+      "startedAt": "2026-10-31T06:07:07.014Z",
+      "workers": 1,
+      "completeSuite": true,
+      "expectedBrowserCases": 338,
+      "nodeCases": [
+        {
+          "worker": 0,
+          "count": 1,
+          "passed": 1,
+          "failed": 0,
+          "duration": 216.96445900000003
+        }
+      ],
+      "images": 232,
+      "acceptedAttachments": 245,
+      "captureFiles": 232,
+      "checkpointCollisions": [],
+      "checkpointStatus": "passed",
+      "commandMS": 191192.194709,
+      "buildMS": 3201.2461249999997,
+      "activeWallMS": 187990.945833,
+      "lifecycleMS": 193860.861375,
+      "serviceReady": true,
+      "cleanupPassed": true,
+      "source": [
+        {
+          "worker": 0,
+          "source": {
+            "sha256": "9fd7f2f1c8f8b4a24bf268fcac91d13a0c3bc6f0e2ef01223a68f33eb337c75c",
+            "files": 1163
+          },
+          "sourceAfter": {
+            "sha256": "9fd7f2f1c8f8b4a24bf268fcac91d13a0c3bc6f0e2ef01223a68f33eb337c75c",
+            "files": 1163
+          }
+        }
+      ],
+      "workerRuns": [
+        {
+          "worker": 0,
+          "runId": "ada41de3-6382-4c0b-b4f7-1198f3054c33",
+          "browserMS": 181396.89999997616,
+          "cases": 338
+        }
+      ],
+      "workerCommands": [
+        {
+          "worker": 0,
+          "code": 0,
+          "signal": null,
+          "durationMS": 187985.094458
+        }
+      ],
+      "status": "passed",
+      "errors": [],
+      "name": "ordered-1-a",
+      "version": "original-select",
+      "directory": "/private/tmp/dyno-concurrency-spike-uD5YrQ/harness/runs/ordered-1-a",
+      "order": "ordered",
+      "seed": null,
+      "validCompleteTiming": true,
+      "actualBrowserOutcomes": {
+        "passed": 338,
+        "failed": 0,
+        "skipped": 0,
+        "unreported": 0
+      },
+      "uniqueOutcomeIds": 338,
+      "acceptedAttachmentReferencesInEmittedOutcomes": 245,
+      "failures": [],
+      "fatal": [],
+      "plan": {
+        "version": 1,
+        "algorithm": "round-robin-v1",
+        "randomization": "sha256-fisher-yates-v1",
+        "order": "ordered",
+        "seed": null,
+        "workers": 1
+      },
+      "planSHA256": "5586767288b0a4a8bea74b25370033e4d9e9fd65e19e6a01784b3d9522e457f7",
+      "profiles": [
+        {
+          "worker": 0,
+          "browserMS": 181396.89999997616,
+          "tests": 338,
+          "artifact": "/private/tmp/dyno-concurrency-spike-uD5YrQ/harness/runs/ordered-1-a/worker-0/runner-profile.json"
+        }
+      ]
+    },
+    {
+      "kind": "multiple-CLI-isolated-worker-throughput-prototype",
+      "startedAt": "2026-10-31T06:10:26.606Z",
+      "workers": 2,
+      "completeSuite": true,
+      "expectedBrowserCases": 338,
+      "nodeCases": [
+        {
+          "worker": 0,
+          "count": 1,
+          "passed": 1,
+          "failed": 0,
+          "duration": 189.78983300000004
+        }
+      ],
+      "images": 232,
+      "acceptedAttachments": 119,
+      "captureFiles": 233,
+      "checkpointCollisions": [
+        {
+          "file": "public-build-detail-approved-chromium-375x667-mobile.png",
+          "first": {
+            "worker": 0,
+            "file": "public-build-detail-approved-chromium-375x667-mobile.png",
+            "width": 375,
+            "height": 1526,
+            "bytes": 83236,
+            "sha256": "dd99880672768f5be355011dec35feef3bbff4fb50fa5005cb986d9e52804292"
+          },
+          "second": {
+            "worker": 1,
+            "file": "public-build-detail-approved-chromium-375x667-mobile.png",
+            "width": 375,
+            "height": 1526,
+            "bytes": 83236,
+            "sha256": "dd99880672768f5be355011dec35feef3bbff4fb50fa5005cb986d9e52804292"
+          },
+          "identicalPNG": true,
+          "policy": "Retain both worker files and accepted execution attachments; canonical export uses greatest original catalog index, independent of completion order."
+        }
+      ],
+      "checkpointStatus": "passed",
+      "commandMS": 108222.627625,
+      "buildMS": 2960.661334,
+      "activeWallMS": 105261.964875,
+      "lifecycleMS": 110962.570458,
+      "serviceReady": true,
+      "cleanupPassed": true,
+      "source": [
+        {
+          "worker": 0,
+          "source": {
+            "sha256": "9fd7f2f1c8f8b4a24bf268fcac91d13a0c3bc6f0e2ef01223a68f33eb337c75c",
+            "files": 1163
+          },
+          "sourceAfter": {
+            "sha256": "9fd7f2f1c8f8b4a24bf268fcac91d13a0c3bc6f0e2ef01223a68f33eb337c75c",
+            "files": 1163
+          }
+        },
+        {
+          "worker": 1,
+          "source": {
+            "sha256": "9fd7f2f1c8f8b4a24bf268fcac91d13a0c3bc6f0e2ef01223a68f33eb337c75c",
+            "files": 1163
+          },
+          "sourceAfter": {
+            "sha256": "9fd7f2f1c8f8b4a24bf268fcac91d13a0c3bc6f0e2ef01223a68f33eb337c75c",
+            "files": 1163
+          }
+        }
+      ],
+      "workerRuns": [
+        {
+          "worker": 0,
+          "runId": "f2bf18a0-8f4a-4683-88e1-ebb8aae9b4cf",
+          "browserMS": 94060.39999997616,
+          "cases": 169
+        }
+      ],
+      "workerCommands": [
+        {
+          "worker": 0,
+          "code": 0,
+          "signal": null,
+          "durationMS": 96954.6505
+        },
+        {
+          "worker": 1,
+          "code": 1,
+          "signal": null,
+          "durationMS": 105258.57400000001
+        }
+      ],
+      "status": "failed",
+      "errors": [
+        "Worker 1 failed 1/null",
+        "Worker 1 report: The expression evaluated to a falsy value:\n\n  assert.ok(outcomes.every(test=>test.status==='passed'))\n",
+        "Expected245 accepted image files, got 119",
+        "Incomplete or duplicate test catalog"
+      ],
+      "name": "ordered-2-a",
+      "version": "original-select",
+      "directory": "/private/tmp/dyno-concurrency-spike-uD5YrQ/harness/runs/ordered-2-a",
+      "order": "ordered",
+      "seed": null,
+      "validCompleteTiming": false,
+      "actualBrowserOutcomes": {
+        "passed": 337,
+        "failed": 1,
+        "skipped": 0,
+        "unreported": 0
+      },
+      "uniqueOutcomeIds": 338,
+      "acceptedAttachmentReferencesInEmittedOutcomes": 245,
+      "failures": [
+        {
+          "testId": "[\"tests/e2e/github-integration-lifecycle.spec.js\",\"GitHub integration lifecycle through the external HTTP boundary\",\"connects one repository to fifteen projects without per-project GitHub hooks\"]",
+          "name": "connects one repository to fifteen projects without per-project GitHub hooks",
+          "message": "Could not find element",
+          "phase": "test",
+          "durationMS": 13847.899999976158
+        }
+      ],
+      "fatal": [],
+      "plan": {
+        "version": 1,
+        "algorithm": "round-robin-v1",
+        "randomization": "sha256-fisher-yates-v1",
+        "order": "ordered",
+        "seed": null,
+        "workers": 2
+      },
+      "planSHA256": "cb5c73edb3a2b528632d421a0ab3494a6c62f5f5f6a5fbde30fc23454b2197fc",
+      "profiles": [
+        {
+          "worker": 0,
+          "browserMS": 94060.39999997616,
+          "tests": 169,
+          "artifact": "/private/tmp/dyno-concurrency-spike-uD5YrQ/harness/runs/ordered-2-a/worker-0/runner-profile.json"
+        },
+        {
+          "worker": 1,
+          "browserMS": 99370.5,
+          "tests": 169,
+          "artifact": "/private/tmp/dyno-concurrency-spike-uD5YrQ/harness/runs/ordered-2-a/worker-1/runner-profile.json"
+        }
+      ]
+    },
+    {
+      "kind": "multiple-CLI-isolated-worker-throughput-prototype",
+      "startedAt": "2026-10-31T06:31:17.584Z",
+      "workers": 1,
+      "completeSuite": true,
+      "expectedBrowserCases": 338,
+      "nodeCases": [
+        {
+          "worker": 0,
+          "count": 1,
+          "passed": 1,
+          "failed": 0,
+          "duration": 184.94187499999998
+        }
+      ],
+      "images": 232,
+      "acceptedAttachments": 245,
+      "captureFiles": 232,
+      "checkpointCollisions": [],
+      "checkpointStatus": "passed",
+      "commandMS": 242271.189125,
+      "buildMS": 3021.2297919999996,
+      "activeWallMS": 239249.956167,
+      "lifecycleMS": 245182.625541,
+      "serviceReady": true,
+      "cleanupPassed": true,
+      "source": [
+        {
+          "worker": 0,
+          "source": {
+            "sha256": "9fd7f2f1c8f8b4a24bf268fcac91d13a0c3bc6f0e2ef01223a68f33eb337c75c",
+            "files": 1163
+          },
+          "sourceAfter": {
+            "sha256": "9fd7f2f1c8f8b4a24bf268fcac91d13a0c3bc6f0e2ef01223a68f33eb337c75c",
+            "files": 1163
+          }
+        }
+      ],
+      "workerRuns": [
+        {
+          "worker": 0,
+          "runId": "0239f70f-e9e9-4531-bb1e-1b9e32f41d12",
+          "browserMS": 232762.39999997616,
+          "cases": 338
+        }
+      ],
+      "workerCommands": [
+        {
+          "worker": 0,
+          "code": 0,
+          "signal": null,
+          "durationMS": 239243.284667
+        }
+      ],
+      "status": "passed",
+      "errors": [],
+      "name": "ordered-1-a",
+      "version": "atomic-select-private-browsers",
+      "directory": "/private/tmp/dyno-concurrency-spike-uD5YrQ/harness/atomic/runs/ordered-1-a",
+      "order": "ordered",
+      "seed": null,
+      "validCompleteTiming": true,
+      "actualBrowserOutcomes": {
+        "passed": 338,
+        "failed": 0,
+        "skipped": 0,
+        "unreported": 0
+      },
+      "uniqueOutcomeIds": 338,
+      "acceptedAttachmentReferencesInEmittedOutcomes": 245,
+      "failures": [],
+      "fatal": [],
+      "plan": {
+        "version": 1,
+        "algorithm": "round-robin-v1",
+        "randomization": "sha256-fisher-yates-v1",
+        "order": "ordered",
+        "seed": null,
+        "workers": 1
+      },
+      "planSHA256": "5586767288b0a4a8bea74b25370033e4d9e9fd65e19e6a01784b3d9522e457f7",
+      "profiles": [
+        {
+          "worker": 0,
+          "browserMS": 232762.39999997616,
+          "tests": 338,
+          "artifact": "/private/tmp/dyno-concurrency-spike-uD5YrQ/harness/atomic/runs/ordered-1-a/worker-0/runner-profile.json"
+        }
+      ],
+      "systemSnapshotArtifact": "/private/tmp/dyno-concurrency-spike-uD5YrQ/integration/atomic-ordered-1-a-system.json",
+      "systemSnapshotsAt": {
+        "before": "2026-10-31T06:31:16.360Z",
+        "after": "2026-10-31T06:35:34.403Z"
+      }
+    },
+    {
+      "kind": "multiple-CLI-isolated-worker-throughput-prototype",
+      "startedAt": "2026-10-31T06:35:40.443Z",
+      "workers": 2,
+      "completeSuite": true,
+      "expectedBrowserCases": 338,
+      "nodeCases": [
+        {
+          "worker": 0,
+          "count": 1,
+          "passed": 1,
+          "failed": 0,
+          "duration": 437.9744580000006
+        }
+      ],
+      "images": 232,
+      "acceptedAttachments": 245,
+      "captureFiles": 233,
+      "checkpointCollisions": [
+        {
+          "file": "public-build-detail-approved-chromium-375x667-mobile.png",
+          "first": {
+            "worker": 0,
+            "file": "public-build-detail-approved-chromium-375x667-mobile.png",
+            "width": 375,
+            "height": 1526,
+            "bytes": 83236,
+            "sha256": "dd99880672768f5be355011dec35feef3bbff4fb50fa5005cb986d9e52804292"
+          },
+          "second": {
+            "worker": 1,
+            "file": "public-build-detail-approved-chromium-375x667-mobile.png",
+            "width": 375,
+            "height": 1526,
+            "bytes": 83236,
+            "sha256": "dd99880672768f5be355011dec35feef3bbff4fb50fa5005cb986d9e52804292"
+          },
+          "identicalPNG": true,
+          "policy": "Retain both worker files and accepted execution attachments; canonical export uses greatest original catalog index, independent of completion order."
+        }
+      ],
+      "checkpointStatus": "passed",
+      "commandMS": 185794.68875,
+      "buildMS": 4898.924959,
+      "activeWallMS": 180895.760583,
+      "lifecycleMS": 190309.427334,
+      "serviceReady": true,
+      "cleanupPassed": true,
+      "source": [
+        {
+          "worker": 0,
+          "source": {
+            "sha256": "9fd7f2f1c8f8b4a24bf268fcac91d13a0c3bc6f0e2ef01223a68f33eb337c75c",
+            "files": 1163
+          },
+          "sourceAfter": {
+            "sha256": "9fd7f2f1c8f8b4a24bf268fcac91d13a0c3bc6f0e2ef01223a68f33eb337c75c",
+            "files": 1163
+          }
+        },
+        {
+          "worker": 1,
+          "source": {
+            "sha256": "9fd7f2f1c8f8b4a24bf268fcac91d13a0c3bc6f0e2ef01223a68f33eb337c75c",
+            "files": 1163
+          },
+          "sourceAfter": {
+            "sha256": "9fd7f2f1c8f8b4a24bf268fcac91d13a0c3bc6f0e2ef01223a68f33eb337c75c",
+            "files": 1163
+          }
+        }
+      ],
+      "workerRuns": [
+        {
+          "worker": 0,
+          "runId": "c1625abf-2757-47ab-90a4-4acb99dccd0d",
+          "browserMS": 165545,
+          "cases": 169
+        },
+        {
+          "worker": 1,
+          "runId": "f6a4732c-af0e-401b-9aed-90c934d0784c",
+          "browserMS": 170596.39999997616,
+          "cases": 169
+        }
+      ],
+      "workerCommands": [
+        {
+          "worker": 0,
+          "code": 0,
+          "signal": null,
+          "durationMS": 173191.4205
+        },
+        {
+          "worker": 1,
+          "code": 0,
+          "signal": null,
+          "durationMS": 180889.55149999997
+        }
+      ],
+      "status": "passed",
+      "errors": [],
+      "name": "ordered-2-a",
+      "version": "atomic-select-private-browsers",
+      "directory": "/private/tmp/dyno-concurrency-spike-uD5YrQ/harness/atomic/runs/ordered-2-a",
+      "order": "ordered",
+      "seed": null,
+      "validCompleteTiming": true,
+      "actualBrowserOutcomes": {
+        "passed": 338,
+        "failed": 0,
+        "skipped": 0,
+        "unreported": 0
+      },
+      "uniqueOutcomeIds": 338,
+      "acceptedAttachmentReferencesInEmittedOutcomes": 245,
+      "failures": [],
+      "fatal": [],
+      "plan": {
+        "version": 1,
+        "algorithm": "round-robin-v1",
+        "randomization": "sha256-fisher-yates-v1",
+        "order": "ordered",
+        "seed": null,
+        "workers": 2
+      },
+      "planSHA256": "cb5c73edb3a2b528632d421a0ab3494a6c62f5f5f6a5fbde30fc23454b2197fc",
+      "profiles": [
+        {
+          "worker": 0,
+          "browserMS": 165545,
+          "tests": 169,
+          "artifact": "/private/tmp/dyno-concurrency-spike-uD5YrQ/harness/atomic/runs/ordered-2-a/worker-0/runner-profile.json"
+        },
+        {
+          "worker": 1,
+          "browserMS": 170596.39999997616,
+          "tests": 169,
+          "artifact": "/private/tmp/dyno-concurrency-spike-uD5YrQ/harness/atomic/runs/ordered-2-a/worker-1/runner-profile.json"
+        }
+      ],
+      "systemSnapshotArtifact": "/private/tmp/dyno-concurrency-spike-uD5YrQ/integration/atomic-ordered-2-a-system.json",
+      "systemSnapshotsAt": {
+        "before": "2026-10-31T06:35:35.429Z",
+        "after": "2026-10-31T06:39:08.713Z"
+      }
+    },
+    {
+      "kind": "multiple-CLI-isolated-worker-throughput-prototype",
+      "startedAt": "2026-10-31T06:39:18.010Z",
+      "workers": 4,
+      "completeSuite": true,
+      "expectedBrowserCases": 338,
+      "nodeCases": [
+        {
+          "worker": 0,
+          "count": 1,
+          "passed": 1,
+          "failed": 0,
+          "duration": 2449.6217920000054
+        }
+      ],
+      "images": 132,
+      "acceptedAttachments": 0,
+      "captureFiles": 132,
+      "checkpointCollisions": [],
+      "checkpointStatus": "failed",
+      "commandMS": 300071.86987500003,
+      "buildMS": 25861.057,
+      "activeWallMS": 274210.809625,
+      "lifecycleMS": 312310.91416700004,
+      "serviceReady": true,
+      "cleanupPassed": true,
+      "source": [
+        {
+          "worker": 0,
+          "source": {
+            "sha256": "9fd7f2f1c8f8b4a24bf268fcac91d13a0c3bc6f0e2ef01223a68f33eb337c75c",
+            "files": 1163
+          },
+          "sourceAfter": {
+            "sha256": "9fd7f2f1c8f8b4a24bf268fcac91d13a0c3bc6f0e2ef01223a68f33eb337c75c",
+            "files": 1163
+          }
+        },
+        {
+          "worker": 1,
+          "source": {
+            "sha256": "9fd7f2f1c8f8b4a24bf268fcac91d13a0c3bc6f0e2ef01223a68f33eb337c75c",
+            "files": 1163
+          },
+          "sourceAfter": {
+            "sha256": "9fd7f2f1c8f8b4a24bf268fcac91d13a0c3bc6f0e2ef01223a68f33eb337c75c",
+            "files": 1163
+          }
+        },
+        {
+          "worker": 2,
+          "source": {
+            "sha256": "9fd7f2f1c8f8b4a24bf268fcac91d13a0c3bc6f0e2ef01223a68f33eb337c75c",
+            "files": 1163
+          },
+          "sourceAfter": {
+            "sha256": "9fd7f2f1c8f8b4a24bf268fcac91d13a0c3bc6f0e2ef01223a68f33eb337c75c",
+            "files": 1163
+          }
+        },
+        {
+          "worker": 3,
+          "source": {
+            "sha256": "9fd7f2f1c8f8b4a24bf268fcac91d13a0c3bc6f0e2ef01223a68f33eb337c75c",
+            "files": 1163
+          },
+          "sourceAfter": {
+            "sha256": "9fd7f2f1c8f8b4a24bf268fcac91d13a0c3bc6f0e2ef01223a68f33eb337c75c",
+            "files": 1163
+          }
+        }
+      ],
+      "workerRuns": [],
+      "workerCommands": [
+        {
+          "worker": 0,
+          "code": null,
+          "signal": "SIGTERM",
+          "durationMS": 274172.73687499994
+        },
+        {
+          "worker": 1,
+          "code": null,
+          "signal": "SIGTERM",
+          "durationMS": 274169.424
+        },
+        {
+          "worker": 2,
+          "code": null,
+          "signal": "SIGTERM",
+          "durationMS": 274172.646
+        },
+        {
+          "worker": 3,
+          "code": null,
+          "signal": "SIGTERM",
+          "durationMS": 274167.667042
+        }
+      ],
+      "status": "failed",
+      "errors": [
+        "Worker 0 failed null/SIGTERM",
+        "Worker 1 failed null/SIGTERM",
+        "Worker 2 failed null/SIGTERM",
+        "Worker 3 failed null/SIGTERM",
+        "Worker 0 report: Expected values to be strictly equal:\n\n0 !== 1\n",
+        "Worker 1 report: Expected values to be strictly equal:\n\n0 !== 1\n",
+        "Worker 2 report: Expected values to be strictly equal:\n\n0 !== 1\n",
+        "Worker 3 report: Expected values to be strictly equal:\n\n0 !== 1\n",
+        "Expected245 accepted image files, got 0",
+        "Incomplete or duplicate test catalog",
+        "Expected232 unique checkpoint names, got 132",
+        "Missing api-token-created-modal-chromium-1920x1080-desktop.png",
+        "Missing authenticated-non-member-build-view-chromium-1920x1080-desktop.png",
+        "Missing authenticated-non-member-org-view-chromium-1920x1080-desktop.png",
+        "Missing authenticated-non-member-project-view-chromium-1920x1080-desktop.png",
+        "Missing baseline-settings-chromium-1920x1080-desktop.png",
+        "Missing build-detail-baseline-controls-chromium-1920x1080-desktop-marked.png",
+        "Missing build-detail-baseline-controls-chromium-1920x1080-desktop-unmarked.png",
+        "Missing build-detail-comments-section-chromium-1920x1080-desktop-with-comment.png",
+        "Missing build-detail-github-pr-enhanced-chromium-1920x1080-desktop.png",
+        "Missing build-detail-screenshots-chromium-1920x1080-desktop.png",
+        "Missing build-detail-shared-image-independent-comparisons-chromium-1920x1080-desktop.png",
+        "Missing build-detail-shared-image-released-cli-chromium-1920x1080-desktop.png",
+        "Missing create-organization-modal-chromium-1920x1080-desktop.png",
+        "Missing dashboard-home-chromium-1920x1080-desktop.png",
+        "Missing diff-intelligence-free-core-settings-chromium-1920x1080-desktop.png",
+        "Missing email-comment-mention-chromium-1920x1080-desktop.png",
+        "Missing email-comment-mention-chromium-375x667-mobile.png",
+        "Missing email-comment-mention-chromium-768x1024-tablet.png",
+        "Missing email-welcome-and-verification-chromium-1920x1080-desktop.png",
+        "Missing email-welcome-and-verification-chromium-375x667-mobile.png",
+        "Missing email-welcome-and-verification-chromium-768x1024-tablet.png",
+        "Missing forgot-password-success-chromium-1920x1080-desktop.png",
+        "Missing full-screen-error-state-chromium-1920x1080-desktop-missing-baseline.png",
+        "Missing full-screen-normal-load-chromium-1920x1080-desktop-successful-load.png",
+        "Missing full-screen-normal-state-chromium-1920x1080-desktop-working-comparison.png",
+        "Missing fullscreen-comments-drawer-empty-chromium-1920x1080-desktop.png",
+        "Missing fullscreen-review-real-capture-chromium-1920x1080-desktop.png",
+        "Missing fullscreen-viewer-approved-chromium-1280x800-desktop.png",
+        "Missing integrations-settings-page-chromium-1920x1080-desktop-connected-empty-repositories.png",
+        "Missing integrations-settings-page-chromium-1920x1080-desktop-github-integration-status.png",
+        "Missing integrations-settings-page-chromium-1920x1080-desktop-repository-optimistic-connect.png",
+        "Missing integrations-settings-page-chromium-1920x1080-desktop-repository-selected-after-search.png",
+        "Missing invitation-acceptance-admin-user-chromium-1920x1080-desktop-admin-permissions.png",
+        "Missing invitation-acceptance-error-chromium-1920x1080-desktop-invalid-token.png",
+        "Missing login-form-chromium-1920x1080-desktop-filled.png",
+        "Missing notification-bell-empty-state-chromium-1920x1080-desktop.png",
+        "Missing notification-inbox-done-filter-chromium-1920x1080-desktop.png",
+        "Missing notification-inbox-empty-done-chromium-1920x1080-desktop.png",
+        "Missing notification-inbox-read-notification-chromium-1920x1080-desktop.png",
+        "Missing organization-select-chromium-1920x1080-desktop.png",
+        "Missing organization-settings-general-chromium-1920x1080-desktop-form-with-changes.png",
+        "Missing organization-settings-general-chromium-1920x1080-desktop-initial-form.png",
+        "Missing organization-settings-general-chromium-1920x1080-desktop-saved-changes-success.png",
+        "Missing organization-settings-shell-chromium-1920x1080-desktop.png",
+        "Missing organization-settings-shell-chromium-375x667-mobile.png",
+        "Missing organization-settings-shell-chromium-768x1024-tablet.png",
+        "Dimension mismatch oss-eligibility-check-chromium-1920x1080-desktop.png: 832x375 expected 832x407",
+        "Missing oss-plan-overview-chromium-1920x1080-desktop.png",
+        "Missing password-reset-complete-flow-chromium-1920x1080-desktop.png",
+        "Missing post-registration-dashboard-chromium-1920x1080-desktop.png",
+        "Missing privacy-settings-disabled-chromium-1920x1080-desktop-project-toggles-disabled.png",
+        "Missing profile-notification-settings-chromium-1920x1080-desktop-after-tab-navigation.png",
+        "Missing profile-notification-settings-chromium-1920x1080-desktop-all-disabled.png",
+        "Missing project-dashboard-build-history-chromium-1920x1080-desktop-caught-up.png",
+        "Missing project-dashboard-build-history-chromium-375x667-mobile-caught-up.png",
+        "Missing project-dashboard-build-history-chromium-768x1024-tablet-caught-up.png",
+        "Missing project-dashboard-chromium-1920x1080-desktop.png",
+        "Missing project-settings-api-access-chromium-1920x1080-desktop.png",
+        "Missing project-settings-baseline-chromium-1920x1080-desktop.png",
+        "Missing project-settings-comparison-chromium-1920x1080-desktop.png",
+        "Missing project-settings-danger-zone-chromium-1920x1080-desktop.png",
+        "Missing project-settings-integrations-chromium-1920x1080-desktop.png",
+        "Missing project-settings-long-badge-markup-chromium-375x667-mobile.png",
+        "Missing project-settings-preview-hosting-chromium-1920x1080-desktop.png",
+        "Missing project-settings-shell-chromium-1920x1080-desktop.png",
+        "Missing project-settings-shell-chromium-375x667-mobile.png",
+        "Missing project-settings-shell-chromium-768x1024-tablet.png",
+        "Missing project-visibility-settings-chromium-1920x1080-desktop.png",
+        "Missing project-visibility-settings-chromium-375x667-mobile.png",
+        "Missing project-visibility-settings-chromium-768x1024-tablet.png",
+        "Missing public-build-detail-approved-chromium-1920x1080-desktop.png",
+        "Missing public-build-detail-approved-chromium-375x667-mobile.png",
+        "Missing public-build-detail-approved-chromium-768x1024-tablet.png",
+        "Missing public-build-processing-failures-chromium-1920x1080-desktop.png",
+        "Missing public-organization-mobile-responsive-chromium-375x667-mobile.png",
+        "Missing public-organization-unauthenticated-chromium-1920x1080-desktop.png",
+        "Missing public-organization-unauthenticated-chromium-375x667-mobile.png",
+        "Missing public-organization-unauthenticated-chromium-768x1024-tablet.png",
+        "Missing public-project-mobile-responsive-chromium-375x667-mobile.png",
+        "Missing public-project-unauthenticated-chromium-1920x1080-desktop.png",
+        "Missing public-project-unauthenticated-chromium-375x667-mobile.png",
+        "Missing public-project-unauthenticated-chromium-768x1024-tablet.png",
+        "Missing public-properties-settings-marketing-chromium-1920x1080-desktop-marketing-showcase.png",
+        "Missing registration-complete-form-chromium-1920x1080-desktop.png",
+        "Missing registration-form-error-state-chromium-375x667-mobile.png",
+        "Missing registration-organization-step-chromium-1920x1080-desktop.png",
+        "Missing registration-seat-reminder-chromium-1920x1080-desktop.png",
+        "Missing registration-seat-reminder-chromium-375x667-mobile.png",
+        "Missing registration-seat-reminder-chromium-768x1024-tablet.png",
+        "Missing reset-password-no-token-chromium-1920x1080-desktop.png",
+        "Missing super-admin-product-health-chromium-1920x1080-desktop.png",
+        "Missing super-admin-product-health-chromium-375x667-mobile.png",
+        "Missing super-admin-product-health-chromium-768x1024-tablet.png",
+        "Missing super-admin-system-health-chromium-1920x1080-desktop.png",
+        "Missing team-management-error-chromium-1920x1080-desktop-duplicate-invitation.png",
+        "Missing team-management-invite-chromium-1920x1080-desktop-invitation-form-filled.png",
+        "Missing team-management-invite-chromium-1920x1080-desktop-invitation-sent-success.png",
+        "Missing team-management-page-chromium-1920x1080-desktop-initial-state.png",
+        "Missing verify-email-invalid-token-chromium-1920x1080-desktop.png",
+        "Missing verify-email-no-token-chromium-1920x1080-desktop.png",
+        "Missing verify-email-success-chromium-1920x1080-desktop.png"
+      ],
+      "name": "ordered-4-a",
+      "version": "atomic-select-private-browsers",
+      "directory": "/private/tmp/dyno-concurrency-spike-uD5YrQ/harness/atomic/runs/ordered-4-a",
+      "order": "ordered",
+      "seed": null,
+      "validCompleteTiming": false,
+      "actualBrowserOutcomes": {
+        "passed": 183,
+        "failed": 12,
+        "skipped": 0,
+        "unreported": 143
+      },
+      "uniqueOutcomeIds": 195,
+      "acceptedAttachmentReferencesInEmittedOutcomes": 142,
+      "failures": [
+        {
+          "testId": "[\"tests/e2e/build-detail/build-detail-basic-display.spec.js\",\"Build Detail - Basic Display\",\"reviews every capture when different names and browsers reuse the same image from a released CLI\"]",
+          "name": "reviews every capture when different names and browsers reuse the same image from a released CLI",
+          "message": "Test exceeded 30000 ms. Check blocked scripts, application startup, or unresolved test work.",
+          "phase": "timeout",
+          "durationMS": 29977.700000047684
+        },
+        {
+          "testId": "[\"tests/e2e/build-detail/build-detail-basic-display.spec.js\",\"Build Detail - Basic Display\",\"marks an approved build as the baseline in manual baseline mode\"]",
+          "name": "marks an approved build as the baseline in manual baseline mode",
+          "message": "POST /__e2e/fixtures returned 500: {\"error\":\"TRUNCATE TABLE \\\"auth_request_budget\\\", \\\"processed_webhook\\\", \\\"github_repository\\\", \\\"github_integration\\\", \\\"github_installation_intent\\\", \\\"github_installation\\\", \\\"device_authorization\\\", \\\"refresh_token\\\", \\\"email_verification_token\\\", \\\"password_reset_token\\\", \\\"user_password\\\", \\\"user_email_address\\\", \\\"user_notification\\\", \\\"organization_invitation\\\", \\\"organization_member\\\", \\\"screenshot_comment\\\", \\\"screenshot_storage\\\", \\\"screenshot\\\", \\\"comparison\\\", \\\"build\\\", \\\"project_setting\\\", \\\"project\\\", \\\"org_setting\\\", \\\"organization\\\", \\\"user\\\" RESTART IDENTITY CASCADE - deadlock detected\"}",
+          "phase": "beforeEach",
+          "durationMS": 23060.200000047684
+        },
+        {
+          "testId": "[\"tests/e2e/build-detail/build-detail-basic-display.spec.js\",\"Build Detail - Basic Display\",\"should display build details with user agent string and capture screenshot\"]",
+          "name": "should display build details with user agent string and capture screenshot",
+          "message": "Could not find $(h1)",
+          "phase": "test",
+          "durationMS": 12242.100000023842
+        },
+        {
+          "testId": "[\"tests/e2e/build-detail/build-detail-error-handling.spec.js\",\"Build Detail - Full-Screen Error Handling\",\"should handle invalid comparison ID gracefully\"]",
+          "name": "should handle invalid comparison ID gracefully",
+          "message": "Could not find \"Comparison not found\"",
+          "phase": "test",
+          "durationMS": 17128.799999952316
+        },
+        {
+          "testId": "[\"tests/e2e/build-detail/build-detail-basic-display.spec.js\",\"Build Detail - Basic Display\",\"should display build history after builds arrive\"]",
+          "name": "should display build history after builds arrive",
+          "message": "Could not find $([data-testid=\"project-status\"])",
+          "phase": "test",
+          "durationMS": 19669.799999952316
+        },
+        {
+          "testId": "[\"tests/e2e/build-detail/build-detail-basic-display.spec.js\",\"Build Detail - Basic Display\",\"identifies a failed test command without blaming Vizzly processing\"]",
+          "name": "identifies a failed test command without blaming Vizzly processing",
+          "message": "Test exceeded 30000 ms. Check blocked scripts, application startup, or unresolved test work.",
+          "phase": "timeout",
+          "durationMS": 29896
+        },
+        {
+          "testId": "[\"tests/e2e/build-detail/build-detail-basic-display.spec.js\",\"Build Detail - Basic Display\",\"should show preview upload entry point for preview-hosting plans\"]",
+          "name": "should show preview upload entry point for preview-hosting plans",
+          "message": "Test exceeded 30000 ms. Check blocked scripts, application startup, or unresolved test work.",
+          "phase": "timeout",
+          "durationMS": 29960.399999976158
+        },
+        {
+          "testId": "[\"tests/e2e/build-detail/build-detail-comments.spec.js\",\"Build Detail - Comments and Discussion\",\"should add and display comments in GitHub style\"]",
+          "name": "should add and display comments in GitHub style",
+          "message": "Test exceeded 30000 ms. Check blocked scripts, application startup, or unresolved test work.",
+          "phase": "timeout",
+          "durationMS": 29946.100000023842
+        },
+        {
+          "testId": "[\"tests/e2e/build-detail/build-detail-error-handling.spec.js\",\"Build Detail - Full-Screen Error Handling\",\"should display normal comparison in full-screen view successfully\"]",
+          "name": "should display normal comparison in full-screen view successfully",
+          "message": "Test exceeded 30000 ms. Check blocked scripts, application startup, or unresolved test work.",
+          "phase": "timeout",
+          "durationMS": 29958.300000071526
+        },
+        {
+          "testId": "[\"tests/e2e/build-detail/build-detail-error-handling.spec.js\",\"Build Detail - Full-Screen Error Handling\",\"should handle missing baseline error in full-screen view\"]",
+          "name": "should handle missing baseline error in full-screen view",
+          "message": "Test exceeded 30000 ms. Check blocked scripts, application startup, or unresolved test work.",
+          "phase": "timeout",
+          "durationMS": 29927.899999976158
+        },
+        {
+          "testId": "[\"tests/e2e/build-detail/build-detail-basic-display.spec.js\",\"Build Detail - Basic Display\",\"reviews every capture when different names and browsers reuse the same image\"]",
+          "name": "reviews every capture when different names and browsers reuse the same image",
+          "message": "Test exceeded 30000 ms. Check blocked scripts, application startup, or unresolved test work.",
+          "phase": "timeout",
+          "durationMS": 29963.399999976158
+        },
+        {
+          "testId": "[\"tests/e2e/github-integration-lifecycle.spec.js\",\"GitHub integration lifecycle through the external HTTP boundary\",\"connects one repository to fifteen projects without per-project GitHub hooks\"]",
+          "name": "connects one repository to fifteen projects without per-project GitHub hooks",
+          "message": "Could not find element",
+          "phase": "test",
+          "durationMS": 22102.700000047684
+        }
+      ],
+      "fatal": [],
+      "plan": {
+        "version": 1,
+        "algorithm": "round-robin-v1",
+        "randomization": "sha256-fisher-yates-v1",
+        "order": "ordered",
+        "seed": null,
+        "workers": 4
+      },
+      "planSHA256": "7437485d742628cb0ba73c9ae9ad692718bca596736eaeb86e83c19c97124988",
+      "profiles": [],
+      "systemSnapshotArtifact": "/private/tmp/dyno-concurrency-spike-uD5YrQ/integration/atomic-ordered-4-a-system.json",
+      "systemSnapshotsAt": {
+        "before": "2026-10-31T06:39:10.661Z",
+        "after": "2026-10-31T06:44:32.475Z"
+      }
+    },
+    {
+      "kind": "multiple-CLI-isolated-worker-throughput-prototype",
+      "startedAt": "2026-10-31T07:00:20.905Z",
+      "workers": 2,
+      "completeSuite": true,
+      "expectedBrowserCases": 338,
+      "nodeCases": [
+        {
+          "worker": 0,
+          "count": 1,
+          "passed": 1,
+          "failed": 0,
+          "duration": 328.43975
+        }
+      ],
+      "images": 232,
+      "acceptedAttachments": 245,
+      "captureFiles": 232,
+      "checkpointCollisions": [],
+      "checkpointStatus": "passed",
+      "commandMS": 136653.275125,
+      "buildMS": 5502.240959000001,
+      "activeWallMS": 131151.032208,
+      "lifecycleMS": 139570.67116700002,
+      "serviceReady": true,
+      "cleanupPassed": true,
+      "source": [
+        {
+          "worker": 0,
+          "source": {
+            "sha256": "9fd7f2f1c8f8b4a24bf268fcac91d13a0c3bc6f0e2ef01223a68f33eb337c75c",
+            "files": 1163
+          },
+          "sourceAfter": {
+            "sha256": "9fd7f2f1c8f8b4a24bf268fcac91d13a0c3bc6f0e2ef01223a68f33eb337c75c",
+            "files": 1163
+          }
+        },
+        {
+          "worker": 1,
+          "source": {
+            "sha256": "9fd7f2f1c8f8b4a24bf268fcac91d13a0c3bc6f0e2ef01223a68f33eb337c75c",
+            "files": 1163
+          },
+          "sourceAfter": {
+            "sha256": "9fd7f2f1c8f8b4a24bf268fcac91d13a0c3bc6f0e2ef01223a68f33eb337c75c",
+            "files": 1163
+          }
+        }
+      ],
+      "workerRuns": [
+        {
+          "worker": 0,
+          "runId": "9fb5d8db-a5de-449f-8529-f2e2f2a5ffa7",
+          "browserMS": 122971.69999992847,
+          "cases": 169
+        },
+        {
+          "worker": 1,
+          "runId": "b645564e-79b1-4483-8d61-b619265eb780",
+          "browserMS": 104629.20000004768,
+          "cases": 169
+        }
+      ],
+      "workerCommands": [
+        {
+          "worker": 0,
+          "code": 0,
+          "signal": null,
+          "durationMS": 131147.277417
+        },
+        {
+          "worker": 1,
+          "code": 0,
+          "signal": null,
+          "durationMS": 109832.230583
+        }
+      ],
+      "status": "passed",
+      "errors": [],
+      "name": "random-2-a",
+      "version": "atomic-select-private-browsers",
+      "directory": "/private/tmp/dyno-concurrency-spike-uD5YrQ/harness/atomic/runs/random-2-a",
+      "order": "random",
+      "seed": "concurrency-v1",
+      "validCompleteTiming": true,
+      "actualBrowserOutcomes": {
+        "passed": 338,
+        "failed": 0,
+        "skipped": 0,
+        "unreported": 0
+      },
+      "uniqueOutcomeIds": 338,
+      "acceptedAttachmentReferencesInEmittedOutcomes": 245,
+      "failures": [],
+      "fatal": [],
+      "plan": {
+        "version": 1,
+        "algorithm": "round-robin-v1",
+        "randomization": "sha256-fisher-yates-v1",
+        "order": "random",
+        "seed": "concurrency-v1",
+        "workers": 2
+      },
+      "planSHA256": "808137ab3897d4523ff47741c33313d79caa2852b32ccdea576e5a607e1df1ff",
+      "profiles": [
+        {
+          "worker": 0,
+          "browserMS": 122971.69999992847,
+          "tests": 169,
+          "artifact": "/private/tmp/dyno-concurrency-spike-uD5YrQ/harness/atomic/runs/random-2-a/worker-0/runner-profile.json"
+        },
+        {
+          "worker": 1,
+          "browserMS": 104629.20000004768,
+          "tests": 169,
+          "artifact": "/private/tmp/dyno-concurrency-spike-uD5YrQ/harness/atomic/runs/random-2-a/worker-1/runner-profile.json"
+        }
+      ],
+      "systemSnapshotArtifact": "/private/tmp/dyno-concurrency-spike-uD5YrQ/integration/atomic-random-2-a-system.json",
+      "systemSnapshotsAt": {
+        "before": "2026-10-31T07:00:19.385Z",
+        "after": "2026-10-31T07:02:46.077Z"
+      }
+    },
+    {
+      "kind": "multiple-CLI-isolated-worker-throughput-prototype",
+      "startedAt": "2026-10-31T07:02:48.010Z",
+      "workers": 1,
+      "completeSuite": true,
+      "expectedBrowserCases": 338,
+      "nodeCases": [
+        {
+          "worker": 0,
+          "count": 1,
+          "passed": 1,
+          "failed": 0,
+          "duration": 196.113834
+        }
+      ],
+      "images": 232,
+      "acceptedAttachments": 245,
+      "captureFiles": 232,
+      "checkpointCollisions": [],
+      "checkpointStatus": "passed",
+      "commandMS": 187955.214709,
+      "buildMS": 2985.9503330000002,
+      "activeWallMS": 184969.261833,
+      "lifecycleMS": 190630.493417,
+      "serviceReady": true,
+      "cleanupPassed": true,
+      "source": [
+        {
+          "worker": 0,
+          "source": {
+            "sha256": "9fd7f2f1c8f8b4a24bf268fcac91d13a0c3bc6f0e2ef01223a68f33eb337c75c",
+            "files": 1163
+          },
+          "sourceAfter": {
+            "sha256": "9fd7f2f1c8f8b4a24bf268fcac91d13a0c3bc6f0e2ef01223a68f33eb337c75c",
+            "files": 1163
+          }
+        }
+      ],
+      "workerRuns": [
+        {
+          "worker": 0,
+          "runId": "48535614-766a-41aa-8fce-a69375e964f3",
+          "browserMS": 178862.29999995232,
+          "cases": 338
+        }
+      ],
+      "workerCommands": [
+        {
+          "worker": 0,
+          "code": 0,
+          "signal": null,
+          "durationMS": 184963.473375
+        }
+      ],
+      "status": "passed",
+      "errors": [],
+      "name": "ordered-1-b",
+      "version": "atomic-select-private-browsers",
+      "directory": "/private/tmp/dyno-concurrency-spike-uD5YrQ/harness/atomic/runs/ordered-1-b",
+      "order": "ordered",
+      "seed": null,
+      "validCompleteTiming": true,
+      "actualBrowserOutcomes": {
+        "passed": 338,
+        "failed": 0,
+        "skipped": 0,
+        "unreported": 0
+      },
+      "uniqueOutcomeIds": 338,
+      "acceptedAttachmentReferencesInEmittedOutcomes": 245,
+      "failures": [],
+      "fatal": [],
+      "plan": {
+        "version": 1,
+        "algorithm": "round-robin-v1",
+        "randomization": "sha256-fisher-yates-v1",
+        "order": "ordered",
+        "seed": null,
+        "workers": 1
+      },
+      "planSHA256": "5586767288b0a4a8bea74b25370033e4d9e9fd65e19e6a01784b3d9522e457f7",
+      "profiles": [
+        {
+          "worker": 0,
+          "browserMS": 178862.29999995232,
+          "tests": 338,
+          "artifact": "/private/tmp/dyno-concurrency-spike-uD5YrQ/harness/atomic/runs/ordered-1-b/worker-0/runner-profile.json"
+        }
+      ],
+      "systemSnapshotArtifact": "/private/tmp/dyno-concurrency-spike-uD5YrQ/integration/atomic-ordered-1-b-system.json",
+      "systemSnapshotsAt": {
+        "before": "2026-10-31T07:02:46.835Z",
+        "after": "2026-10-31T07:06:03.652Z"
+      }
+    },
+    {
+      "kind": "shared-Chromium-per-worker-context-throughput-prototype",
+      "startedAt": "2026-10-31T07:08:43.277Z",
+      "workers": 4,
+      "completeSuite": true,
+      "expectedBrowserCases": 338,
+      "nodeCases": [
+        {
+          "worker": 0,
+          "count": 1,
+          "passed": 1,
+          "failed": 0,
+          "duration": 198.9676669999999
+        }
+      ],
+      "images": 232,
+      "acceptedAttachments": 245,
+      "captureFiles": 233,
+      "checkpointCollisions": [
+        {
+          "file": "public-build-detail-approved-chromium-375x667-mobile.png",
+          "first": {
+            "worker": 1,
+            "file": "public-build-detail-approved-chromium-375x667-mobile.png",
+            "width": 375,
+            "height": 1526,
+            "bytes": 83236,
+            "sha256": "dd99880672768f5be355011dec35feef3bbff4fb50fa5005cb986d9e52804292"
+          },
+          "second": {
+            "worker": 2,
+            "file": "public-build-detail-approved-chromium-375x667-mobile.png",
+            "width": 375,
+            "height": 1526,
+            "bytes": 83236,
+            "sha256": "dd99880672768f5be355011dec35feef3bbff4fb50fa5005cb986d9e52804292"
+          },
+          "identicalPNG": true,
+          "policy": "Retain both worker files and accepted execution attachments; canonical export uses greatest original catalog index, independent of completion order."
+        }
+      ],
+      "checkpointStatus": "passed",
+      "commandMS": 60150.27825,
+      "buildMS": 2944.995292,
+      "activeWallMS": 57118.700333,
+      "lifecycleMS": 63841.205709,
+      "serviceReady": true,
+      "cleanupPassed": true,
+      "source": [
+        {
+          "worker": 0,
+          "source": {
+            "sha256": "9fd7f2f1c8f8b4a24bf268fcac91d13a0c3bc6f0e2ef01223a68f33eb337c75c",
+            "files": 1163
+          },
+          "sourceAfter": {
+            "sha256": "9fd7f2f1c8f8b4a24bf268fcac91d13a0c3bc6f0e2ef01223a68f33eb337c75c",
+            "files": 1163
+          }
+        },
+        {
+          "worker": 1,
+          "source": {
+            "sha256": "9fd7f2f1c8f8b4a24bf268fcac91d13a0c3bc6f0e2ef01223a68f33eb337c75c",
+            "files": 1163
+          },
+          "sourceAfter": {
+            "sha256": "9fd7f2f1c8f8b4a24bf268fcac91d13a0c3bc6f0e2ef01223a68f33eb337c75c",
+            "files": 1163
+          }
+        },
+        {
+          "worker": 2,
+          "source": {
+            "sha256": "9fd7f2f1c8f8b4a24bf268fcac91d13a0c3bc6f0e2ef01223a68f33eb337c75c",
+            "files": 1163
+          },
+          "sourceAfter": {
+            "sha256": "9fd7f2f1c8f8b4a24bf268fcac91d13a0c3bc6f0e2ef01223a68f33eb337c75c",
+            "files": 1163
+          }
+        },
+        {
+          "worker": 3,
+          "source": {
+            "sha256": "9fd7f2f1c8f8b4a24bf268fcac91d13a0c3bc6f0e2ef01223a68f33eb337c75c",
+            "files": 1163
+          },
+          "sourceAfter": {
+            "sha256": "9fd7f2f1c8f8b4a24bf268fcac91d13a0c3bc6f0e2ef01223a68f33eb337c75c",
+            "files": 1163
+          }
+        }
+      ],
+      "workerRuns": [
+        {
+          "worker": 0,
+          "runId": "7f6032ab-688c-4600-b5ae-d2e064b71705",
+          "browserMS": 52946.699999928474,
+          "cases": 85
+        },
+        {
+          "worker": 1,
+          "runId": "1ffb26fd-761a-4f48-91de-d46e3cc13384",
+          "browserMS": 50184.800000071526,
+          "cases": 85
+        },
+        {
+          "worker": 2,
+          "runId": "312286af-8fa1-40ec-a51b-de5aa30ad380",
+          "browserMS": 48965.700000047684,
+          "cases": 84
+        },
+        {
+          "worker": 3,
+          "runId": "ac8dee29-8dd3-4b8f-84d6-3535c46f47cc",
+          "browserMS": 51159.300000071526,
+          "cases": 84
+        }
+      ],
+      "workerCommands": [
+        {
+          "worker": 0,
+          "code": 0,
+          "signal": null,
+          "durationMS": 55889.179000000004
+        },
+        {
+          "worker": 1,
+          "code": 0,
+          "signal": null,
+          "durationMS": 56156.870666
+        },
+        {
+          "worker": 2,
+          "code": 0,
+          "signal": null,
+          "durationMS": 52112.506083
+        },
+        {
+          "worker": 3,
+          "code": 0,
+          "signal": null,
+          "durationMS": 57115.899667
+        }
+      ],
+      "status": "passed",
+      "errors": [],
+      "name": "ordered-4-a",
+      "version": "atomic-select-shared-browser-contexts",
+      "directory": "/private/tmp/dyno-concurrency-spike-uD5YrQ/harness/contexts/runs/ordered-4-a",
+      "order": "ordered",
+      "seed": null,
+      "validCompleteTiming": true,
+      "actualBrowserOutcomes": {
+        "passed": 338,
+        "failed": 0,
+        "skipped": 0,
+        "unreported": 0
+      },
+      "uniqueOutcomeIds": 338,
+      "acceptedAttachmentReferencesInEmittedOutcomes": 245,
+      "failures": [],
+      "fatal": [],
+      "plan": {
+        "version": 1,
+        "algorithm": "round-robin-v1",
+        "randomization": "sha256-fisher-yates-v1",
+        "order": "ordered",
+        "seed": null,
+        "workers": 4
+      },
+      "planSHA256": "7437485d742628cb0ba73c9ae9ad692718bca596736eaeb86e83c19c97124988",
+      "profiles": [
+        {
+          "worker": 0,
+          "browserMS": 52946.699999928474,
+          "tests": 85,
+          "artifact": "/private/tmp/dyno-concurrency-spike-uD5YrQ/harness/contexts/runs/ordered-4-a/worker-0/runner-profile.json"
+        },
+        {
+          "worker": 1,
+          "browserMS": 50184.800000071526,
+          "tests": 85,
+          "artifact": "/private/tmp/dyno-concurrency-spike-uD5YrQ/harness/contexts/runs/ordered-4-a/worker-1/runner-profile.json"
+        },
+        {
+          "worker": 2,
+          "browserMS": 48965.700000047684,
+          "tests": 84,
+          "artifact": "/private/tmp/dyno-concurrency-spike-uD5YrQ/harness/contexts/runs/ordered-4-a/worker-2/runner-profile.json"
+        },
+        {
+          "worker": 3,
+          "browserMS": 51159.300000071526,
+          "tests": 84,
+          "artifact": "/private/tmp/dyno-concurrency-spike-uD5YrQ/harness/contexts/runs/ordered-4-a/worker-3/runner-profile.json"
+        }
+      ],
+      "sharedBrowserLaunchMS": 71.42762500000026,
+      "sharedBrowserCloseMS": 15.084875000000466,
+      "sharedBrowserPID": 49960
+    },
+    {
+      "kind": "private-Chromium-servers-ordinary-contexts-throughput-prototype",
+      "startedAt": "2026-10-31T07:17:12.975Z",
+      "workers": 4,
+      "completeSuite": true,
+      "expectedBrowserCases": 338,
+      "nodeCases": [
+        {
+          "worker": 0,
+          "count": 1,
+          "passed": 1,
+          "failed": 0,
+          "duration": 455.08899999999994
+        }
+      ],
+      "images": 232,
+      "acceptedAttachments": 245,
+      "captureFiles": 233,
+      "checkpointCollisions": [
+        {
+          "file": "public-build-detail-approved-chromium-375x667-mobile.png",
+          "first": {
+            "worker": 1,
+            "file": "public-build-detail-approved-chromium-375x667-mobile.png",
+            "width": 375,
+            "height": 1526,
+            "bytes": 83236,
+            "sha256": "dd99880672768f5be355011dec35feef3bbff4fb50fa5005cb986d9e52804292"
+          },
+          "second": {
+            "worker": 2,
+            "file": "public-build-detail-approved-chromium-375x667-mobile.png",
+            "width": 375,
+            "height": 1526,
+            "bytes": 83239,
+            "sha256": "58a8d62a146ae1a01a4bebb53840a599dc3d121e005d49be9f26eb962bd748a3"
+          },
+          "identicalPNG": false,
+          "policy": "Retain both worker files and accepted execution attachments; canonical export uses greatest original catalog index, independent of completion order."
+        }
+      ],
+      "checkpointStatus": "passed",
+      "commandMS": 127774.37229199999,
+      "buildMS": 5651.4306670000005,
+      "activeWallMS": 121747.30804100001,
+      "lifecycleMS": 135186.016666,
+      "serviceReady": true,
+      "cleanupPassed": true,
+      "source": [
+        {
+          "worker": 0,
+          "source": {
+            "sha256": "9fd7f2f1c8f8b4a24bf268fcac91d13a0c3bc6f0e2ef01223a68f33eb337c75c",
+            "files": 1163
+          },
+          "sourceAfter": {
+            "sha256": "9fd7f2f1c8f8b4a24bf268fcac91d13a0c3bc6f0e2ef01223a68f33eb337c75c",
+            "files": 1163
+          }
+        },
+        {
+          "worker": 1,
+          "source": {
+            "sha256": "9fd7f2f1c8f8b4a24bf268fcac91d13a0c3bc6f0e2ef01223a68f33eb337c75c",
+            "files": 1163
+          },
+          "sourceAfter": {
+            "sha256": "9fd7f2f1c8f8b4a24bf268fcac91d13a0c3bc6f0e2ef01223a68f33eb337c75c",
+            "files": 1163
+          }
+        },
+        {
+          "worker": 2,
+          "source": {
+            "sha256": "9fd7f2f1c8f8b4a24bf268fcac91d13a0c3bc6f0e2ef01223a68f33eb337c75c",
+            "files": 1163
+          },
+          "sourceAfter": {
+            "sha256": "9fd7f2f1c8f8b4a24bf268fcac91d13a0c3bc6f0e2ef01223a68f33eb337c75c",
+            "files": 1163
+          }
+        },
+        {
+          "worker": 3,
+          "source": {
+            "sha256": "9fd7f2f1c8f8b4a24bf268fcac91d13a0c3bc6f0e2ef01223a68f33eb337c75c",
+            "files": 1163
+          },
+          "sourceAfter": {
+            "sha256": "9fd7f2f1c8f8b4a24bf268fcac91d13a0c3bc6f0e2ef01223a68f33eb337c75c",
+            "files": 1163
+          }
+        }
+      ],
+      "workerRuns": [
+        {
+          "worker": 0,
+          "runId": "017ce5c7-df3b-4769-b52e-3be6b5d21ae1",
+          "browserMS": 106896.70000004768,
+          "cases": 85
+        },
+        {
+          "worker": 1,
+          "runId": "6cc80022-14fd-4c9b-a2dc-e314aeca3da5",
+          "browserMS": 107794.5,
+          "cases": 85
+        },
+        {
+          "worker": 2,
+          "runId": "7ac8539f-fa24-450c-bd8c-023ee2777a5a",
+          "browserMS": 101459.89999997616,
+          "cases": 84
+        },
+        {
+          "worker": 3,
+          "runId": "0179f016-7144-4ad2-aeed-c4221fa355ae",
+          "browserMS": 110485.20000004768,
+          "cases": 84
+        }
+      ],
+      "workerCommands": [
+        {
+          "worker": 0,
+          "code": 0,
+          "signal": null,
+          "durationMS": 116742.358083
+        },
+        {
+          "worker": 1,
+          "code": 0,
+          "signal": null,
+          "durationMS": 116740.875792
+        },
+        {
+          "worker": 2,
+          "code": 0,
+          "signal": null,
+          "durationMS": 110248.24725000001
+        },
+        {
+          "worker": 3,
+          "code": 0,
+          "signal": null,
+          "durationMS": 121742.57966700001
+        }
+      ],
+      "status": "passed",
+      "errors": [],
+      "name": "ordered-4-a",
+      "version": "atomic-select-private-browsers-ordinary-contexts",
+      "directory": "/private/tmp/dyno-concurrency-spike-uD5YrQ/harness/ephemeral/runs/ordered-4-a",
+      "order": "ordered",
+      "seed": null,
+      "validCompleteTiming": true,
+      "actualBrowserOutcomes": {
+        "passed": 338,
+        "failed": 0,
+        "skipped": 0,
+        "unreported": 0
+      },
+      "uniqueOutcomeIds": 338,
+      "acceptedAttachmentReferencesInEmittedOutcomes": 245,
+      "failures": [],
+      "fatal": [],
+      "plan": {
+        "version": 1,
+        "algorithm": "round-robin-v1",
+        "randomization": "sha256-fisher-yates-v1",
+        "order": "ordered",
+        "seed": null,
+        "workers": 4
+      },
+      "planSHA256": "7437485d742628cb0ba73c9ae9ad692718bca596736eaeb86e83c19c97124988",
+      "profiles": [
+        {
+          "worker": 0,
+          "browserMS": 106896.70000004768,
+          "tests": 85,
+          "artifact": "/private/tmp/dyno-concurrency-spike-uD5YrQ/harness/ephemeral/runs/ordered-4-a/worker-0/runner-profile.json"
+        },
+        {
+          "worker": 1,
+          "browserMS": 107794.5,
+          "tests": 85,
+          "artifact": "/private/tmp/dyno-concurrency-spike-uD5YrQ/harness/ephemeral/runs/ordered-4-a/worker-1/runner-profile.json"
+        },
+        {
+          "worker": 2,
+          "browserMS": 101459.89999997616,
+          "tests": 84,
+          "artifact": "/private/tmp/dyno-concurrency-spike-uD5YrQ/harness/ephemeral/runs/ordered-4-a/worker-2/runner-profile.json"
+        },
+        {
+          "worker": 3,
+          "browserMS": 110485.20000004768,
+          "tests": 84,
+          "artifact": "/private/tmp/dyno-concurrency-spike-uD5YrQ/harness/ephemeral/runs/ordered-4-a/worker-3/runner-profile.json"
+        }
+      ],
+      "browserServersLaunchMS": 350.6263340000005,
+      "browserServersCloseMS": 24.88858299999265,
+      "browserServerPIDs": [
+        {
+          "worker": 0,
+          "pid": 56172
+        },
+        {
+          "worker": 1,
+          "pid": 56171
+        },
+        {
+          "worker": 2,
+          "pid": 56173
+        },
+        {
+          "worker": 3,
+          "pid": 56174
+        }
+      ],
+      "systemSnapshotArtifact": "/private/tmp/dyno-concurrency-spike-uD5YrQ/integration/ephemeral-ordered-4-a-system.json",
+      "systemSnapshotsAt": {
+        "before": "2026-10-31T07:16:58.054Z",
+        "after": "2026-10-31T07:19:42.800Z"
+      }
+    },
+    {
+      "kind": "private-Chromium-servers-ordinary-contexts-throughput-prototype",
+      "startedAt": "2026-10-31T07:19:46.657Z",
+      "workers": 1,
+      "completeSuite": true,
+      "expectedBrowserCases": 338,
+      "nodeCases": [
+        {
+          "worker": 0,
+          "count": 1,
+          "passed": 1,
+          "failed": 0,
+          "duration": 359.68758300000036
+        }
+      ],
+      "images": 232,
+      "acceptedAttachments": 245,
+      "captureFiles": 232,
+      "checkpointCollisions": [],
+      "checkpointStatus": "passed",
+      "commandMS": 212172.88924999998,
+      "buildMS": 5292.877125,
+      "activeWallMS": 206727.497125,
+      "lifecycleMS": 214800.270417,
+      "serviceReady": true,
+      "cleanupPassed": true,
+      "source": [
+        {
+          "worker": 0,
+          "source": {
+            "sha256": "9fd7f2f1c8f8b4a24bf268fcac91d13a0c3bc6f0e2ef01223a68f33eb337c75c",
+            "files": 1163
+          },
+          "sourceAfter": {
+            "sha256": "9fd7f2f1c8f8b4a24bf268fcac91d13a0c3bc6f0e2ef01223a68f33eb337c75c",
+            "files": 1163
+          }
+        }
+      ],
+      "workerRuns": [
+        {
+          "worker": 0,
+          "runId": "05a69ea0-4264-4f94-a59a-8cf11f8f6e7b",
+          "browserMS": 198288.19999992847,
+          "cases": 338
+        }
+      ],
+      "workerCommands": [
+        {
+          "worker": 0,
+          "code": 0,
+          "signal": null,
+          "durationMS": 206722.447459
+        }
+      ],
+      "status": "passed",
+      "errors": [],
+      "name": "ordered-1-a",
+      "version": "atomic-select-private-browsers-ordinary-contexts",
+      "directory": "/private/tmp/dyno-concurrency-spike-uD5YrQ/harness/ephemeral/runs/ordered-1-a",
+      "order": "ordered",
+      "seed": null,
+      "validCompleteTiming": true,
+      "actualBrowserOutcomes": {
+        "passed": 338,
+        "failed": 0,
+        "skipped": 0,
+        "unreported": 0
+      },
+      "uniqueOutcomeIds": 338,
+      "acceptedAttachmentReferencesInEmittedOutcomes": 245,
+      "failures": [],
+      "fatal": [],
+      "plan": {
+        "version": 1,
+        "algorithm": "round-robin-v1",
+        "randomization": "sha256-fisher-yates-v1",
+        "order": "ordered",
+        "seed": null,
+        "workers": 1
+      },
+      "planSHA256": "5586767288b0a4a8bea74b25370033e4d9e9fd65e19e6a01784b3d9522e457f7",
+      "profiles": [
+        {
+          "worker": 0,
+          "browserMS": 198288.19999992847,
+          "tests": 338,
+          "artifact": "/private/tmp/dyno-concurrency-spike-uD5YrQ/harness/ephemeral/runs/ordered-1-a/worker-0/runner-profile.json"
+        }
+      ],
+      "browserServersLaunchMS": 138.05012499999975,
+      "browserServersCloseMS": 14.377375000010943,
+      "browserServerPIDs": [
+        {
+          "worker": 0,
+          "pid": 57606
+        }
+      ],
+      "systemSnapshotArtifact": "/private/tmp/dyno-concurrency-spike-uD5YrQ/integration/ephemeral-ordered-1-a-system.json",
+      "systemSnapshotsAt": {
+        "before": "2026-10-31T07:19:44.339Z",
+        "after": "2026-10-31T07:23:26.443Z"
+      }
+    },
+    {
+      "kind": "private-Chromium-servers-ordinary-contexts-throughput-prototype",
+      "startedAt": "2026-10-31T07:23:29.152Z",
+      "workers": 4,
+      "completeSuite": true,
+      "expectedBrowserCases": 338,
+      "nodeCases": [
+        {
+          "worker": 0,
+          "count": 1,
+          "passed": 1,
+          "failed": 0,
+          "duration": 355.8110419999998
+        }
+      ],
+      "images": 232,
+      "acceptedAttachments": 245,
+      "captureFiles": 232,
+      "checkpointCollisions": [],
+      "checkpointStatus": "passed",
+      "commandMS": 89837.672208,
+      "buildMS": 2759.087041,
+      "activeWallMS": 86953.863541,
+      "lifecycleMS": 93450.907125,
+      "serviceReady": true,
+      "cleanupPassed": true,
+      "source": [
+        {
+          "worker": 0,
+          "source": {
+            "sha256": "9fd7f2f1c8f8b4a24bf268fcac91d13a0c3bc6f0e2ef01223a68f33eb337c75c",
+            "files": 1163
+          },
+          "sourceAfter": {
+            "sha256": "9fd7f2f1c8f8b4a24bf268fcac91d13a0c3bc6f0e2ef01223a68f33eb337c75c",
+            "files": 1163
+          }
+        },
+        {
+          "worker": 1,
+          "source": {
+            "sha256": "9fd7f2f1c8f8b4a24bf268fcac91d13a0c3bc6f0e2ef01223a68f33eb337c75c",
+            "files": 1163
+          },
+          "sourceAfter": {
+            "sha256": "9fd7f2f1c8f8b4a24bf268fcac91d13a0c3bc6f0e2ef01223a68f33eb337c75c",
+            "files": 1163
+          }
+        },
+        {
+          "worker": 2,
+          "source": {
+            "sha256": "9fd7f2f1c8f8b4a24bf268fcac91d13a0c3bc6f0e2ef01223a68f33eb337c75c",
+            "files": 1163
+          },
+          "sourceAfter": {
+            "sha256": "9fd7f2f1c8f8b4a24bf268fcac91d13a0c3bc6f0e2ef01223a68f33eb337c75c",
+            "files": 1163
+          }
+        },
+        {
+          "worker": 3,
+          "source": {
+            "sha256": "9fd7f2f1c8f8b4a24bf268fcac91d13a0c3bc6f0e2ef01223a68f33eb337c75c",
+            "files": 1163
+          },
+          "sourceAfter": {
+            "sha256": "9fd7f2f1c8f8b4a24bf268fcac91d13a0c3bc6f0e2ef01223a68f33eb337c75c",
+            "files": 1163
+          }
+        }
+      ],
+      "workerRuns": [
+        {
+          "worker": 0,
+          "runId": "986a2e3f-75b9-4403-a798-b2f972cbc432",
+          "browserMS": 70311,
+          "cases": 85
+        },
+        {
+          "worker": 1,
+          "runId": "6d40d805-8e5c-4457-98b8-e07c49dc79ad",
+          "browserMS": 66968.79999995232,
+          "cases": 85
+        },
+        {
+          "worker": 2,
+          "runId": "7eaa29d1-81fa-4419-8808-f7857261cd96",
+          "browserMS": 79984.60000002384,
+          "cases": 84
+        },
+        {
+          "worker": 3,
+          "runId": "2ee55a5b-d489-4c2a-8ca7-dec3d6b2706c",
+          "browserMS": 68491.5,
+          "cases": 84
+        }
+      ],
+      "workerCommands": [
+        {
+          "worker": 0,
+          "code": 0,
+          "signal": null,
+          "durationMS": 77653.674917
+        },
+        {
+          "worker": 1,
+          "code": 0,
+          "signal": null,
+          "durationMS": 71431.693875
+        },
+        {
+          "worker": 2,
+          "code": 0,
+          "signal": null,
+          "durationMS": 86951.142083
+        },
+        {
+          "worker": 3,
+          "code": 0,
+          "signal": null,
+          "durationMS": 72638.11058299999
+        }
+      ],
+      "status": "passed",
+      "errors": [],
+      "name": "random-4-a",
+      "version": "atomic-select-private-browsers-ordinary-contexts",
+      "directory": "/private/tmp/dyno-concurrency-spike-uD5YrQ/harness/ephemeral/runs/random-4-a",
+      "order": "random",
+      "seed": "concurrency-v1",
+      "validCompleteTiming": true,
+      "actualBrowserOutcomes": {
+        "passed": 338,
+        "failed": 0,
+        "skipped": 0,
+        "unreported": 0
+      },
+      "uniqueOutcomeIds": 338,
+      "acceptedAttachmentReferencesInEmittedOutcomes": 245,
+      "failures": [],
+      "fatal": [],
+      "plan": {
+        "version": 1,
+        "algorithm": "round-robin-v1",
+        "randomization": "sha256-fisher-yates-v1",
+        "order": "random",
+        "seed": "concurrency-v1",
+        "workers": 4
+      },
+      "planSHA256": "0ace279a7fe8c1f7d4edee3d66382aacc73232c9495b8d3ed0910610bc13ff52",
+      "profiles": [
+        {
+          "worker": 0,
+          "browserMS": 70311,
+          "tests": 85,
+          "artifact": "/private/tmp/dyno-concurrency-spike-uD5YrQ/harness/ephemeral/runs/random-4-a/worker-0/runner-profile.json"
+        },
+        {
+          "worker": 1,
+          "browserMS": 66968.79999995232,
+          "tests": 85,
+          "artifact": "/private/tmp/dyno-concurrency-spike-uD5YrQ/harness/ephemeral/runs/random-4-a/worker-1/runner-profile.json"
+        },
+        {
+          "worker": 2,
+          "browserMS": 79984.60000002384,
+          "tests": 84,
+          "artifact": "/private/tmp/dyno-concurrency-spike-uD5YrQ/harness/ephemeral/runs/random-4-a/worker-2/runner-profile.json"
+        },
+        {
+          "worker": 3,
+          "browserMS": 68491.5,
+          "tests": 84,
+          "artifact": "/private/tmp/dyno-concurrency-spike-uD5YrQ/harness/ephemeral/runs/random-4-a/worker-3/runner-profile.json"
+        }
+      ],
+      "browserServersLaunchMS": 104.2319580000003,
+      "browserServersCloseMS": 20.387082999994163,
+      "browserServerPIDs": [
+        {
+          "worker": 0,
+          "pid": 60475
+        },
+        {
+          "worker": 1,
+          "pid": 60476
+        },
+        {
+          "worker": 2,
+          "pid": 60477
+        },
+        {
+          "worker": 3,
+          "pid": 60478
+        }
+      ],
+      "systemSnapshotArtifact": "/private/tmp/dyno-concurrency-spike-uD5YrQ/integration/ephemeral-random-4-a-system.json",
+      "systemSnapshotsAt": {
+        "before": "2026-10-31T07:23:27.152Z",
+        "after": "2026-10-31T07:25:08.353Z"
+      }
+    },
+    {
+      "name": "random-1-a",
+      "version": "atomic-select-private-browsers",
+      "status": "incomplete-and-collector-finalization-failed",
+      "seed": "concurrency-v1",
+      "workers": 1,
+      "actualBrowserOutcomes": {
+        "passed": 315,
+        "failed": 0,
+        "skipped": 0,
+        "unreported": 23
+      },
+      "unreported": 23,
+      "completeEvents": 0,
+      "expectedOrderedPrefixVerified": true,
+      "commandMS": null,
+      "hardCapMS": 300000,
+      "workerLogFinalizedAt": "2026-10-31T06:56:58.546377+00:00",
+      "collectorError": "assert.ok(canonical) during logical screenshot export after incomplete worker validation; no summary.json saved. Raw worker logs/service cleanup were retained.",
+      "directory": "/private/tmp/dyno-concurrency-spike-uD5YrQ/harness/atomic/runs/random-1-a",
+      "validCompleteTiming": false,
+      "sourceFilesUnchangedByRecovery": true
+    }
+  ],
+  "browserFixture": {
+    "scope": "32actual browser-local Interactor HTTP saves/native toggles and8PNG pixel+dimension checks per passing case. No full Dyno/Vizzly speed inference. RSS is summed process snapshots, not peak/physical; WebKit XPC process accounting incomplete. Headless only.",
+    "cases": [
+      {
+        "engine": "chromium",
+        "mode": "contexts",
+        "workers": 1,
+        "caseId": "chromium-contexts-1-0",
+        "status": "passed",
+        "total": 32,
+        "startupMS": 375.044542,
+        "runMS": 6702.109084,
+        "totalMS": 7262.839583999999,
+        "visibility": {
+          "appVisible": 32,
+          "runtimeVisible": 32,
+          "animationFramesObserved": 32,
+          "messageTurnMedianMS": 0.09999990463256836
+        },
+        "readyResources": {
+          "browserDescendantProcesses": 4,
+          "browserAggregateRSSKB": 295488,
+          "harnessRSSKB": 150192
+        },
+        "afterRunResources": {
+          "browserDescendantProcesses": 4,
+          "browserAggregateRSSKB": 428848,
+          "harnessRSSKB": 181200
+        }
+      },
+      {
+        "engine": "chromium",
+        "mode": "contexts",
+        "workers": 2,
+        "caseId": "chromium-contexts-2-1",
+        "status": "passed",
+        "total": 32,
+        "startupMS": 109.83141700000033,
+        "runMS": 3409.755292,
+        "totalMS": 3694.3995830000003,
+        "visibility": {
+          "appVisible": 32,
+          "runtimeVisible": 32,
+          "animationFramesObserved": 32,
+          "messageTurnMedianMS": 0.09999990463256836
+        },
+        "readyResources": {
+          "browserDescendantProcesses": 5,
+          "browserAggregateRSSKB": 395456,
+          "harnessRSSKB": 185552
+        },
+        "afterRunResources": {
+          "browserDescendantProcesses": 5,
+          "browserAggregateRSSKB": 649824,
+          "harnessRSSKB": 201504
+        }
+      },
+      {
+        "engine": "chromium",
+        "mode": "tabs",
+        "workers": 2,
+        "caseId": "chromium-tabs-2-2",
+        "status": "unsafe-shared-state-proved",
+        "total": 32,
+        "startupMS": 107.4151669999992,
+        "runMS": 0.7300840000007156,
+        "totalMS": 260.77441700000054,
+        "readyResources": {
+          "browserDescendantProcesses": 5,
+          "browserAggregateRSSKB": 393888,
+          "harnessRSSKB": 202944
+        },
+        "afterRunResources": {
+          "browserDescendantProcesses": 5,
+          "browserAggregateRSSKB": 416752,
+          "harnessRSSKB": 204416
+        }
+      },
+      {
+        "engine": "chromium",
+        "mode": "contexts",
+        "workers": 4,
+        "caseId": "chromium-contexts-4-0",
+        "status": "passed",
+        "total": 32,
+        "startupMS": 134.59658399999998,
+        "runMS": 1770.8225830000001,
+        "totalMS": 2067.7440420000003,
+        "visibility": {
+          "appVisible": 32,
+          "runtimeVisible": 32,
+          "animationFramesObserved": 32,
+          "messageTurnMedianMS": 0
+        },
+        "readyResources": {
+          "browserDescendantProcesses": 7,
+          "browserAggregateRSSKB": 639488,
+          "harnessRSSKB": 150272
+        },
+        "afterRunResources": {
+          "browserDescendantProcesses": 7,
+          "browserAggregateRSSKB": 976144,
+          "harnessRSSKB": 204032
+        }
+      },
+      {
+        "engine": "chromium",
+        "mode": "contexts",
+        "workers": 8,
+        "caseId": "chromium-contexts-8-1",
+        "status": "passed",
+        "total": 32,
+        "startupMS": 205.96345799999972,
+        "runMS": 951.353083,
+        "totalMS": 1344.832125,
+        "visibility": {
+          "appVisible": 32,
+          "runtimeVisible": 32,
+          "animationFramesObserved": 32,
+          "messageTurnMedianMS": 0
+        },
+        "readyResources": {
+          "browserDescendantProcesses": 11,
+          "browserAggregateRSSKB": 1151504,
+          "harnessRSSKB": 208480
+        },
+        "afterRunResources": {
+          "browserDescendantProcesses": 11,
+          "browserAggregateRSSKB": 1416464,
+          "harnessRSSKB": 231168
+        }
+      },
+      {
+        "engine": "chromium",
+        "mode": "browsers",
+        "workers": 1,
+        "caseId": "chromium-browsers-1-2",
+        "status": "passed",
+        "total": 32,
+        "startupMS": 112.59212500000012,
+        "runMS": 6748.313375000001,
+        "totalMS": 7024.307667000001,
+        "visibility": {
+          "appVisible": 32,
+          "runtimeVisible": 32,
+          "animationFramesObserved": 32,
+          "messageTurnMedianMS": 0
+        },
+        "readyResources": {
+          "browserDescendantProcesses": 4,
+          "browserAggregateRSSKB": 288272,
+          "harnessRSSKB": 232384
+        },
+        "afterRunResources": {
+          "browserDescendantProcesses": 4,
+          "browserAggregateRSSKB": 438224,
+          "harnessRSSKB": 235440
+        }
+      },
+      {
+        "engine": "chromium",
+        "mode": "browsers",
+        "workers": 2,
+        "caseId": "chromium-browsers-2-3",
+        "status": "passed",
+        "total": 32,
+        "startupMS": 118.55337500000132,
+        "runMS": 3379.2771250000005,
+        "totalMS": 3677.722458,
+        "visibility": {
+          "appVisible": 32,
+          "runtimeVisible": 32,
+          "animationFramesObserved": 32,
+          "messageTurnMedianMS": 0
+        },
+        "readyResources": {
+          "browserDescendantProcesses": 8,
+          "browserAggregateRSSKB": 576720,
+          "harnessRSSKB": 237456
+        },
+        "afterRunResources": {
+          "browserDescendantProcesses": 8,
+          "browserAggregateRSSKB": 850432,
+          "harnessRSSKB": 244736
+        }
+      },
+      {
+        "engine": "chromium",
+        "mode": "browsers",
+        "workers": 4,
+        "caseId": "chromium-browsers-4-4",
+        "status": "passed",
+        "total": 32,
+        "startupMS": 168.89175000000068,
+        "runMS": 1679.812167,
+        "totalMS": 2031.0175409999993,
+        "visibility": {
+          "appVisible": 32,
+          "runtimeVisible": 32,
+          "animationFramesObserved": 32,
+          "messageTurnMedianMS": 0
+        },
+        "readyResources": {
+          "browserDescendantProcesses": 16,
+          "browserAggregateRSSKB": 1206992,
+          "harnessRSSKB": 245952
+        },
+        "afterRunResources": {
+          "browserDescendantProcesses": 16,
+          "browserAggregateRSSKB": 1575056,
+          "harnessRSSKB": 262000
+        }
+      },
+      {
+        "engine": "chromium",
+        "mode": "browsers",
+        "workers": 8,
+        "caseId": "chromium-browsers-8-5",
+        "status": "passed",
+        "total": 32,
+        "startupMS": 296.1954999999998,
+        "runMS": 856.0554999999986,
+        "totalMS": 1336.6415419999994,
+        "visibility": {
+          "appVisible": 32,
+          "runtimeVisible": 32,
+          "animationFramesObserved": 32,
+          "messageTurnMedianMS": 0
+        },
+        "readyResources": {
+          "browserDescendantProcesses": 32,
+          "browserAggregateRSSKB": 2422944,
+          "harnessRSSKB": 263552
+        },
+        "afterRunResources": {
+          "browserDescendantProcesses": 32,
+          "browserAggregateRSSKB": 2963376,
+          "harnessRSSKB": 290992
+        }
+      },
+      {
+        "engine": "chromium",
+        "mode": "contexts",
+        "workers": 1,
+        "caseId": "chromium-contexts-1-6",
+        "status": "passed",
+        "total": 32,
+        "startupMS": 110.05570799999987,
+        "runMS": 6790.968124999999,
+        "totalMS": 7071.4599579999995,
+        "visibility": {
+          "appVisible": 32,
+          "runtimeVisible": 32,
+          "animationFramesObserved": 32,
+          "messageTurnMedianMS": 0
+        },
+        "readyResources": {
+          "browserDescendantProcesses": 4,
+          "browserAggregateRSSKB": 288320,
+          "harnessRSSKB": 293360
+        },
+        "afterRunResources": {
+          "browserDescendantProcesses": 4,
+          "browserAggregateRSSKB": 432880,
+          "harnessRSSKB": 290304
+        }
+      },
+      {
+        "engine": "webkit",
+        "mode": "contexts",
+        "workers": 1,
+        "caseId": "webkit-contexts-1-0",
+        "status": "passed",
+        "total": 32,
+        "startupMS": 988.8863749999999,
+        "runMS": 6487.340249999999,
+        "totalMS": 7651.022040999999,
+        "visibility": {
+          "appVisible": 32,
+          "runtimeVisible": 32,
+          "animationFramesObserved": 32,
+          "messageTurnMedianMS": 0
+        },
+        "readyResources": {
+          "browserDescendantProcesses": 2,
+          "browserAggregateRSSKB": 124368,
+          "harnessRSSKB": 151136
+        },
+        "afterRunResources": {
+          "browserDescendantProcesses": 2,
+          "browserAggregateRSSKB": 143072,
+          "harnessRSSKB": 187968
+        }
+      },
+      {
+        "engine": "webkit",
+        "mode": "contexts",
+        "workers": 2,
+        "caseId": "webkit-contexts-2-1",
+        "status": "passed",
+        "total": 32,
+        "startupMS": 367.37445899999966,
+        "runMS": 3144.248917000001,
+        "totalMS": 3675.6886670000004,
+        "visibility": {
+          "appVisible": 32,
+          "runtimeVisible": 32,
+          "animationFramesObserved": 32,
+          "messageTurnMedianMS": 0
+        },
+        "readyResources": {
+          "browserDescendantProcesses": 2,
+          "browserAggregateRSSKB": 125312,
+          "harnessRSSKB": 192576
+        },
+        "afterRunResources": {
+          "browserDescendantProcesses": 2,
+          "browserAggregateRSSKB": 144400,
+          "harnessRSSKB": 220240
+        }
+      },
+      {
+        "engine": "webkit",
+        "mode": "browsers",
+        "workers": 2,
+        "caseId": "webkit-browsers-2-2",
+        "status": "passed",
+        "total": 32,
+        "startupMS": 393.975292000001,
+        "runMS": 3194.012166999999,
+        "totalMS": 3755.284708000001,
+        "visibility": {
+          "appVisible": 32,
+          "runtimeVisible": 32,
+          "animationFramesObserved": 32,
+          "messageTurnMedianMS": 0
+        },
+        "readyResources": {
+          "browserDescendantProcesses": 4,
+          "browserAggregateRSSKB": 248544,
+          "harnessRSSKB": 221712
+        },
+        "afterRunResources": {
+          "browserDescendantProcesses": 4,
+          "browserAggregateRSSKB": 283136,
+          "harnessRSSKB": 229248
+        }
+      },
+      {
+        "engine": "firefox",
+        "mode": "contexts",
+        "workers": 1,
+        "caseId": "firefox-contexts-1-0",
+        "status": "failed",
+        "total": 32,
+        "totalMS": 157.40341700000002,
+        "error": "browserType.launch: Failed to launch the browser process.\nBrowser logs:\n\n<launching> /Users/robertdeluca/Library/Caches/ms-playwright/firefox-1555/firefox/Nightly.app/Contents/MacOS/firefox -no-remote -headless -profile /var/folders/44/ng7yt98j78z5kjhptpztzm240000gn/T/playwright_firefoxdev_profile-e50SxC -juggler-pipe -silent\n<launched> pid=46281\n[pid=46281][err] *** You are running in headless mode.\n[pid=46281][err] Could not find profile folder.\n[pid=46281] <process did exit: exitCode=1, signal=null>\n[pid=46281] starting temporary directories cleanup\nCall log:\n\u001b[2m  - <launching> /Users/robertdeluca/Library/Caches/ms-playwright/firefox-1555/firefox/Nightly.app/Contents/MacOS/firefox -no-remote -headless -profile /var/folders/44/ng7yt98j78z5kjhptpztzm240000gn/T/playwright_firefoxdev_profile-e50SxC -juggler-pipe -silent\u001b[22m\n\u001b[2m  - <launched> pid=46281\u001b[22m\n\u001b[2m  - [pid=46281][err] *** You are running in headless mode.\u001b[22m\n\u001b[2m  - [pid=46281][err] Could not find profile folder.\u001b[22m\n\u001b[2m  - [pid=46281] <process did exit: exitCode=1, signal=null>\u001b[22m\n\u001b[2m  - [pid=46281] starting temporary directories cleanup\u001b[22m\n\u001b[2m  - [pid=46281] <gracefully close start>\u001b[22m\n\u001b[2m  - [pid=46281] <kill>\u001b[22m\n\u001b[2m  - [pid=46281] <skipped force kill spawnedProcess.killed=false processClosed=true>\u001b[22m\n\u001b[2m  - [pid=46281] finished temporary directories cleanup\u001b[22m\n\u001b[2m  - [pid=46281] <gracefully close end>\u001b[22m\n\n    at launch (/private/tmp/dyno-concurrency-spike-uD5YrQ/browser/run.js:107:29)\n    at /private/tmp/dyno-concurrency-spike-uD5YrQ/browser/run.js:109:40"
+      },
+      {
+        "engine": "firefox",
+        "mode": "contexts",
+        "workers": 1,
+        "caseId": "firefox-contexts-1-0",
+        "status": "failed",
+        "total": 32,
+        "totalMS": 157.40341700000002,
+        "error": "browserType.launch: Failed to launch the browser process.\nBrowser logs:\n\n<launching> /Users/robertdeluca/Library/Caches/ms-playwright/firefox-1555/firefox/Nightly.app/Contents/MacOS/firefox -no-remote -headless -profile /var/folders/44/ng7yt98j78z5kjhptpztzm240000gn/T/playwright_firefoxdev_profile-e50SxC -juggler-pipe -silent\n<launched> pid=46281\n[pid=46281][err] *** You are running in headless mode.\n[pid=46281][err] Could not find profile folder.\n[pid=46281] <process did exit: exitCode=1, signal=null>\n[pid=46281] starting temporary directories cleanup\nCall log:\n\u001b[2m  - <launching> /Users/robertdeluca/Library/Caches/ms-playwright/firefox-1555/firefox/Nightly.app/Contents/MacOS/firefox -no-remote -headless -profile /var/folders/44/ng7yt98j78z5kjhptpztzm240000gn/T/playwright_firefoxdev_profile-e50SxC -juggler-pipe -silent\u001b[22m\n\u001b[2m  - <launched> pid=46281\u001b[22m\n\u001b[2m  - [pid=46281][err] *** You are running in headless mode.\u001b[22m\n\u001b[2m  - [pid=46281][err] Could not find profile folder.\u001b[22m\n\u001b[2m  - [pid=46281] <process did exit: exitCode=1, signal=null>\u001b[22m\n\u001b[2m  - [pid=46281] starting temporary directories cleanup\u001b[22m\n\u001b[2m  - [pid=46281] <gracefully close start>\u001b[22m\n\u001b[2m  - [pid=46281] <kill>\u001b[22m\n\u001b[2m  - [pid=46281] <skipped force kill spawnedProcess.killed=false processClosed=true>\u001b[22m\n\u001b[2m  - [pid=46281] finished temporary directories cleanup\u001b[22m\n\u001b[2m  - [pid=46281] <gracefully close end>\u001b[22m\n\n    at launch (/private/tmp/dyno-concurrency-spike-uD5YrQ/browser/run.js:107:29)\n    at /private/tmp/dyno-concurrency-spike-uD5YrQ/browser/run.js:109:40"
+      }
+    ],
+    "sourceHashes": {
+      "run.js": "df3f90b596c11115ec47b8d3541a8e13f8a3d1ac57c5392f9bfeba5910247116",
+      "runtime.js": "b83cb641e50a48d54be14dafe361713f3fc16d73b3b024584bb1f1eddd42e06a",
+      "controller.js": "7c10cd707718367d6c539b0fc38cdea87073a5aaf4b653913b7a77edf8378639",
+      "app.js": "d60b1bfca092f223a8b5dd410b7e3500334f2f755caeadd19bfecb5b6149a0bf"
+    },
+    "clipboard": [
+      {
+        "mode": "contexts",
+        "status": "passed",
+        "sharedBackingStore": true,
+        "aRetainedOwnValue": false,
+        "engine": "chromium",
+        "headless": true
+      },
+      {
+        "mode": "browsers",
+        "status": "passed",
+        "sharedBackingStore": false,
+        "aRetainedOwnValue": true,
+        "engine": "chromium",
+        "headless": true
+      }
+    ],
+    "artifacts": "browser/REPORT.md; browser/summary.json; browser/artifacts/clipboard-proof/results.json"
+  },
+  "proofs": {
+    "scheduler": {
+      "kind": "Pure scheduling correctness and ideal load balance; no browser performance claim",
+      "pureCases": 19,
+      "passed": 19,
+      "failed": 0,
+      "prototype": "scheduler.js",
+      "test": "proof.test.js",
+      "proofLog": "prefix-proof.log",
+      "durationReplay": "load-balance.json",
+      "recommendation": "Node-owned per-test pull queue with stable identity, immutable plans, cleanup leases and versioned seeded order; record worker queues for replay.",
+      "criticalLimits": [
+        "Seed does not determine completion-dependent worker mapping or app/network interleaving.",
+        "Replay restores worker queues, not exact concurrency timing or application state.",
+        "Completed scheduler means work drained, not durable CLI success; final report persistence remains separate.",
+        "Pure proof does not implement or validate browser/backend isolation."
+      ],
+      "followup": {
+        "originalReplayGap": "Interrupted/stopped manifests lacked all selected dispatches and were rejected.",
+        "before": "prefix-before.json",
+        "proof": "prefix.test.js",
+        "result": "prefix-result.json",
+        "partialReplayScope": {
+          "kind": "attempted-prefix",
+          "discovered": 338,
+          "selected": 5,
+          "originalSelected": 12,
+          "omitted": 7,
+          "sourcePhase": "stopped"
+        },
+        "modelDirection": "One canonical run model; derive worker availability/counts from accepted execution records. Do not ship duplicated scheduler and aggregator stores."
+      }
+    },
+    "schedulerPrefixReplay": {
+      "pureProof": true,
+      "original": {
+        "phase": "stopped",
+        "selected": 12,
+        "attempted": 5
+      },
+      "replay": {
+        "phase": "completed",
+        "passed": 5,
+        "scope": {
+          "kind": "attempted-prefix",
+          "discovered": 338,
+          "selected": 5,
+          "originalSelected": 12,
+          "omitted": 7,
+          "sourcePhase": "stopped"
+        }
+      },
+      "workerQueuesPreserved": true,
+      "globalDispatchOrderChanged": true,
+      "freshExecutionIds": true
+    },
+    "resultModel": {
+      "pureGroups": 7,
+      "completionPermutations": 24,
+      "realHTTPSSEFilesystemGroups": 4,
+      "rootExecuted": true,
+      "artifact": "results/REPORT.md",
+      "limitation": "Separate contract sketch and actual report writer; not production gateway, capture, source-map generation or backend cleanup."
+    },
+    "backendIsolation": {
+      "status": "passed",
+      "rootExecuted": true,
+      "exitCode": 0,
+      "cases": 6,
+      "servicesRemoved": true,
+      "rawLog": "/private/tmp/dyno-concurrency-spike-uD5YrQ/isolation/root-proof-2.log",
+      "results": "/private/tmp/dyno-concurrency-spike-uD5YrQ/isolation/results.json",
+      "sourceSHA256": {
+        "app.js": "fd8036ce2c9d6502c1c0892808fc704d1b7306f59241720304be424438903121",
+        "run.js": "4a66ba7c196805a8a6395e1685520ddbebfeb51c01ff8507d055063445fa01db",
+        "application-gate.js": "49a8edf5163d08bc47bc5daf7010f6f07bbc2b38bad52bfb350a8d9dbea31074"
+      },
+      "failedAttempt": {
+        "directory": "/private/tmp/dyno-concurrency-spike-uD5YrQ/isolation/failed-attempt-1",
+        "reason": "Harness used custom integer-string BullMQ IDs; failed before completing any case. Exact source/results preserved.",
+        "servicesRemoved": true
+      },
+      "scope": "Controlled real HTTP/app processes/PostgreSQL/Redis/BullMQ/files proof; not full Vizzly app, cross-browser behavior, throughput benchmark, or generic job cancellation.",
+      "realVizzlyFollowup": {
+        "status": "failed-fullsuite",
+        "report": "/private/tmp/dyno-concurrency-spike-uD5YrQ/isolation/FOUR-WORKER-INCIDENT.md",
+        "evidence": "/private/tmp/dyno-concurrency-spike-uD5YrQ/isolation/four-worker-incident.json",
+        "inference": "Per-worker resources alone do not establish complete project job cleanup."
+      }
+    },
+    "controlledSelect": [
+      {
+        "engine": "chromium",
+        "browser": "156.0.8078.4",
+        "status": "passed",
+        "hypothesis": "reproduced-controlled-select-race",
+        "cases": 14,
+        "oldWrong": 6,
+        "atomicCorrect": 7,
+        "controlsCorrect": 2,
+        "assertionSettings": {
+          "timeout": 1000,
+          "frequency": 60,
+          "reliability": 1
+        }
+      },
+      {
+        "engine": "webkit",
+        "browser": "27.2",
+        "status": "passed",
+        "hypothesis": "reproduced-controlled-select-race",
+        "cases": 14,
+        "oldWrong": 6,
+        "atomicCorrect": 7,
+        "controlsCorrect": 2,
+        "assertionSettings": {
+          "timeout": 1000,
+          "frequency": 60,
+          "reliability": 1
+        }
+      }
+    ],
+    "originalFullFailure": {
+      "name": "ordered-2-a",
+      "status": "failed-application-case-not-valid-timing",
+      "actualBrowserOutcomes": {
+        "passed": 337,
+        "failed": 1,
+        "skipped": 0
+      },
+      "nodePassed": 1,
+      "logicalCheckpoints": 232,
+      "physicalCheckpointFiles": 233,
+      "acceptedPNGDecoded": 245,
+      "failures": [
+        {
+          "id": "[\"tests/e2e/github-integration-lifecycle.spec.js\",\"GitHub integration lifecycle through the external HTTP boundary\",\"connects one repository to fifteen projects without per-project GitHub hooks\"]",
+          "index": 143,
+          "name": "connects one repository to fifteen projects without per-project GitHub hooks",
+          "message": "Could not find element"
+        }
+      ],
+      "reports": [
+        {
+          "worker": 0,
+          "path": "/private/tmp/dyno-concurrency-spike-uD5YrQ/harness/runs/ordered-2-a/app-0/.dyno/reports/f2bf18a0-8f4a-4683-88e1-ebb8aae9b4cf/run.json",
+          "summary": {
+            "passed": 169,
+            "failed": 0,
+            "skipped": 0,
+            "notRun": 0,
+            "duration": 94060.39999997616
+          }
+        },
+        {
+          "worker": 1,
+          "path": "/private/tmp/dyno-concurrency-spike-uD5YrQ/harness/runs/ordered-2-a/app-1/.dyno/reports/88715a75-594d-4b48-b3b9-08eddba8b94d/run.json",
+          "summary": {
+            "passed": 168,
+            "failed": 1,
+            "skipped": 0,
+            "notRun": 0,
+            "duration": 99370.5
+          }
+        }
+      ],
+      "note": "The benchmark summary counts only wholly valid workers, so its169passed/119attachments are validation-cascade counts, not missing outcomes/images. All338 outcomes and245accepted images were persisted; one actual app case failed. Keep excluded from valid speed comparisons."
+    },
+    "incompleteRandomizedSingleWorker": {
+      "name": "random-1-a",
+      "version": "atomic-select-private-browsers",
+      "status": "incomplete-and-collector-finalization-failed",
+      "seed": "concurrency-v1",
+      "workers": 1,
+      "actualBrowserOutcomes": {
+        "passed": 315,
+        "failed": 0,
+        "skipped": 0,
+        "unreported": 23
+      },
+      "unreported": 23,
+      "completeEvents": 0,
+      "expectedOrderedPrefixVerified": true,
+      "commandMS": null,
+      "hardCapMS": 300000,
+      "workerLogFinalizedAt": "2026-10-31T06:56:58.546377+00:00",
+      "collectorError": "assert.ok(canonical) during logical screenshot export after incomplete worker validation; no summary.json saved. Raw worker logs/service cleanup were retained.",
+      "directory": "/private/tmp/dyno-concurrency-spike-uD5YrQ/harness/atomic/runs/random-1-a",
+      "validCompleteTiming": false,
+      "sourceFilesUnchangedByRecovery": true
+    },
+    "actualBackgroundResetDeadlock": {
+      "status": "failed-fullsuite-readonly-diagnosis",
+      "incidentDirectory": "/private/tmp/dyno-concurrency-spike-uD5YrQ/harness/atomic/runs/ordered-4-a",
+      "runtimeMutations": false,
+      "newWorkloads": false,
+      "commandMS": 300071.86987500003,
+      "performanceCapMS": 300000,
+      "acceptedCompleteWorkerReports": 0,
+      "images": 132,
+      "requiredImages": 232,
+      "partialCounts": [
+        {
+          "worker": 0,
+          "partialReported": 61,
+          "passed": 59,
+          "failed": 2
+        },
+        {
+          "worker": 1,
+          "partialReported": 68,
+          "passed": 66,
+          "failed": 2
+        },
+        {
+          "worker": 2,
+          "partialReported": 8,
+          "passed": 2,
+          "failed": 6
+        },
+        {
+          "worker": 3,
+          "partialReported": 58,
+          "passed": 56,
+          "failed": 2
+        }
+      ],
+      "partialCountsAreNotCompleteCoverage": true,
+      "initialWorker0Cases": [
+        {
+          "id": "[\"tests/e2e/billing-settings.spec.js\",\"Billing Settings - Basic Functionality\",\"should display billing page structure\"]",
+          "name": "should display billing page structure",
+          "status": "passed",
+          "durationMS": 23376.799999952316,
+          "errorMessage": null,
+          "selectedWork": [
+            {
+              "id": 6,
+              "kind": "step",
+              "name": "Fixture seed.resetDatabase",
+              "start": 236.29999995231628,
+              "duration": 1361.5,
+              "status": "passed",
+              "phase": "test"
+            },
+            {
+              "id": 8,
+              "kind": "step",
+              "name": "Fixture seed.createUserWithOrganization",
+              "start": 1597.7999999523163,
+              "duration": 4669.5,
+              "status": "passed",
+              "phase": "test"
+            },
+            {
+              "id": 10,
+              "kind": "step",
+              "name": "Fixture runtime.prepareSession",
+              "start": 6267.399999976158,
+              "duration": 4269.299999952316,
+              "status": "passed",
+              "phase": "test"
+            },
+            {
+              "id": 12,
+              "kind": "request",
+              "name": "GET /api/user/profile",
+              "start": 10536.699999928474,
+              "duration": 2000.2000000476837,
+              "status": "passed",
+              "phase": "test"
+            }
+          ]
+        },
+        {
+          "id": "[\"tests/e2e/billing-settings.spec.js\",\"Billing Settings - Basic Functionality\",\"should start checkout from an upgrade plan\"]",
+          "name": "should start checkout from an upgrade plan",
+          "status": "passed",
+          "durationMS": 4843.100000023842,
+          "errorMessage": null,
+          "selectedWork": [
+            {
+              "id": 6,
+              "kind": "step",
+              "name": "Fixture seed.resetDatabase",
+              "start": 25.100000023841858,
+              "duration": 2534.100000023842,
+              "status": "passed",
+              "phase": "test"
+            },
+            {
+              "id": 8,
+              "kind": "step",
+              "name": "Fixture seed.createUserWithOrganization",
+              "start": 2559.2999999523163,
+              "duration": 254.40000009536743,
+              "status": "passed",
+              "phase": "test"
+            },
+            {
+              "id": 12,
+              "kind": "step",
+              "name": "Fixture runtime.prepareSession",
+              "start": 2926.2999999523163,
+              "duration": 178,
+              "status": "passed",
+              "phase": "test"
+            },
+            {
+              "id": 14,
+              "kind": "request",
+              "name": "GET /api/user/profile",
+              "start": 3104.399999976158,
+              "duration": 75.30000007152557,
+              "status": "passed",
+              "phase": "test"
+            }
+          ]
+        },
+        {
+          "id": "[\"tests/e2e/build-detail/build-detail-basic-display.spec.js\",\"Build Detail - Basic Display\",\"reviews every capture when different names and browsers reuse the same image from a released CLI\"]",
+          "name": "reviews every capture when different names and browsers reuse the same image from a released CLI",
+          "status": "failed",
+          "durationMS": 29977.700000047684,
+          "errorMessage": "Test exceeded 30000 ms. Check blocked scripts, application startup, or unresolved test work.",
+          "selectedWork": [
+            {
+              "id": 5,
+              "kind": "step",
+              "name": "Fixture seed.resetDatabase",
+              "start": 25.700000047683716,
+              "duration": 130.10000002384186,
+              "status": "passed",
+              "phase": "beforeEach"
+            },
+            {
+              "id": 10,
+              "kind": "step",
+              "name": "Fixture runtime.prepareSession",
+              "start": 299.7000000476837,
+              "duration": 72.89999997615814,
+              "status": "passed",
+              "phase": "test"
+            },
+            {
+              "id": 12,
+              "kind": "request",
+              "name": "GET /api/user/profile",
+              "start": 372.60000002384186,
+              "duration": 323.39999997615814,
+              "status": "passed",
+              "phase": "test"
+            },
+            {
+              "id": 17,
+              "kind": "step",
+              "name": "Fixture buildsBasic.sharedCaptures",
+              "start": 9186.700000047684,
+              "duration": 20790.399999976158,
+              "status": "cancelled",
+              "phase": "test"
+            }
+          ]
+        },
+        {
+          "id": "[\"tests/e2e/build-detail/build-detail-basic-display.spec.js\",\"Build Detail - Basic Display\",\"marks an approved build as the baseline in manual baseline mode\"]",
+          "name": "marks an approved build as the baseline in manual baseline mode",
+          "status": "failed",
+          "durationMS": 23060.200000047684,
+          "errorMessage": "POST /__e2e/fixtures returned 500: {\"error\":\"TRUNCATE TABLE \\\"auth_request_budget\\\", \\\"processed_webhook\\\", \\\"github_repository\\\", \\\"github_integration\\\", \\\"github_installation_intent\\\", \\\"github_installation\\\", \\\"device_authorization\\\", \\\"refresh_token\\\", \\\"email_verification_token\\\", \\\"password_reset_token\\\", \\\"user_password\\\", \\\"user_email_address\\\", \\\"user_notification\\\", \\\"organization_invitation\\\", \\\"organization_member\\\", \\\"screenshot_comment\\\", \\\"screenshot_storage\\\", \\\"screenshot\\\", \\\"comparison\\\", \\\"build\\\", \\\"project_setting\\\", \\\"project\\\", \\\"org_setting\\\", \\\"organization\\\", \\\"user\\\" RESTART IDENTITY CASCADE - deadlock detected\"}",
+          "selectedWork": [
+            {
+              "id": 5,
+              "kind": "step",
+              "name": "Fixture seed.resetDatabase",
+              "start": 202.90000009536743,
+              "duration": 22856.899999976158,
+              "status": "failed",
+              "phase": "beforeEach"
+            }
+          ]
+        }
+      ],
+      "postgres": {
+        "log": "/private/tmp/dyno-concurrency-spike-uD5YrQ/harness/atomic/runs/ordered-4-a/service-diagnostic-0.log",
+        "timestampUTC": "2026-10-31 06:42:22.869",
+        "victimPID": 591,
+        "victim": "25-table TRUNCATE RESTART IDENTITY CASCADE",
+        "victimWait": {
+          "mode": "AccessExclusiveLock",
+          "relationOID": 16642,
+          "blockedByPID": 521
+        },
+        "otherPID": 521,
+        "otherSQL": "select \"id\", \"build_id\", \"status\", \"result\" from \"comparison\" where \"build_id\" = $1 order by \"id\" asc for update",
+        "otherWait": {
+          "mode": "RowShareLock",
+          "relationOID": 16791,
+          "blockedByPID": 591
+        },
+        "relationOIDNames": "Not retained; unknown.",
+        "sourceMatch": "src/domains/visual-review/review-repository.js lockComparisons used by lockReview",
+        "exactAsyncCaller": "Unknown from retained log. Background completion path is a source-backed inference, not a captured stack."
+      },
+      "proven": "Reset overlapped a visual-review transaction inside worker0 despite current handler drain.",
+      "unproven": [
+        "Cross-worker data leakage.",
+        "Host contention as isolated cause of all slow workflows.",
+        "Missing github_installation errors explained by TRUNCATE/deadlock.",
+        "Four workers are safe/faster after a hypothetical drain fix."
+      ],
+      "requiredBeforeClaim": [
+        "Finish or cancel the complete admitted operation graph while internal follow-up dispatch is available.",
+        "Track actual job body, failed-event listener, API/fixture wait and review transaction promises.",
+        "Park dispatch/queue subscribers/workers only after their admitted dependants settle.",
+        "Clear old queue jobs before fixture IDs are reused, then SQL reset and deliberate resume.",
+        "Any failed cleanup quarantines worker and stops run; no automatic restart/retry.",
+        "Real Vizzly held-settlement/reset regression, then complete serial/2/4-worker outcomes/image guards."
+      ],
+      "report": "/private/tmp/dyno-concurrency-spike-uD5YrQ/isolation/FOUR-WORKER-INCIDENT.md"
+    },
+    "clipboardReservation": {
+      "scope": "Explicit managed clipboard reservation across two headless Chromium contexts, held through actual permission cleanup and complete old-context shutdown. No claim about unmediated browser clipboard APIs or headed OS clipboard.",
+      "status": "passed",
+      "browserVersion": "156.0.8078.4",
+      "checks": {
+        "actualContenderBeforeARead": true,
+        "ownerHeldThroughActualClearPermissions": true,
+        "eachReadRetainedOwnWrite": true,
+        "queuedCancellation": true,
+        "forgedReleaseRejected": true,
+        "bothContextsClosedAfterActualPermissionCleanup": true,
+        "noPendingReservations": true
+      },
+      "cleanup": [
+        {
+          "status": "fulfilled"
+        }
+      ],
+      "completed": [
+        {
+          "workerId": "A",
+          "status": "passed",
+          "value": "A:5d3d35fa-818b-4310-a713-4973a899afa4",
+          "focused": true,
+          "visible": "visible",
+          "permissionsCleared": true,
+          "contextClosed": true
+        },
+        {
+          "workerId": "B",
+          "status": "passed",
+          "value": "B:bb93759c-9b97-4a0d-a10d-56444e2468b3",
+          "focused": true,
+          "visible": "visible",
+          "permissionsCleared": true,
+          "contextClosed": true
+        }
+      ],
+      "errors": [],
+      "finalState": {
+        "owner": null,
+        "queue": []
+      },
+      "cleanupCalls": {
+        "A": 1,
+        "B": 1
+      },
+      "sources": {
+        "run.js": "e5bc926ea505769d317a09ae14cc82b9cb6f31a3dbc4ab549e5b99bb1bfc9496",
+        "app-test.js": "410e5c1ce36885f60417227b99c2d93f6e7c2786f4e04ff6da28de018a690def",
+        "lease.js": "44c955c07daf3078fcc4ff6f14f361492c6832a48cedf39362b54a8fc32e1c9b"
+      },
+      "rootExecuted": true,
+      "artifact": "/private/tmp/dyno-concurrency-spike-uD5YrQ/browser/guarded/artifacts/proof/result.json"
+    }
+  },
+  "limits": [
+    "Full-run throughput prototype launches multiple current CLIs with static partitions; it is not native scheduling or aggregate reporter implementation.",
+    "Do not compare source versions as if the action correction alone changed speed.",
+    "Machine load/memory pressure changed materially; raw system snapshots retained. No causal proof all failures/slowness were unrelated load.",
+    "Headed OS clipboard isolation and Firefox concurrency remain unverified.",
+    "Shared-context full suite has only one clipboard case and cannot establish arbitrary clipboard isolation.",
+    "Full4worker failures/unfinished coverage are invalid timing results, not speedups.",
+    "Existing API/fixture reset barriers do not join every active background review transaction/job callback.",
+    "Pure duration replay is ideal load balance, not measured concurrent speed.",
+    "Seeds and manifest replay cannot reproduce exact app/network interleaving.",
+    "The full pooled-context suite has one clipboard case; explicit overlapping reservation correctness comes from a separate real browser/HTTP/SSE proof. No full-suite guard performance claim.",
+    "The tested guard closes entire contexts before release; persistent-context document replacement is a production validation requirement, not an established equivalent.",
+    "One-worker controls varied by54.32s; context pooling has one complete full-suite sample. No steady-state median or CI speedup claim.",
+    "Failed controlled fixtures and partial full-suite attempts are retained and excluded from successful timings."
+  ],
+  "workerReports": [
+    "/private/tmp/dyno-concurrency-spike-uD5YrQ/browser/REPORT.md",
+    "/private/tmp/dyno-concurrency-spike-uD5YrQ/scheduler/REPORT.md",
+    "/private/tmp/dyno-concurrency-spike-uD5YrQ/isolation/REPORT.md",
+    "/private/tmp/dyno-concurrency-spike-uD5YrQ/harness/REPORT.md",
+    "/private/tmp/dyno-concurrency-spike-uD5YrQ/results/REPORT.md"
+  ],
+  "productionRuntimeChanged": false,
+  "decision": {
+    "status": "proposed-not-shipped",
+    "model": "One immutable run value; pure advance(run,event) returns state and explicit effects. Scheduling and reports derive from accepted execution records.",
+    "scheduling": "Ready workers pull one eligible test at a time; preserve global discovery/focus/filter/skip decisions and existing stable IDs.",
+    "browser": "One owned Playwright Core browser server with a bounded pool of isolated worker contexts. Test callbacks and Interactor stay browser-local.",
+    "resources": "Project owns independent app/database/queue/provider/storage resources. Declare browser-wide resources before dispatch and reserve all required resources together through execution shutdown, project drain and canonical acceptance.",
+    "defaultWorkers": 1,
+    "randomization": {
+      "proposedAlgorithm": "sha256-id-rank-v1",
+      "benchmarkAlgorithm": "sha256-fisher-yates-v1",
+      "benchmarkSeed": "concurrency-v1",
+      "replay": "Record actual queues; seed determines priority, not completion-dependent assignments or app/network interleaving."
+    },
+    "cleanupFailure": "Stop admission and fail run as infrastructure failure. Preserve accepted test/hook outcomes; never silently retry/restart.",
+    "strongestAlternative": "Private browsers with ordinary contexts passed complete Vizzly runs at 212.17s/1worker,127.77s/4declared,89.84s/4seeded. Greater process memory and slower observed samples than shared4contexts/60.15s; not proof of a causal browser-sharing percentage.",
+    "requiredBeforeShipping": [
+      "Complete Vizzly job/async-listener/transaction draining before fixture reset.",
+      "Fix and adopt supported Interactor changes; atomic option mutation/events; canonical reporting transport with durable acceptance.",
+      "Prove old execution JavaScript ends before resource handoff. Clipboard guard closed entire contexts; persistent-context page replacement is not yet proven equivalent.",
+      "Measure actual native scheduling/cleanup/reservations with reporter open and closed; exact new lifecycle cost is unmeasured.",
+      "Verify headed behavior and Firefox after local profile-folder launch failure."
+    ],
+    "deferred": [
+      "Distributed workers",
+      "Adaptive sizing",
+      "History scheduling",
+      "Automatic retries",
+      "Exact race replay",
+      "Multiple selectable browser isolation strategies"
+    ]
+  },
+  "validation": {
+    "status": "passed",
+    "completeRunsRechecked": [
+      {
+        "version": "original-select",
+        "name": "ordered-1-a",
+        "browserCases": 338,
+        "nodeCases": 1,
+        "logicalImages": 232,
+        "acceptedPNGs": 245,
+        "sourceAndPlanMatched": true
+      },
+      {
+        "version": "atomic-select-private-browsers",
+        "name": "ordered-1-a",
+        "browserCases": 338,
+        "nodeCases": 1,
+        "logicalImages": 232,
+        "acceptedPNGs": 245,
+        "sourceAndPlanMatched": true
+      },
+      {
+        "version": "atomic-select-private-browsers",
+        "name": "ordered-2-a",
+        "browserCases": 338,
+        "nodeCases": 1,
+        "logicalImages": 232,
+        "acceptedPNGs": 245,
+        "sourceAndPlanMatched": true
+      },
+      {
+        "version": "atomic-select-private-browsers",
+        "name": "random-2-a",
+        "browserCases": 338,
+        "nodeCases": 1,
+        "logicalImages": 232,
+        "acceptedPNGs": 245,
+        "sourceAndPlanMatched": true
+      },
+      {
+        "version": "atomic-select-private-browsers",
+        "name": "ordered-1-b",
+        "browserCases": 338,
+        "nodeCases": 1,
+        "logicalImages": 232,
+        "acceptedPNGs": 245,
+        "sourceAndPlanMatched": true
+      },
+      {
+        "version": "atomic-select-shared-browser-contexts",
+        "name": "ordered-4-a",
+        "browserCases": 338,
+        "nodeCases": 1,
+        "logicalImages": 232,
+        "acceptedPNGs": 245,
+        "sourceAndPlanMatched": true
+      },
+      {
+        "version": "atomic-select-private-browsers-ordinary-contexts",
+        "name": "ordered-4-a",
+        "browserCases": 338,
+        "nodeCases": 1,
+        "logicalImages": 232,
+        "acceptedPNGs": 245,
+        "sourceAndPlanMatched": true
+      },
+      {
+        "version": "atomic-select-private-browsers-ordinary-contexts",
+        "name": "ordered-1-a",
+        "browserCases": 338,
+        "nodeCases": 1,
+        "logicalImages": 232,
+        "acceptedPNGs": 245,
+        "sourceAndPlanMatched": true
+      },
+      {
+        "version": "atomic-select-private-browsers-ordinary-contexts",
+        "name": "random-4-a",
+        "browserCases": 338,
+        "nodeCases": 1,
+        "logicalImages": 232,
+        "acceptedPNGs": 245,
+        "sourceAndPlanMatched": true
+      }
+    ],
+    "frozenSourceManifests": [
+      {
+        "manifest": "frozen-runtime.json",
+        "files": 93,
+        "matched": true
+      },
+      {
+        "manifest": "frozen-atomic-runtime.json",
+        "files": 93,
+        "matched": true
+      },
+      {
+        "manifest": "frozen-context-runtime.json",
+        "files": 56,
+        "matched": true
+      },
+      {
+        "manifest": "frozen-ephemeral-runtime.json",
+        "files": 56,
+        "matched": true
+      }
+    ],
+    "scope": "Rechecked fixed case IDs and per-worker order, seeded algorithm, source fingerprints, Node case, attachment shapes, 232 logical image dimensions and all 245 retained PNG headers/file sizes per passing run. Full PNG decoding already passed in each original harness; not repeated.",
+    "scheduler": {
+      "passed": 19,
+      "failed": 0,
+      "rootReexecuted": true
+    },
+    "clipboardLeasePureProof": {
+      "passed": true,
+      "rootReexecuted": true
+    }
+  },
+  "cleanup": {
+    "status": "passed",
+    "scope": "Read-only exact Compose project-label check and owned script/browser process audit. No unrelated processes or containers changed.",
+    "composeProjects": [
+      "dyno-concurrency-1013562d",
+      "dyno-concurrency-199b8933",
+      "dyno-concurrency-21e287ae",
+      "dyno-concurrency-25819129",
+      "dyno-concurrency-2c4e3215",
+      "dyno-concurrency-53279540",
+      "dyno-concurrency-5b318343",
+      "dyno-concurrency-933578ee",
+      "dyno-concurrency-9ac16b79",
+      "dyno-concurrency-9f04ff5a",
+      "dyno-concurrency-ac72d827",
+      "dyno-concurrency-bb42c9f9",
+      "dyno-concurrency-e7daf26b",
+      "dyno-concurrency-efca03d0",
+      "dyno-concurrency-f9a6adf0",
+      "dyno-concurrency-isolation-36d0794f"
+    ],
+    "remaining": {
+      "containers": [],
+      "networks": [],
+      "volumes": []
+    },
+    "remainingOwnedScriptProcesses": [],
+    "browserServerPIDs": [
+      {
+        "pid": 37289,
+        "stillPresent": false,
+        "matchesOwnedBrowser": false
+      },
+      {
+        "pid": 49960,
+        "stillPresent": false,
+        "matchesOwnedBrowser": false
+      },
+      {
+        "pid": 56171,
+        "stillPresent": false,
+        "matchesOwnedBrowser": false
+      },
+      {
+        "pid": 56172,
+        "stillPresent": false,
+        "matchesOwnedBrowser": false
+      },
+      {
+        "pid": 56173,
+        "stillPresent": false,
+        "matchesOwnedBrowser": false
+      },
+      {
+        "pid": 56174,
+        "stillPresent": false,
+        "matchesOwnedBrowser": false
+      },
+      {
+        "pid": 57606,
+        "stillPresent": false,
+        "matchesOwnedBrowser": false
+      },
+      {
+        "pid": 60475,
+        "stillPresent": false,
+        "matchesOwnedBrowser": false
+      },
+      {
+        "pid": 60476,
+        "stillPresent": false,
+        "matchesOwnedBrowser": false
+      },
+      {
+        "pid": 60477,
+        "stillPresent": false,
+        "matchesOwnedBrowser": false
+      },
+      {
+        "pid": 60478,
+        "stillPresent": false,
+        "matchesOwnedBrowser": false
+      }
+    ],
+    "clipboardProofCleanup": true
+  },
+  "sourceEpochs": [
+    {
+      "variant": "atomic",
+      "artifact": "/private/tmp/dyno-concurrency-spike-uD5YrQ/harness/atomic/source-epoch.json",
+      "sha256": "45f23842fb009256253564f31bea9cec0fe08290a6b8fb59c2b6dc84bc989eff"
+    },
+    {
+      "variant": "contexts",
+      "artifact": "/private/tmp/dyno-concurrency-spike-uD5YrQ/harness/contexts/source-epoch.json",
+      "sha256": "07547da5ee4b4611a8247de48f4f473ed798073e65e88236351e80d7541d3b56"
+    },
+    {
+      "variant": "ephemeral",
+      "artifact": "/private/tmp/dyno-concurrency-spike-uD5YrQ/harness/ephemeral/source-epoch.json",
+      "sha256": "3ffdf355aeb8d3bebc58f4e1c64468da6bea1b62e1bc22367c185fc73c7fefc1"
+    }
+  ]
+}

@@ -1,0 +1,1548 @@
+{
+  "date": "2026-10-30",
+  "status": "complete",
+  "scope": "Disposable setup/runner spike. Production sources and Vizzly PR unchanged.",
+  "conditions": {
+    "applicationCommit": "f066c176e90875a6d40be8656587c00e2a69e9a3",
+    "frameworkCommit": "a39080350b95d66ae724b743bef7b167ed9e16f0",
+    "browser": "Chromium 156.0.8078.4 revision 1248",
+    "viewport": {
+      "width": 1920,
+      "height": 1080
+    },
+    "locale": "en-US",
+    "timezone": "UTC",
+    "workers": 1,
+    "retries": 0,
+    "shards": 0,
+    "freshServicesPerFullRun": "PostgreSQL 17 tmpfs + Redis 7; Docker bridge; random local ports",
+    "includes": "Original native OCR/frontend build, app startup, migrations/seeds, all outcomes/captures and runner teardown",
+    "excludes": "Service lifecycle reported separately; artifact inspection outside command clock",
+    "noLiveBuildPublication": true,
+    "noBaselineAcceptance": true,
+    "caveat": "Original Playwright port includes documented real-stack coverage corrections; not a pure driver comparison. Inclusive route/step/predicate intervals overlap."
+  },
+  "playwright": {
+    "samples": [
+      313433.33462499996,
+      306062.235542
+    ],
+    "medianCommandMS": 309747.78508349997
+  },
+  "summaries": {
+    "control": {
+      "samples": 1,
+      "commandMS": 320794.608083,
+      "runnerMS": 311363.39999997616,
+      "outsideTestsMS": 34247.90000021458
+    },
+    "delta": {
+      "samples": 2,
+      "commandMS": 228461.1756665,
+      "runnerMS": 218866.80000001192,
+      "outsideTestsMS": 4336.550000190735
+    },
+    "candidate": {
+      "samples": 2,
+      "commandMS": 199724.74585399998,
+      "runnerMS": 190051.15000003576,
+      "outsideTestsMS": 4396.199999809265
+    }
+  },
+  "fullSuite": [
+    {
+      "stage": "control",
+      "directory": "/private/tmp/dyno-setup-spike-bWcLER/integration/control-results",
+      "startedAt": "2026-10-31T03:00:10.558Z",
+      "commandMS": 320794.608083,
+      "withServicesMS": 323547.015041,
+      "runnerMS": 311363.39999997616,
+      "outsideTestsMS": 34247.90000021458,
+      "passedBrowser": 338,
+      "passedNode": 1,
+      "skippedBrowser": 0,
+      "checkpointStatus": "passed",
+      "images": 232,
+      "source": {
+        "sha256": "cb20e27d963f2903fd2ae40ca57a3639a63227c1bad3f2b5e024f4f7be1b1120",
+        "files": 1161
+      },
+      "runnerOverride": "control",
+      "lifecycle": {
+        "create-runtime": {
+          "count": 338,
+          "duration": 564.0999995470047,
+          "maximum": 10.5,
+          "stringChars": 0,
+          "serializeDuration": 0
+        },
+        "runtime-frame-to-ready:test": {
+          "count": 338,
+          "duration": 12201.900000572205,
+          "maximum": 66.5,
+          "stringChars": 0,
+          "serializeDuration": 0
+        },
+        "post-test-native-reset": {
+          "count": 338,
+          "duration": 485.59999990463257,
+          "maximum": 34.299999952316284,
+          "stringChars": 0,
+          "serializeDuration": 0
+        },
+        "post-test-context-clear": {
+          "count": 338,
+          "duration": 176.10000014305115,
+          "maximum": 2.6999999284744263,
+          "stringChars": 0,
+          "serializeDuration": 0
+        }
+      },
+      "routes": {
+        "capture": {
+          "count": 1,
+          "duration": 1.899999976158142,
+          "maximum": 1.899999976158142,
+          "stringChars": 68,
+          "serializeDuration": 0
+        },
+        "view": {
+          "count": 3667,
+          "duration": 106613.10000264645,
+          "maximum": 70.5,
+          "stringChars": 3588777679,
+          "serializeDuration": 6633.700000405312
+        },
+        "context:set": {
+          "count": 2106,
+          "duration": 54734.600003004074,
+          "maximum": 102.39999997615814,
+          "stringChars": 531210,
+          "serializeDuration": 6.500000357627869
+        },
+        "events:start": {
+          "count": 1,
+          "duration": 2.1999999284744263,
+          "maximum": 2.1999999284744263,
+          "stringChars": 121947,
+          "serializeDuration": 0.5
+        },
+        "operations:activate": {
+          "count": 245,
+          "duration": 528.2999999523163,
+          "maximum": 18.899999976158142,
+          "stringChars": 72576,
+          "serializeDuration": 0.8000001907348633
+        },
+        "operations:screenshot": {
+          "count": 245,
+          "duration": 13066.900000810623,
+          "maximum": 275.10000002384186,
+          "stringChars": 153652,
+          "serializeDuration": 0.8000000715255737
+        },
+        "attachments/commit": {
+          "count": 245,
+          "duration": 201.7000012397766,
+          "maximum": 1.2999999523162842,
+          "stringChars": 36015,
+          "serializeDuration": 1.1000001430511475
+        },
+        "operations:reset-native": {
+          "count": 338,
+          "duration": 484.60000014305115,
+          "maximum": 34.299999952316284,
+          "stringChars": 63877,
+          "serializeDuration": 1.5999997854232788
+        },
+        "context:clear": {
+          "count": 383,
+          "duration": 223.00000023841858,
+          "maximum": 7.399999976158142,
+          "stringChars": 45194,
+          "serializeDuration": 0.3999999761581421
+        },
+        "events:test": {
+          "count": 338,
+          "duration": 211.69999980926514,
+          "maximum": 4.600000023841858,
+          "stringChars": 1636956,
+          "serializeDuration": 4.3999998569488525
+        },
+        "operations:resize": {
+          "count": 155,
+          "duration": 2286.4000012874603,
+          "maximum": 76.89999997615814,
+          "stringChars": 31215,
+          "serializeDuration": 0.20000004768371582
+        },
+        "operations:native": {
+          "count": 126,
+          "duration": 1888.600000500679,
+          "maximum": 43.39999997615814,
+          "stringChars": 49126,
+          "serializeDuration": 0.40000009536743164
+        }
+      },
+      "interactor": {
+        "assertions": 5286,
+        "initialReady": 4639,
+        "failed": 0,
+        "attempts": 13724,
+        "failedAttempts": 3152,
+        "attemptDuration": 2458.799994468689,
+        "convergenceWaits": 3152,
+        "convergenceWaitDuration": 67281.30000030994,
+        "confirmationWaits": 5286,
+        "confirmationWaitDuration": 95146.50000357628,
+        "requestedConvergenceWaitDuration": 52533.333333333285,
+        "requestedConfirmationWaitDuration": 88100,
+        "schedulerExcess": 22172.700002670288,
+        "assertionDuration": 164972.39999771118
+      },
+      "node": "v24.22.1",
+      "platform": "darwin",
+      "arch": "arm64",
+      "cpu": "Apple M4 Max"
+    },
+    {
+      "stage": "delta",
+      "directory": "/private/tmp/dyno-setup-spike-bWcLER/integration/delta-results",
+      "startedAt": "2026-10-31T03:14:09.825Z",
+      "commandMS": 229384.812583,
+      "withServicesMS": 232141.82925,
+      "runnerMS": 220157.29999995232,
+      "outsideTestsMS": 4394.300000309944,
+      "passedBrowser": 338,
+      "passedNode": 1,
+      "skippedBrowser": 0,
+      "checkpointStatus": "passed",
+      "images": 232,
+      "source": {
+        "sha256": "3fc09c4664c3e9f822fef0f2e688ed4c0bb0508c0d4d59d6f1e7f851a4fc64f1",
+        "files": 1161
+      },
+      "runnerOverride": "delta",
+      "lifecycle": {
+        "create-runtime": {
+          "count": 338,
+          "duration": 570.3000005483627,
+          "maximum": 5.299999952316284,
+          "stringChars": 0,
+          "serializeDuration": 0
+        },
+        "runtime-frame-to-ready:test": {
+          "count": 338,
+          "duration": 3200.8000000715256,
+          "maximum": 23.800000071525574,
+          "stringChars": 0,
+          "serializeDuration": 0
+        },
+        "post-test-native-reset": {
+          "count": 338,
+          "duration": 290.50000059604645,
+          "maximum": 4.300000071525574,
+          "stringChars": 0,
+          "serializeDuration": 0
+        },
+        "post-test-context-clear": {
+          "count": 338,
+          "duration": 201.59999918937683,
+          "maximum": 2.600000023841858,
+          "stringChars": 0,
+          "serializeDuration": 0
+        }
+      },
+      "routes": {
+        "capture": {
+          "count": 1,
+          "duration": 1.7999999523162842,
+          "maximum": 1.7999999523162842,
+          "stringChars": 68,
+          "serializeDuration": 0
+        },
+        "view": {
+          "count": 3651,
+          "duration": 5294.000000357628,
+          "maximum": 21,
+          "stringChars": 4218488,
+          "serializeDuration": 32.90000033378601
+        },
+        "context:set": {
+          "count": 2088,
+          "duration": 3380.600002884865,
+          "maximum": 10.899999976158142,
+          "stringChars": 526251,
+          "serializeDuration": 2.5000003576278687
+        },
+        "events:start": {
+          "count": 1,
+          "duration": 2.299999952316284,
+          "maximum": 2.299999952316284,
+          "stringChars": 121947,
+          "serializeDuration": 0.5
+        },
+        "operations:activate": {
+          "count": 245,
+          "duration": 402.7000004053116,
+          "maximum": 9.800000071525574,
+          "stringChars": 72540,
+          "serializeDuration": 0.8000000715255737
+        },
+        "operations:screenshot": {
+          "count": 245,
+          "duration": 13212.699999809265,
+          "maximum": 268.89999997615814,
+          "stringChars": 153589,
+          "serializeDuration": 0.5
+        },
+        "attachments/commit": {
+          "count": 245,
+          "duration": 206.299999833107,
+          "maximum": 4.100000023841858,
+          "stringChars": 36015,
+          "serializeDuration": 0.9999998807907104
+        },
+        "operations:reset-native": {
+          "count": 338,
+          "duration": 289.2000005245209,
+          "maximum": 4.300000071525574,
+          "stringChars": 63887,
+          "serializeDuration": 0.30000007152557373
+        },
+        "context:clear": {
+          "count": 383,
+          "duration": 233.49999904632568,
+          "maximum": 8.400000095367432,
+          "stringChars": 45194,
+          "serializeDuration": 0.6000001430511475
+        },
+        "events:test": {
+          "count": 338,
+          "duration": 243.40000069141388,
+          "maximum": 3.3000000715255737,
+          "stringChars": 1635385,
+          "serializeDuration": 4.000000238418579
+        },
+        "operations:resize": {
+          "count": 155,
+          "duration": 497.4999986886978,
+          "maximum": 15.299999952316284,
+          "stringChars": 31215,
+          "serializeDuration": 0.10000002384185791
+        },
+        "operations:native": {
+          "count": 126,
+          "duration": 1762.7999997138977,
+          "maximum": 34.799999952316284,
+          "stringChars": 49107,
+          "serializeDuration": 0.5000001192092896
+        }
+      },
+      "interactor": {
+        "assertions": 5286,
+        "initialReady": 4656,
+        "failed": 0,
+        "attempts": 13297,
+        "failedAttempts": 2725,
+        "attemptDuration": 2561.499999165535,
+        "convergenceWaits": 2725,
+        "convergenceWaitDuration": 52236.39999949932,
+        "confirmationWaits": 5286,
+        "confirmationWaitDuration": 91323.30000424385,
+        "requestedConvergenceWaitDuration": 45416.66666666667,
+        "requestedConfirmationWaitDuration": 88100,
+        "schedulerExcess": 10471.200002074234,
+        "assertionDuration": 146206.40000283718
+      },
+      "node": "v24.22.1",
+      "platform": "darwin",
+      "arch": "arm64",
+      "cpu": "Apple M4 Max"
+    },
+    {
+      "stage": "candidate",
+      "directory": "/private/tmp/dyno-setup-spike-bWcLER/integration/candidate-results",
+      "startedAt": "2026-10-31T03:20:17.891Z",
+      "commandMS": 199421.191458,
+      "withServicesMS": 202394.97070900002,
+      "runnerMS": 189252.90000009537,
+      "outsideTestsMS": 4313.500000119209,
+      "passedBrowser": 338,
+      "passedNode": 1,
+      "skippedBrowser": 0,
+      "checkpointStatus": "passed",
+      "images": 232,
+      "source": {
+        "sha256": "9285126cf6709d35edea7bc603be6d60031af8abb1c5a7c66a26645622919b2b",
+        "files": 1162
+      },
+      "runnerOverride": "candidate",
+      "lifecycle": {
+        "create-runtime": {
+          "count": 338,
+          "duration": 573.9999985694885,
+          "maximum": 9.5,
+          "stringChars": 0,
+          "serializeDuration": 0
+        },
+        "runtime-frame-to-ready:test": {
+          "count": 338,
+          "duration": 3128.3999984264374,
+          "maximum": 23.100000023841858,
+          "stringChars": 0,
+          "serializeDuration": 0
+        },
+        "post-test-native-reset": {
+          "count": 338,
+          "duration": 293.69999980926514,
+          "maximum": 5.600000023841858,
+          "stringChars": 0,
+          "serializeDuration": 0
+        },
+        "post-test-context-clear": {
+          "count": 338,
+          "duration": 207.09999990463257,
+          "maximum": 5.299999952316284,
+          "stringChars": 0,
+          "serializeDuration": 0
+        }
+      },
+      "routes": {
+        "capture": {
+          "count": 1,
+          "duration": 3.5,
+          "maximum": 3.5,
+          "stringChars": 68,
+          "serializeDuration": 0
+        },
+        "view": {
+          "count": 3648,
+          "duration": 5395.300001502037,
+          "maximum": 21.600000023841858,
+          "stringChars": 4099162,
+          "serializeDuration": 32.200000166893005
+        },
+        "context:set": {
+          "count": 2087,
+          "duration": 3392.700001001358,
+          "maximum": 15.5,
+          "stringChars": 525718,
+          "serializeDuration": 3.1000001430511475
+        },
+        "events:start": {
+          "count": 1,
+          "duration": 2.600000023841858,
+          "maximum": 2.600000023841858,
+          "stringChars": 121947,
+          "serializeDuration": 0.20000004768371582
+        },
+        "operations:activate": {
+          "count": 245,
+          "duration": 372.99999964237213,
+          "maximum": 10.5,
+          "stringChars": 72503,
+          "serializeDuration": 1
+        },
+        "operations:screenshot": {
+          "count": 245,
+          "duration": 13023.099999666214,
+          "maximum": 290.10000002384186,
+          "stringChars": 153560,
+          "serializeDuration": 1.1000001430511475
+        },
+        "attachments/commit": {
+          "count": 245,
+          "duration": 206.299999833107,
+          "maximum": 1.5,
+          "stringChars": 36015,
+          "serializeDuration": 0.8000001907348633
+        },
+        "operations:reset-native": {
+          "count": 338,
+          "duration": 292.39999973773956,
+          "maximum": 5.600000023841858,
+          "stringChars": 63858,
+          "serializeDuration": 0.5999999046325684
+        },
+        "context:clear": {
+          "count": 383,
+          "duration": 237.400000333786,
+          "maximum": 6.699999928474426,
+          "stringChars": 45194,
+          "serializeDuration": 1.000000238418579
+        },
+        "events:test": {
+          "count": 338,
+          "duration": 239.00000059604645,
+          "maximum": 3.9000000953674316,
+          "stringChars": 1518346,
+          "serializeDuration": 4.100000381469727
+        },
+        "operations:resize": {
+          "count": 155,
+          "duration": 508.40000009536743,
+          "maximum": 29,
+          "stringChars": 31215,
+          "serializeDuration": 1.1000001430511475
+        },
+        "operations:native": {
+          "count": 126,
+          "duration": 1755.7999997138977,
+          "maximum": 34.89999997615814,
+          "stringChars": 49070,
+          "serializeDuration": 1.100000023841858
+        }
+      },
+      "interactor": {
+        "assertions": 4254,
+        "initialReady": 3619,
+        "failed": 0,
+        "attempts": 11238,
+        "failedAttempts": 2730,
+        "attemptDuration": 2458.0000015497208,
+        "convergenceWaits": 2730,
+        "convergenceWaitDuration": 52160.599997997284,
+        "confirmationWaits": 4254,
+        "confirmationWaitDuration": 73225.0000026226,
+        "requestedConvergenceWaitDuration": 45499.99999999999,
+        "requestedConfirmationWaitDuration": 70899.99999999994,
+        "schedulerExcess": 9381.599999904629,
+        "assertionDuration": 127913.40000009537
+      },
+      "node": "v24.22.1",
+      "platform": "darwin",
+      "arch": "arm64",
+      "cpu": "Apple M4 Max"
+    },
+    {
+      "stage": "candidate-2",
+      "directory": "/private/tmp/dyno-setup-spike-bWcLER/integration/candidate-2-results",
+      "startedAt": "2026-10-31T03:24:25.344Z",
+      "commandMS": 200028.30025,
+      "withServicesMS": 202677.834958,
+      "runnerMS": 190849.39999997616,
+      "outsideTestsMS": 4478.899999499321,
+      "passedBrowser": 338,
+      "passedNode": 1,
+      "skippedBrowser": 0,
+      "checkpointStatus": "passed",
+      "images": 232,
+      "source": {
+        "sha256": "9285126cf6709d35edea7bc603be6d60031af8abb1c5a7c66a26645622919b2b",
+        "files": 1162
+      },
+      "runnerOverride": "candidate",
+      "lifecycle": {
+        "create-runtime": {
+          "count": 338,
+          "duration": 602.3000007867813,
+          "maximum": 6,
+          "stringChars": 0,
+          "serializeDuration": 0
+        },
+        "runtime-frame-to-ready:test": {
+          "count": 338,
+          "duration": 3257.800000190735,
+          "maximum": 44.700000047683716,
+          "stringChars": 0,
+          "serializeDuration": 0
+        },
+        "post-test-native-reset": {
+          "count": 338,
+          "duration": 301.300000667572,
+          "maximum": 6.099999904632568,
+          "stringChars": 0,
+          "serializeDuration": 0
+        },
+        "post-test-context-clear": {
+          "count": 338,
+          "duration": 208.299999833107,
+          "maximum": 3.600000023841858,
+          "stringChars": 0,
+          "serializeDuration": 0
+        }
+      },
+      "routes": {
+        "capture": {
+          "count": 1,
+          "duration": 2,
+          "maximum": 2,
+          "stringChars": 68,
+          "serializeDuration": 0.09999990463256836
+        },
+        "view": {
+          "count": 3654,
+          "duration": 5490.399998545647,
+          "maximum": 31.199999928474426,
+          "stringChars": 4109447,
+          "serializeDuration": 36.90000021457672
+        },
+        "context:set": {
+          "count": 2090,
+          "duration": 3447.699998497963,
+          "maximum": 30.699999928474426,
+          "stringChars": 526762,
+          "serializeDuration": 3.1000003814697266
+        },
+        "events:start": {
+          "count": 1,
+          "duration": 1.7999999523162842,
+          "maximum": 1.7999999523162842,
+          "stringChars": 121947,
+          "serializeDuration": 0.10000002384185791
+        },
+        "operations:activate": {
+          "count": 245,
+          "duration": 409.60000014305115,
+          "maximum": 13.5,
+          "stringChars": 72576,
+          "serializeDuration": 1.0999997854232788
+        },
+        "operations:screenshot": {
+          "count": 245,
+          "duration": 13264.60000038147,
+          "maximum": 296.10000002384186,
+          "stringChars": 153640,
+          "serializeDuration": 0.9000000953674316
+        },
+        "attachments/commit": {
+          "count": 245,
+          "duration": 209.60000014305115,
+          "maximum": 1.2000000476837158,
+          "stringChars": 36015,
+          "serializeDuration": 0.09999990463256836
+        },
+        "operations:reset-native": {
+          "count": 338,
+          "duration": 300.1000006198883,
+          "maximum": 6.099999904632568,
+          "stringChars": 63877,
+          "serializeDuration": 0.3999999761581421
+        },
+        "context:clear": {
+          "count": 383,
+          "duration": 233.099999666214,
+          "maximum": 3.5,
+          "stringChars": 45194,
+          "serializeDuration": 0.5
+        },
+        "events:test": {
+          "count": 338,
+          "duration": 244.19999969005585,
+          "maximum": 9.700000047683716,
+          "stringChars": 1521538,
+          "serializeDuration": 4.099999904632568
+        },
+        "operations:resize": {
+          "count": 155,
+          "duration": 530.7000014781952,
+          "maximum": 13.600000023841858,
+          "stringChars": 31215,
+          "serializeDuration": 0.2999999523162842
+        },
+        "operations:native": {
+          "count": 126,
+          "duration": 1768.1000001430511,
+          "maximum": 34.10000002384186,
+          "stringChars": 48996,
+          "serializeDuration": 0.6000001430511475
+        }
+      },
+      "interactor": {
+        "assertions": 4254,
+        "initialReady": 3619,
+        "failed": 0,
+        "attempts": 11226,
+        "failedAttempts": 2718,
+        "attemptDuration": 2546.2999999523163,
+        "convergenceWaits": 2718,
+        "convergenceWaitDuration": 52108.8999992609,
+        "confirmationWaits": 4254,
+        "confirmationWaitDuration": 73266.2000015974,
+        "requestedConvergenceWaitDuration": 45299.99999999999,
+        "requestedConfirmationWaitDuration": 70899.99999999994,
+        "schedulerExcess": 9544.566667715706,
+        "assertionDuration": 128000.80000257492
+      },
+      "node": "v24.22.1",
+      "platform": "darwin",
+      "arch": "arm64",
+      "cpu": "Apple M4 Max"
+    },
+    {
+      "stage": "delta-2",
+      "directory": "/private/tmp/dyno-setup-spike-bWcLER/integration/delta-2-results",
+      "startedAt": "2026-10-31T03:29:45.203Z",
+      "commandMS": 227537.53875,
+      "withServicesMS": 230316.002,
+      "runnerMS": 217576.30000007153,
+      "outsideTestsMS": 4278.800000071526,
+      "passedBrowser": 338,
+      "passedNode": 1,
+      "skippedBrowser": 0,
+      "checkpointStatus": "passed",
+      "images": 232,
+      "source": {
+        "sha256": "3fc09c4664c3e9f822fef0f2e688ed4c0bb0508c0d4d59d6f1e7f851a4fc64f1",
+        "files": 1161
+      },
+      "runnerOverride": "delta",
+      "lifecycle": {
+        "create-runtime": {
+          "count": 338,
+          "duration": 555.1999988555908,
+          "maximum": 5.899999976158142,
+          "stringChars": 0,
+          "serializeDuration": 0
+        },
+        "runtime-frame-to-ready:test": {
+          "count": 338,
+          "duration": 3111.70000064373,
+          "maximum": 26.100000023841858,
+          "stringChars": 0,
+          "serializeDuration": 0
+        },
+        "post-test-native-reset": {
+          "count": 338,
+          "duration": 308.30000042915344,
+          "maximum": 12.399999976158142,
+          "stringChars": 0,
+          "serializeDuration": 0
+        },
+        "post-test-context-clear": {
+          "count": 338,
+          "duration": 195.90000021457672,
+          "maximum": 3,
+          "stringChars": 0,
+          "serializeDuration": 0
+        }
+      },
+      "routes": {
+        "capture": {
+          "count": 1,
+          "duration": 3.0999999046325684,
+          "maximum": 3.0999999046325684,
+          "stringChars": 68,
+          "serializeDuration": 0
+        },
+        "view": {
+          "count": 3651,
+          "duration": 5615.099999904633,
+          "maximum": 26.800000071525574,
+          "stringChars": 4218573,
+          "serializeDuration": 36.00000059604645
+        },
+        "context:set": {
+          "count": 2089,
+          "duration": 3596.4000010490417,
+          "maximum": 29.300000071525574,
+          "stringChars": 526442,
+          "serializeDuration": 3.899999737739563
+        },
+        "events:start": {
+          "count": 1,
+          "duration": 2,
+          "maximum": 2,
+          "stringChars": 121947,
+          "serializeDuration": 0
+        },
+        "operations:activate": {
+          "count": 245,
+          "duration": 359.5999995470047,
+          "maximum": 23.5,
+          "stringChars": 72515,
+          "serializeDuration": 1.600000023841858
+        },
+        "operations:screenshot": {
+          "count": 245,
+          "duration": 12702.49999988079,
+          "maximum": 371.10000002384186,
+          "stringChars": 153634,
+          "serializeDuration": 1.200000286102295
+        },
+        "attachments/commit": {
+          "count": 245,
+          "duration": 222.10000133514404,
+          "maximum": 5.799999952316284,
+          "stringChars": 36015,
+          "serializeDuration": 1.2000000476837158
+        },
+        "operations:reset-native": {
+          "count": 338,
+          "duration": 306.6000003814697,
+          "maximum": 12.299999952316284,
+          "stringChars": 63884,
+          "serializeDuration": 0.30000007152557373
+        },
+        "context:clear": {
+          "count": 383,
+          "duration": 218.799999833107,
+          "maximum": 3,
+          "stringChars": 45194,
+          "serializeDuration": 0.5
+        },
+        "events:test": {
+          "count": 338,
+          "duration": 231.69999969005585,
+          "maximum": 5.100000023841858,
+          "stringChars": 1634585,
+          "serializeDuration": 3.300000309944153
+        },
+        "operations:resize": {
+          "count": 155,
+          "duration": 556.1999989748001,
+          "maximum": 22.299999952316284,
+          "stringChars": 31215,
+          "serializeDuration": 0.5999999046325684
+        },
+        "operations:native": {
+          "count": 126,
+          "duration": 1773.1000002622604,
+          "maximum": 32.699999928474426,
+          "stringChars": 49133,
+          "serializeDuration": 0.30000007152557373
+        }
+      },
+      "interactor": {
+        "assertions": 5286,
+        "initialReady": 4656,
+        "failed": 0,
+        "attempts": 13321,
+        "failedAttempts": 2749,
+        "attemptDuration": 2312.8000073432922,
+        "convergenceWaits": 2749,
+        "convergenceWaitDuration": 52377.39999580383,
+        "confirmationWaits": 5286,
+        "confirmationWaitDuration": 90744.69999670982,
+        "requestedConvergenceWaitDuration": 45816.666666666686,
+        "requestedConfirmationWaitDuration": 88100,
+        "schedulerExcess": 9704.233328183489,
+        "assertionDuration": 145530.6000020504
+      },
+      "node": "v24.22.1",
+      "platform": "darwin",
+      "arch": "arm64",
+      "cpu": "Apple M4 Max"
+    }
+  ],
+  "runnerSources": {
+    "control": {
+      "directory": "/private/tmp/dyno-setup-spike-bWcLER/reporter/control",
+      "files": 57,
+      "sha256": "e92dfca8ae00a826a8fd8f07b3b030c2b582e30748cdb0072825012d18968e40"
+    },
+    "delta": {
+      "directory": "/private/tmp/dyno-setup-spike-bWcLER/reporter/changes",
+      "files": 58,
+      "sha256": "176dedbdb2063eafafb5dc5c1455b7be9de3aa154ea23729a97e26f88b35e816"
+    },
+    "candidate": {
+      "directory": "/private/tmp/dyno-setup-spike-bWcLER/integration/dyno-candidate",
+      "files": 58,
+      "sha256": "3c77534ecb98008e1b5c825ab2d78a3a73205e21a482e617c6092be44603cd5f"
+    },
+    "observedInteractor": {
+      "directory": "/private/tmp/dyno-setup-spike-bWcLER/interactor/instrumented/lib",
+      "files": 38,
+      "sha256": "09ce2dc6dbe2f19f307cd0b073cd243a6ff1d988714e772b42e6f5d7ad9ee051"
+    },
+    "candidateInteractor": {
+      "directory": "/private/tmp/dyno-setup-spike-bWcLER/interactor/upstream-prototype/lib",
+      "files": 38,
+      "sha256": "3630b08344d97afc36595b2ec23cde445755ca4a76d5deeff48fc652a171f9f3"
+    }
+  },
+  "scenarios": [
+    {
+      "scenario": "settings-workspace",
+      "mode": "direct",
+      "samples": 8,
+      "elapsed": 34.3032290000001,
+      "requests": 0,
+      "queryCount": 10,
+      "hashCount": 1,
+      "queryDuration": 20.053249500000277,
+      "hashDuration": 13.990770999999881,
+      "handlerDuration": 0,
+      "outsideHandler": null
+    },
+    {
+      "scenario": "settings-workspace",
+      "mode": "granular-http",
+      "samples": 8,
+      "elapsed": 35.59852099999989,
+      "requests": 2,
+      "queryCount": 10,
+      "hashCount": 1,
+      "queryDuration": 20.474729000000025,
+      "hashDuration": 13.82997950000015,
+      "handlerDuration": 34.8310624999998,
+      "outsideHandler": 0.8211249999999382
+    },
+    {
+      "scenario": "settings-workspace",
+      "mode": "scenario-http",
+      "samples": 8,
+      "elapsed": 34.711791999999946,
+      "requests": 1,
+      "queryCount": 10,
+      "hashCount": 1,
+      "queryDuration": 19.924208999999678,
+      "hashDuration": 14.06675000000007,
+      "handlerDuration": 34.28839599999992,
+      "outsideHandler": 0.43127050000009604
+    },
+    {
+      "scenario": "settings-workspace",
+      "mode": "direct-cached-hash",
+      "samples": 8,
+      "elapsed": 20.666270499999882,
+      "requests": 0,
+      "queryCount": 10,
+      "hashCount": 0,
+      "queryDuration": 20.422001000000137,
+      "hashDuration": 0,
+      "handlerDuration": 0,
+      "outsideHandler": null
+    },
+    {
+      "scenario": "settings-workspace",
+      "mode": "scenario-cached-hash-http",
+      "samples": 8,
+      "elapsed": 20.813125499999842,
+      "requests": 1,
+      "queryCount": 10,
+      "hashCount": 0,
+      "queryDuration": 20.010271499999135,
+      "hashDuration": 0,
+      "handlerDuration": 20.35370899999998,
+      "outsideHandler": 0.42514550000009876
+    },
+    {
+      "scenario": "build-history",
+      "mode": "direct",
+      "samples": 8,
+      "elapsed": 41.31512549999957,
+      "requests": 0,
+      "queryCount": 26,
+      "hashCount": 1,
+      "queryDuration": 26.77766649999876,
+      "hashDuration": 14.037083500000335,
+      "handlerDuration": 0,
+      "outsideHandler": null
+    },
+    {
+      "scenario": "build-history",
+      "mode": "granular-http",
+      "samples": 8,
+      "elapsed": 44.765458499999795,
+      "requests": 10,
+      "queryCount": 26,
+      "hashCount": 1,
+      "queryDuration": 26.36558350000132,
+      "hashDuration": 13.967853999999761,
+      "handlerDuration": 41.839481000000205,
+      "outsideHandler": 3.032582499999762
+    },
+    {
+      "scenario": "build-history",
+      "mode": "scenario-http",
+      "samples": 8,
+      "elapsed": 42.18285400000002,
+      "requests": 1,
+      "queryCount": 26,
+      "hashCount": 1,
+      "queryDuration": 27.02983350000011,
+      "hashDuration": 14.144520499999885,
+      "handlerDuration": 41.63662500000021,
+      "outsideHandler": 0.4560625000003711
+    },
+    {
+      "scenario": "build-history",
+      "mode": "direct-cached-hash",
+      "samples": 8,
+      "elapsed": 26.836207999999942,
+      "requests": 0,
+      "queryCount": 26,
+      "hashCount": 0,
+      "queryDuration": 26.34785199999851,
+      "hashDuration": 0,
+      "handlerDuration": 0,
+      "outsideHandler": null
+    },
+    {
+      "scenario": "build-history",
+      "mode": "scenario-cached-hash-http",
+      "samples": 8,
+      "elapsed": 27.261625000000095,
+      "requests": 1,
+      "queryCount": 26,
+      "hashCount": 0,
+      "queryDuration": 26.179271499998777,
+      "hashDuration": 0,
+      "handlerDuration": 26.817186999999876,
+      "outsideHandler": 0.4371249999999236
+    }
+  ],
+  "sessions": {
+    "validMeasurement": true,
+    "summaries": {
+      "legacy": {
+        "count": 25,
+        "median": 26,
+        "p95": 29.899999976158142,
+        "min": 24.5,
+        "max": 31.5,
+        "requestsPerSetup": [
+          6
+        ]
+      },
+      "leanLogin": {
+        "count": 25,
+        "median": 22.300000071525574,
+        "p95": 25.799999952316284,
+        "min": 21.399999976158142,
+        "max": 29.100000023841858,
+        "requestsPerSetup": [
+          3
+        ]
+      },
+      "namedSession": {
+        "count": 25,
+        "median": 5.399999976158142,
+        "p95": 6.699999928474426,
+        "min": 4.799999952316284,
+        "max": 8.699999928474426,
+        "requestsPerSetup": [
+          2
+        ]
+      }
+    },
+    "correctness": [
+      "All modes select the requested real user and clear local/session storage.",
+      "Named session uses actual HttpOnly access and refresh cookies accepted by real profile auth.",
+      "Existing runtime.resetSession leaves admin_backup_token behind (reproduced).",
+      "Named prepare clears the known impersonation backup cookie.",
+      "Rejected owner leaves the current session untouched.",
+      "Failed authorized prepare leaves no previous account or session cookies.",
+      "Named fixture session survives the actual refresh route with its database token record."
+    ],
+    "samplesPerMode": 25
+  },
+  "database": {
+    "conditions": {
+      "database": "real migrated Vizzly PostgreSQL",
+      "buildCount": 3,
+      "screenshotsPerBuild": 10,
+      "comparisonsPerBuild": 10,
+      "repetitions": 12,
+      "serial": true,
+      "snapshotRows": 134,
+      "snapshotTables": 14,
+      "validationNormalization": [
+        "fresh bcrypt hash/salt",
+        "visual review DB-generated timestamps",
+        "visual review comparison DB-generated UUID"
+      ]
+    },
+    "proofs": {
+      "transactionRollback": {
+        "uncommittedSetupInvisibleToAppConnection": true,
+        "committedAppWriteSurvivesFixtureRollback": true
+      },
+      "naiveSnapshotReplaysTriggers": {
+        "baselineScreenshotCount": 10,
+        "naiveRestoredScreenshotCount": 20
+      },
+      "repairedSnapshotDatabaseRowsEqualBaseline": true,
+      "snapshotMissesFactoryState": {
+        "nextFactoryInsertConflicts": true,
+        "postgresCode": "23505"
+      },
+      "all24PreparedDatasetsPreserveRowsReferencesAndWorkingPasswords": true,
+      "databaseTemplateWithAppConnections": {
+        "rejected": true,
+        "postgresCode": "57014"
+      },
+      "closedPoolTemplateCopiesRealRows": true
+    },
+    "factory": {
+      "medianMs": 100.2993125000001,
+      "minMs": 97.84875000000011,
+      "maxMs": 124.09195899999997,
+      "resetMs": 16.143916500000046,
+      "seedMs": 84.20729150000005
+    },
+    "rowRestore": {
+      "medianMs": 25.403729000000055,
+      "minMs": 24.08704200000011,
+      "maxMs": 27.321457999999893
+    },
+    "clones": [
+      {
+        "index": 0,
+        "createMs": 37.03125,
+        "dropMs": 32.40366700000004
+      },
+      {
+        "index": 1,
+        "createMs": 12.05987499999992,
+        "dropMs": 1.9954579999998714
+      },
+      {
+        "index": 2,
+        "createMs": 10.42358299999978,
+        "dropMs": 1.8796669999996993
+      }
+    ]
+  },
+  "reporterReplay": [
+    {
+      "mode": "full",
+      "samples": 4,
+      "bytes": 1314131157,
+      "durationMS": 4889.682250000001
+    },
+    {
+      "mode": "changes",
+      "samples": 4,
+      "bytes": 2477503,
+      "durationMS": 21.23675000000003
+    }
+  ],
+  "interactorMicro": {
+    "node": "v24.22.1",
+    "browser": "156.0.8078.4",
+    "samples": 3,
+    "count": 20,
+    "results": [
+      {
+        "sample": 1,
+        "mode": "observed",
+        "workload": "ready",
+        "count": 20,
+        "duration": 2064,
+        "summary": {
+          "assertions": 120,
+          "initialReady": 120,
+          "initiallyUnready": 0,
+          "failed": 0,
+          "attempts": 240,
+          "failedAttempts": 0,
+          "attemptDuration": 7.799999833106995,
+          "convergenceWaits": 0,
+          "convergenceWaitDuration": 0,
+          "requestedConvergenceWaitDuration": 0,
+          "confirmationWaits": 120,
+          "confirmationWaitDuration": 2044.5999999046326,
+          "requestedConfirmationWaitDuration": 2000.0000000000034,
+          "schedulerExcess": 49.06666664282457,
+          "assertionDuration": 2054.3999997377396,
+          "defaultSettingsPreserved": true
+        }
+      },
+      {
+        "sample": 1,
+        "mode": "combined",
+        "workload": "ready",
+        "count": 20,
+        "duration": 1380.3000000715256,
+        "summary": {
+          "assertions": 80,
+          "initialReady": 80,
+          "initiallyUnready": 0,
+          "failed": 0,
+          "attempts": 160,
+          "failedAttempts": 0,
+          "attemptDuration": 9.000000715255737,
+          "convergenceWaits": 0,
+          "convergenceWaitDuration": 0,
+          "requestedConvergenceWaitDuration": 0,
+          "confirmationWaits": 80,
+          "confirmationWaitDuration": 1364.699999332428,
+          "requestedConfirmationWaitDuration": 1333.3333333333337,
+          "schedulerExcess": 33.666666070620124,
+          "assertionDuration": 1374.0000001192093,
+          "defaultSettingsPreserved": true
+        }
+      },
+      {
+        "sample": 1,
+        "mode": "observed",
+        "workload": "indexeddb",
+        "count": 20,
+        "duration": 2401.7000000476837,
+        "summary": {
+          "assertions": 120,
+          "initialReady": 100,
+          "initiallyUnready": 20,
+          "failed": 0,
+          "attempts": 260,
+          "failedAttempts": 20,
+          "attemptDuration": 8.899999618530273,
+          "convergenceWaits": 20,
+          "convergenceWaitDuration": 337.80000042915344,
+          "requestedConvergenceWaitDuration": 333.33333333333337,
+          "confirmationWaits": 120,
+          "confirmationWaitDuration": 2039.7999999523163,
+          "requestedConfirmationWaitDuration": 2000.0000000000034,
+          "schedulerExcess": 51.59999990463233,
+          "assertionDuration": 2388.2999999523163,
+          "defaultSettingsPreserved": true
+        }
+      },
+      {
+        "sample": 1,
+        "mode": "combined",
+        "workload": "indexeddb",
+        "count": 20,
+        "duration": 1705,
+        "summary": {
+          "assertions": 80,
+          "initialReady": 60,
+          "initiallyUnready": 20,
+          "failed": 0,
+          "attempts": 180,
+          "failedAttempts": 20,
+          "attemptDuration": 8.09999966621399,
+          "convergenceWaits": 20,
+          "convergenceWaitDuration": 338.0999997854233,
+          "requestedConvergenceWaitDuration": 333.33333333333337,
+          "confirmationWaits": 80,
+          "confirmationWaitDuration": 1346.7000000476837,
+          "requestedConfirmationWaitDuration": 1333.3333333333337,
+          "schedulerExcess": 27.86666647593173,
+          "assertionDuration": 1693.9999996423721,
+          "defaultSettingsPreserved": true
+        }
+      },
+      {
+        "sample": 2,
+        "mode": "combined",
+        "workload": "ready",
+        "count": 20,
+        "duration": 1372.3999999761581,
+        "summary": {
+          "assertions": 80,
+          "initialReady": 80,
+          "initiallyUnready": 0,
+          "failed": 0,
+          "attempts": 160,
+          "failedAttempts": 0,
+          "attemptDuration": 8.700000166893005,
+          "convergenceWaits": 0,
+          "convergenceWaitDuration": 0,
+          "requestedConvergenceWaitDuration": 0,
+          "confirmationWaits": 80,
+          "confirmationWaitDuration": 1357.8999998569489,
+          "requestedConfirmationWaitDuration": 1333.3333333333337,
+          "schedulerExcess": 28.933333237965826,
+          "assertionDuration": 1367.200000166893,
+          "defaultSettingsPreserved": true
+        }
+      },
+      {
+        "sample": 2,
+        "mode": "observed",
+        "workload": "ready",
+        "count": 20,
+        "duration": 2052.899999976158,
+        "summary": {
+          "assertions": 120,
+          "initialReady": 120,
+          "initiallyUnready": 0,
+          "failed": 0,
+          "attempts": 240,
+          "failedAttempts": 0,
+          "attemptDuration": 7.099999785423279,
+          "convergenceWaits": 0,
+          "convergenceWaitDuration": 0,
+          "requestedConvergenceWaitDuration": 0,
+          "confirmationWaits": 120,
+          "confirmationWaitDuration": 2037,
+          "requestedConfirmationWaitDuration": 2000.0000000000034,
+          "schedulerExcess": 43.13333352406801,
+          "assertionDuration": 2045.0999997854233,
+          "defaultSettingsPreserved": true
+        }
+      },
+      {
+        "sample": 2,
+        "mode": "combined",
+        "workload": "indexeddb",
+        "count": 20,
+        "duration": 1716.6000000238419,
+        "summary": {
+          "assertions": 80,
+          "initialReady": 60,
+          "initiallyUnready": 20,
+          "failed": 0,
+          "attempts": 180,
+          "failedAttempts": 20,
+          "attemptDuration": 8.300000309944153,
+          "convergenceWaits": 20,
+          "convergenceWaitDuration": 341.5000001192093,
+          "requestedConvergenceWaitDuration": 333.33333333333337,
+          "confirmationWaits": 80,
+          "confirmationWaitDuration": 1356.2000000476837,
+          "requestedConfirmationWaitDuration": 1333.3333333333337,
+          "schedulerExcess": 37.50000035762777,
+          "assertionDuration": 1706.9000004529953,
+          "defaultSettingsPreserved": true
+        }
+      },
+      {
+        "sample": 2,
+        "mode": "observed",
+        "workload": "indexeddb",
+        "count": 20,
+        "duration": 2397.600000023842,
+        "summary": {
+          "assertions": 120,
+          "initialReady": 100,
+          "initiallyUnready": 20,
+          "failed": 0,
+          "attempts": 260,
+          "failedAttempts": 20,
+          "attemptDuration": 6.099999785423279,
+          "convergenceWaits": 20,
+          "convergenceWaitDuration": 340.19999969005585,
+          "requestedConvergenceWaitDuration": 333.33333333333337,
+          "confirmationWaits": 120,
+          "confirmationWaitDuration": 2037.6000002622604,
+          "requestedConfirmationWaitDuration": 2000.0000000000034,
+          "schedulerExcess": 52.46666661898273,
+          "assertionDuration": 2385.199999809265,
+          "defaultSettingsPreserved": true
+        }
+      },
+      {
+        "sample": 3,
+        "mode": "observed",
+        "workload": "ready",
+        "count": 20,
+        "duration": 2059.2999999523163,
+        "summary": {
+          "assertions": 120,
+          "initialReady": 120,
+          "initiallyUnready": 0,
+          "failed": 0,
+          "attempts": 240,
+          "failedAttempts": 0,
+          "attemptDuration": 6.90000057220459,
+          "convergenceWaits": 0,
+          "convergenceWaitDuration": 0,
+          "requestedConvergenceWaitDuration": 0,
+          "confirmationWaits": 120,
+          "confirmationWaitDuration": 2043.6999996900558,
+          "requestedConfirmationWaitDuration": 2000.0000000000034,
+          "schedulerExcess": 47.49999964237189,
+          "assertionDuration": 2051.5000002384186,
+          "defaultSettingsPreserved": true
+        }
+      },
+      {
+        "sample": 3,
+        "mode": "combined",
+        "workload": "ready",
+        "count": 20,
+        "duration": 1377.6000000238419,
+        "summary": {
+          "assertions": 80,
+          "initialReady": 80,
+          "initiallyUnready": 0,
+          "failed": 0,
+          "attempts": 160,
+          "failedAttempts": 0,
+          "attemptDuration": 6.700000286102295,
+          "convergenceWaits": 0,
+          "convergenceWaitDuration": 0,
+          "requestedConvergenceWaitDuration": 0,
+          "confirmationWaits": 80,
+          "confirmationWaitDuration": 1364.4999998807907,
+          "requestedConfirmationWaitDuration": 1333.3333333333337,
+          "schedulerExcess": 34.69999980926505,
+          "assertionDuration": 1372.3000003099442,
+          "defaultSettingsPreserved": true
+        }
+      },
+      {
+        "sample": 3,
+        "mode": "observed",
+        "workload": "indexeddb",
+        "count": 20,
+        "duration": 2399.2000000476837,
+        "summary": {
+          "assertions": 120,
+          "initialReady": 100,
+          "initiallyUnready": 20,
+          "failed": 0,
+          "attempts": 260,
+          "failedAttempts": 20,
+          "attemptDuration": 6.300000190734863,
+          "convergenceWaits": 20,
+          "convergenceWaitDuration": 342.099999666214,
+          "requestedConvergenceWaitDuration": 333.33333333333337,
+          "confirmationWaits": 120,
+          "confirmationWaitDuration": 2036.3999999761581,
+          "requestedConfirmationWaitDuration": 2000.0000000000034,
+          "schedulerExcess": 52.03333302338897,
+          "assertionDuration": 2386.5000002384186,
+          "defaultSettingsPreserved": true
+        }
+      },
+      {
+        "sample": 3,
+        "mode": "combined",
+        "workload": "indexeddb",
+        "count": 20,
+        "duration": 1718.7000000476837,
+        "summary": {
+          "assertions": 80,
+          "initialReady": 60,
+          "initiallyUnready": 20,
+          "failed": 0,
+          "attempts": 180,
+          "failedAttempts": 20,
+          "attemptDuration": 8.000000238418579,
+          "convergenceWaits": 20,
+          "convergenceWaitDuration": 339.8000000715256,
+          "requestedConvergenceWaitDuration": 333.33333333333337,
+          "confirmationWaits": 80,
+          "confirmationWaitDuration": 1360.1999995708466,
+          "requestedConfirmationWaitDuration": 1333.3333333333337,
+          "schedulerExcess": 38.833333214123925,
+          "assertionDuration": 1708.799999833107,
+          "defaultSettingsPreserved": true
+        }
+      }
+    ]
+  },
+  "isolation": {
+    "status": "passed",
+    "checks": [
+      {
+        "name": "Current bridge drains started work but admits stale work after reset",
+        "status": "passed",
+        "proves": "Execution ownership is missing; aborting HTTP alone does not stop server effects."
+      },
+      {
+        "name": "Current bridge repeats duplicate requests and rejects unknown operation names",
+        "status": "passed"
+      },
+      {
+        "name": "Current bridge blocks after reset failure and recovers only on explicit reset",
+        "status": "passed"
+      },
+      {
+        "name": "Owned prototype drains unabortable old writes before next reset, rejects stale and duplicate requests",
+        "status": "passed",
+        "deadline": "Deadline cancellation delivered after operation started; no elapsed-time benchmark or arbitrary sleep."
+      },
+      {
+        "name": "Owned prototype blocks ordinary work after failed reset and recovers by explicit prepare",
+        "status": "passed"
+      },
+      {
+        "name": "Failed setup closes admission; next prepare removes partial effects; cleanup runs at boundaries",
+        "status": "passed",
+        "counts": {
+          "resets": 10,
+          "cleanup": 4,
+          "writes": 10
+        }
+      },
+      {
+        "name": "Process shutdown closes the server and cleans the final scope exactly once",
+        "status": "passed",
+        "counts": {
+          "resets": 10,
+          "cleanup": 5,
+          "writes": 10
+        }
+      }
+    ],
+    "dataDirectory": "/private/tmp/dyno-setup-spike-bWcLER/isolation/data-4PJNZT"
+  },
+  "validation": {
+    "observerParity": 5,
+    "reporterReconstruction": {
+      "status": "passed",
+      "transitions": 1350,
+      "equalityAndReplayChecks": 2700,
+      "tests": 338,
+      "lateObserverGetsFullCurrentSnapshot": true,
+      "pauseOutputCloseReopenTransitions": true,
+      "missingSnapshotRejected": true
+    },
+    "reporterBrowserFlows": {
+      "passed": 2,
+      "log": "/private/tmp/dyno-setup-spike-bWcLER/reporter/browser-proof.log"
+    },
+    "readinessCorrectness": {
+      "chromium": 25,
+      "webkit": 25,
+      "firefox": "not exercised: cached Firefox failed before launch with missing profile folder, including explicit-profile retry"
+    },
+    "upstreamConfirmationEdge": {
+      "results": [
+        {
+          "name": "original",
+          "returned": true,
+          "calls": 2
+        },
+        {
+          "name": "instrumented",
+          "returned": true,
+          "calls": 2,
+          "observed": {
+            "attempts": 2,
+            "failedAttempts": 0,
+            "initialReady": true,
+            "attemptDuration": 0.011250000000003979,
+            "convergenceWaits": 0,
+            "convergenceWaitDuration": 0,
+            "confirmationWaits": 1,
+            "confirmationWaitDuration": 17.078416000000004,
+            "requestedConvergenceWaitDuration": 0,
+            "requestedConfirmationWaitDuration": 16.666666666666668,
+            "schedulerExcess": 0.4117493333333364,
+            "timeout": 1000,
+            "frequency": 60,
+            "reliability": 1,
+            "status": "passed",
+            "duration": 17.121166000000002
+          }
+        }
+      ]
+    }
+  },
+  "artifactRoot": "/private/tmp/dyno-setup-spike-bWcLER",
+  "lanes": [
+    {
+      "name": "scenarios",
+      "report": "/private/tmp/dyno-setup-spike-bWcLER/scenarios/REPORT.md"
+    },
+    {
+      "name": "database",
+      "report": "/private/tmp/dyno-setup-spike-bWcLER/database/REPORT.md"
+    },
+    {
+      "name": "sessions",
+      "report": "/private/tmp/dyno-setup-spike-bWcLER/sessions/REPORT.md"
+    },
+    {
+      "name": "reporter",
+      "report": "/private/tmp/dyno-setup-spike-bWcLER/reporter/REPORT.md"
+    },
+    {
+      "name": "interactor",
+      "report": "/private/tmp/dyno-setup-spike-bWcLER/interactor/REPORT.md"
+    },
+    {
+      "name": "isolation",
+      "report": "/private/tmp/dyno-setup-spike-bWcLER/isolation/REPORT.md"
+    }
+  ]
+}
