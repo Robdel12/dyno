@@ -1,0 +1,2058 @@
+{
+  "date": "2026-10-31",
+  "status": "complete",
+  "artifactRoot": "/private/tmp/dyno-stream-spike-ubfvAa",
+  "scope": "Disposable spike; no production runtime or Vizzly migration PR edits.",
+  "baselineDynoRevision": "a39080350b95d66ae724b743bef7b167ed9e16f0",
+  "vizzlyRevision": "f066c176e90875a6d40be8656587c00e2a69e9a3",
+  "conditions": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "cpu": "Apple M4 Max",
+    "node": "v24.22.1",
+    "browser": "Chromium 156.0.8078.4",
+    "playwrightCore": "1.64.1",
+    "workers": 1,
+    "shards": 1,
+    "appViewport": {
+      "width": 1920,
+      "height": 1080
+    },
+    "observerViewport": {
+      "width": 1440,
+      "height": 1000
+    },
+    "databaseAndRedis": "Fresh owned services per full run.",
+    "commandClock": "Full npm test:e2e command including OCR helper, Vite build, app migration/seed/start, run and teardown; open observer launch/attach/final UI validation/cleanup included. Docker setup/cleanup and artifact analysis separate.",
+    "browserClock": "After observer ready gate, before final UI audit. Includes live observer contention.",
+    "headless": true,
+    "observer": "Actual document-visible standalone reporter in separate Chromium process, default overview throughout execution; selected logs/timings/image inspected after completion.",
+    "order": [
+      "control-closed-2",
+      "control-open-1",
+      "candidate-open-1",
+      "candidate-closed-1",
+      "candidate-closed-2",
+      "candidate-open-2",
+      "control-open-2",
+      "control-closed-3"
+    ],
+    "retries": 0,
+    "skips": 0,
+    "visualBaselineAcceptance": false,
+    "liveVizzlyPublication": false,
+    "sharedPrerequisites": [
+      "Previous combined setup/session/readiness prototype retained in all variants.",
+      "Reset retry result before every Interactor confirmation attempt, observation on/off.",
+      "Privacy form derives defaults from server values and retains only edits.",
+      "Close API admission, release fixture gates and drain actual finite API handlers before SQL reset."
+    ],
+    "sourceFingerprints": {
+      "control": {
+        "directory": "/private/tmp/dyno-stream-spike-ubfvAa/integration/control",
+        "files": 59,
+        "sha256": "b4a6dd9225c34a6c15e48dd99e8a6b102d270ebe7b2218a30f6f55cb5083d597"
+      },
+      "candidate": {
+        "directory": "/private/tmp/dyno-stream-spike-ubfvAa/integration/candidate",
+        "files": 61,
+        "sha256": "521518f7a8b8963804bfc43f5d9dfcbd89887ff16abfa67d68a3205320a953de"
+      },
+      "interactor": {
+        "directory": "/private/tmp/dyno-stream-spike-ubfvAa/canonical/prerequisite-interactor/lib",
+        "files": 38,
+        "sha256": "6fdd609939d70d516ff082ebce638855959c85ba8bfc2fce51887f660052b337"
+      },
+      "harness": {
+        "directory": "/private/tmp/dyno-stream-spike-ubfvAa/harness",
+        "files": 5,
+        "sha256": "8a79106cc49dcf0c7393b6a6024b456957a02d60749932ad79cc030249e8dbea"
+      }
+    },
+    "sourceFingerprintsUnchangedAfterMatrix": true,
+    "sourceFingerprintsUnchangedAfterBoundaryTests": true
+  },
+  "excludedAttempt": {
+    "name": "control-closed-1",
+    "directory": "/private/tmp/dyno-stream-spike-ubfvAa/results/control-closed-1",
+    "reason": "Before shared correctness prerequisites; three app failures and 231/232 images. Not a comparable timing. Original deadlock victim SQL was unavailable; controlled real PostgreSQL proof reproduces lock-order class, not exact lost incident."
+  },
+  "groups": [
+    {
+      "variant": "control",
+      "mode": "closed",
+      "samples": 2,
+      "healthySamples": 2,
+      "healthyCommandMedianMS": 210649.393542,
+      "healthyBrowserMedianMS": 200752.85000002384,
+      "allApplicationBrowserMedianMS": 200752.85000002384,
+      "commandMS": [
+        208898.223042,
+        212400.564042
+      ],
+      "browserMS": [
+        198561.30000007153,
+        202944.39999997616
+      ]
+    },
+    {
+      "variant": "control",
+      "mode": "open",
+      "samples": 2,
+      "healthySamples": 0,
+      "healthyCommandMedianMS": null,
+      "healthyBrowserMedianMS": null,
+      "allApplicationBrowserMedianMS": 204082.44999998808,
+      "commandMS": [
+        226848.47124999997,
+        226416.84270799998
+      ],
+      "browserMS": [
+        205118.10000002384,
+        203046.79999995232
+      ]
+    },
+    {
+      "variant": "candidate",
+      "mode": "closed",
+      "samples": 2,
+      "healthySamples": 2,
+      "healthyCommandMedianMS": 212068.046771,
+      "healthyBrowserMedianMS": 201709.14999997616,
+      "allApplicationBrowserMedianMS": 201709.14999997616,
+      "commandMS": [
+        211039.353125,
+        213096.740417
+      ],
+      "browserMS": [
+        201042.39999997616,
+        202375.89999997616
+      ]
+    },
+    {
+      "variant": "candidate",
+      "mode": "open",
+      "samples": 2,
+      "healthySamples": 2,
+      "healthyCommandMedianMS": 210686.1797915,
+      "healthyBrowserMedianMS": 200465.15000009537,
+      "allApplicationBrowserMedianMS": 200465.15000009537,
+      "commandMS": [
+        214694.545625,
+        206677.813958
+      ],
+      "browserMS": [
+        204511.90000009537,
+        196418.40000009537
+      ]
+    }
+  ],
+  "runs": [
+    {
+      "name": "control-closed-2",
+      "variant": "control",
+      "mode": "closed",
+      "artifactDirectory": "/private/tmp/dyno-stream-spike-ubfvAa/results/control-closed-2",
+      "status": "passed",
+      "applicationPassed": true,
+      "healthyTiming": true,
+      "startedAt": "2026-10-31T05:11:55.260Z",
+      "commandMS": 208898.223042,
+      "browserMS": 198561.30000007153,
+      "outsideTestsMS": 4448.199999690056,
+      "browserCounts": {
+        "expected": 338,
+        "declared": 338,
+        "finished": 338,
+        "unique": 338,
+        "passed": 338,
+        "failed": 0,
+        "skipped": 0
+      },
+      "nodeCounts": {
+        "count": 1,
+        "passed": 1,
+        "failed": 0,
+        "duration": 205.46187499999974
+      },
+      "images": 232,
+      "checkpointStatus": "passed",
+      "sourceSHA256": "fc1756ebacfcbd6cdecc3029c5768e4a31a25c39bd16aebb320abb6594c5e2b8",
+      "lockSHA256": "6397c880000c01fd2df63f258f719fc3b106b54feea7d597260e88c27ebd7801",
+      "sourceUnchanged": true,
+      "routes": {
+        "capture": {
+          "count": 1,
+          "duration": 4.300000071525574,
+          "maximum": 4.300000071525574,
+          "stringChars": 68,
+          "serializeDuration": 0
+        },
+        "view": {
+          "count": 3652,
+          "duration": 6129.699999809265,
+          "maximum": 35.799999952316284,
+          "stringChars": 4104522,
+          "serializeDuration": 37.49999976158142
+        },
+        "context:set": {
+          "count": 2089,
+          "duration": 3969.4000005722046,
+          "maximum": 33.5,
+          "stringChars": 526333,
+          "serializeDuration": 3.2999998331069946
+        },
+        "events:start": {
+          "count": 1,
+          "duration": 22.799999952316284,
+          "maximum": 22.799999952316284,
+          "stringChars": 121947,
+          "serializeDuration": 0.5
+        },
+        "operations:activate": {
+          "count": 245,
+          "duration": 455.1999989748001,
+          "maximum": 58.299999952316284,
+          "stringChars": 72529,
+          "serializeDuration": 1.1000001430511475
+        },
+        "operations:screenshot": {
+          "count": 245,
+          "duration": 13320.499999761581,
+          "maximum": 378.10000002384186,
+          "stringChars": 153601,
+          "serializeDuration": 1.2999998331069946
+        },
+        "attachments/commit": {
+          "count": 245,
+          "duration": 229.49999928474426,
+          "maximum": 12.200000047683716,
+          "stringChars": 36015,
+          "serializeDuration": 1.3999998569488525
+        },
+        "operations:reset-native": {
+          "count": 338,
+          "duration": 290.7000000476837,
+          "maximum": 4.699999928474426,
+          "stringChars": 63858,
+          "serializeDuration": 0.2999999523162842
+        },
+        "context:clear": {
+          "count": 383,
+          "duration": 242.10000026226044,
+          "maximum": 7.5,
+          "stringChars": 45194,
+          "serializeDuration": 0.7999999523162842
+        },
+        "events:test": {
+          "count": 338,
+          "duration": 262.5999997854233,
+          "maximum": 11.700000047683716,
+          "stringChars": 1520376,
+          "serializeDuration": 4.200000524520874
+        },
+        "operations:resize": {
+          "count": 155,
+          "duration": 570.3000007867813,
+          "maximum": 12.200000047683716,
+          "stringChars": 31215,
+          "serializeDuration": 0.8000000715255737
+        },
+        "operations:native": {
+          "count": 126,
+          "duration": 1840.0000007152557,
+          "maximum": 35,
+          "stringChars": 48977,
+          "serializeDuration": 0.3999999761581421
+        }
+      },
+      "lifecycle": {
+        "create-runtime": {
+          "count": 338,
+          "duration": 553.3999997377396,
+          "maximum": 5.799999952316284,
+          "stringChars": 0,
+          "serializeDuration": 0
+        },
+        "runtime-frame-to-ready:test": {
+          "count": 338,
+          "duration": 3213.0000002384186,
+          "maximum": 33.10000002384186,
+          "stringChars": 0,
+          "serializeDuration": 0
+        },
+        "post-test-native-reset": {
+          "count": 338,
+          "duration": 292.099999666214,
+          "maximum": 4.699999928474426,
+          "stringChars": 0,
+          "serializeDuration": 0
+        },
+        "post-test-context-clear": {
+          "count": 338,
+          "duration": 198.30000054836273,
+          "maximum": 5.399999976158142,
+          "stringChars": 0,
+          "serializeDuration": 0
+        }
+      },
+      "interactor": {
+        "assertions": 4254,
+        "initialReady": 3618,
+        "failed": 0,
+        "attempts": 11463,
+        "failedAttempts": 2955,
+        "attemptDuration": 2564.9999998807907,
+        "convergenceWaits": 2955,
+        "convergenceWaitDuration": 56265.699999690056,
+        "confirmationWaits": 4254,
+        "confirmationWaitDuration": 73077.10000169277,
+        "requestedConvergenceWaitDuration": 49250.00000000003,
+        "requestedConfirmationWaitDuration": 70899.99999999994,
+        "schedulerExcess": 9777.733334143948,
+        "assertionDuration": 131988.60000228882
+      },
+      "observer": {
+        "valid": true,
+        "startupMS": 0,
+        "initialRenderMS": 0,
+        "finalValidationMS": 0,
+        "gateMS": {
+          "start": 19.952458999999635,
+          "finish": 14.3559580000001
+        },
+        "server": {
+          "messages": 0,
+          "bytes": 0,
+          "snapshots": 0,
+          "serializeDuration": 0.0019999999999527063,
+          "connections": 0,
+          "backpressureCloses": 0,
+          "maximumBufferedBytes": 0
+        },
+        "ui": {},
+        "progressSamples": 0,
+        "firstProgress": null,
+        "lastProgress": null,
+        "selectedDetail": null,
+        "retainedDataMatchesSavedReport": null,
+        "integrityNote": "No standalone observer in closed mode."
+      },
+      "serviceCleanupPassed": true,
+      "errors": []
+    },
+    {
+      "name": "control-open-1",
+      "variant": "control",
+      "mode": "open",
+      "artifactDirectory": "/private/tmp/dyno-stream-spike-ubfvAa/results/control-open-1",
+      "status": "failed",
+      "applicationPassed": true,
+      "healthyTiming": false,
+      "startedAt": "2026-10-31T05:15:27.718Z",
+      "commandMS": 226848.47124999997,
+      "browserMS": 205118.10000002384,
+      "outsideTestsMS": 7878.199998497963,
+      "browserCounts": {
+        "expected": 338,
+        "declared": 338,
+        "finished": 338,
+        "unique": 338,
+        "passed": 338,
+        "failed": 0,
+        "skipped": 0
+      },
+      "nodeCounts": {
+        "count": 1,
+        "passed": 1,
+        "failed": 0,
+        "duration": 203.5489590000002
+      },
+      "images": 232,
+      "checkpointStatus": "passed",
+      "sourceSHA256": "fc1756ebacfcbd6cdecc3029c5768e4a31a25c39bd16aebb320abb6594c5e2b8",
+      "lockSHA256": "6397c880000c01fd2df63f258f719fc3b106b54feea7d597260e88c27ebd7801",
+      "sourceUnchanged": true,
+      "routes": {
+        "capture": {
+          "count": 1,
+          "duration": 1.6999999284744263,
+          "maximum": 1.6999999284744263,
+          "stringChars": 68,
+          "serializeDuration": 0
+        },
+        "view": {
+          "count": 3652,
+          "duration": 15468.800000548363,
+          "maximum": 147.09999990463257,
+          "stringChars": 4102403,
+          "serializeDuration": 38.59999942779541
+        },
+        "context:set": {
+          "count": 2090,
+          "duration": 8004.600000739098,
+          "maximum": 148.20000004768372,
+          "stringChars": 526557,
+          "serializeDuration": 4.399999618530273
+        },
+        "events:start": {
+          "count": 1,
+          "duration": 85.19999992847443,
+          "maximum": 85.19999992847443,
+          "stringChars": 121947,
+          "serializeDuration": 0.19999992847442627
+        },
+        "operations:activate": {
+          "count": 245,
+          "duration": 388.29999899864197,
+          "maximum": 7.399999976158142,
+          "stringChars": 72501,
+          "serializeDuration": 0.7999999523162842
+        },
+        "operations:screenshot": {
+          "count": 245,
+          "duration": 12832.899998784065,
+          "maximum": 281.39999997615814,
+          "stringChars": 153565,
+          "serializeDuration": 1.0000001192092896
+        },
+        "attachments/commit": {
+          "count": 245,
+          "duration": 239.40000009536743,
+          "maximum": 9,
+          "stringChars": 36015,
+          "serializeDuration": 1.0999997854232788
+        },
+        "operations:reset-native": {
+          "count": 338,
+          "duration": 1577,
+          "maximum": 110.60000002384186,
+          "stringChars": 63855,
+          "serializeDuration": 0.10000002384185791
+        },
+        "context:clear": {
+          "count": 383,
+          "duration": 345.9999998807907,
+          "maximum": 9.100000023841858,
+          "stringChars": 45194,
+          "serializeDuration": 1.3000000715255737
+        },
+        "events:test": {
+          "count": 338,
+          "duration": 265.3999996185303,
+          "maximum": 6,
+          "stringChars": 1519213,
+          "serializeDuration": 3.700000047683716
+        },
+        "operations:resize": {
+          "count": 155,
+          "duration": 609.2000000476837,
+          "maximum": 13.600000023841858,
+          "stringChars": 31215,
+          "serializeDuration": 0.49999988079071045
+        },
+        "operations:native": {
+          "count": 126,
+          "duration": 1827.9000014066696,
+          "maximum": 35,
+          "stringChars": 49045,
+          "serializeDuration": 0.29999983310699463
+        }
+      },
+      "lifecycle": {
+        "create-runtime": {
+          "count": 338,
+          "duration": 1641.1999992132187,
+          "maximum": 148.69999992847443,
+          "stringChars": 0,
+          "serializeDuration": 0
+        },
+        "runtime-frame-to-ready:test": {
+          "count": 338,
+          "duration": 5211.399999260902,
+          "maximum": 202.69999992847443,
+          "stringChars": 0,
+          "serializeDuration": 0
+        },
+        "post-test-native-reset": {
+          "count": 338,
+          "duration": 1578.7000004053116,
+          "maximum": 110.60000002384186,
+          "stringChars": 0,
+          "serializeDuration": 0
+        },
+        "post-test-context-clear": {
+          "count": 338,
+          "duration": 245.299999833107,
+          "maximum": 4.799999952316284,
+          "stringChars": 0,
+          "serializeDuration": 0
+        }
+      },
+      "interactor": {
+        "assertions": 4254,
+        "initialReady": 3614,
+        "failed": 0,
+        "attempts": 11480,
+        "failedAttempts": 2972,
+        "attemptDuration": 2551.1999994516373,
+        "convergenceWaits": 2972,
+        "convergenceWaitDuration": 56237.59999990463,
+        "confirmationWaits": 4254,
+        "confirmationWaitDuration": 73293.79999923706,
+        "requestedConvergenceWaitDuration": 49533.33333333334,
+        "requestedConfirmationWaitDuration": 70899.99999999994,
+        "schedulerExcess": 9590.566669623056,
+        "assertionDuration": 132173.09999775887
+      },
+      "observer": {
+        "valid": false,
+        "startupMS": 145.39495800000003,
+        "initialRenderMS": 63.75854100000015,
+        "finalValidationMS": 0,
+        "gateMS": {
+          "start": 82.72754200000008,
+          "finish": 12231.019750000007
+        },
+        "server": {
+          "messages": 3457,
+          "bytes": 3048029198,
+          "snapshots": 3457,
+          "serializeDuration": 6901.375657000597,
+          "connections": 5,
+          "backpressureCloses": 4,
+          "maximumBufferedBytes": 7908922
+        },
+        "ui": {
+          "opens": 5,
+          "errors": 4,
+          "messages": 3462,
+          "sourceCharacters": 3047659337,
+          "renders": 3472,
+          "renderDurationMS": 4220.2000052928925,
+          "maximumRenderMS": 3.399999976158142,
+          "maximumWireToRenderMS": 3028.2000000476837,
+          "hiddenEvents": 0,
+          "nonOverviewRenders": 0,
+          "events": {
+            "snapshot": 3457,
+            "host-status": 5
+          },
+          "phase": "completed",
+          "visible": true,
+          "completedAt": 207592,
+          "modelTests": 338,
+          "modelPassed": 338,
+          "renderedTests": 338,
+          "renderedPassed": 338,
+          "renderedPassedCount": 338,
+          "renderedPhase": "completed"
+        },
+        "progressSamples": 326,
+        "firstProgress": {
+          "passed": 0,
+          "at": 58.699999928474426
+        },
+        "lastProgress": {
+          "passed": 338,
+          "at": 207572.79999995232
+        },
+        "selectedDetail": null,
+        "retainedDataMatchesSavedReport": null,
+        "integrityNote": "Not checked after observer health failure."
+      },
+      "serviceCleanupPassed": true,
+      "errors": [
+        {
+          "message": "Test command exited with 1.",
+          "entry": {
+            "name": "Test command",
+            "duration": 226848.47124999997,
+            "code": 1,
+            "signal": null
+          }
+        },
+        {
+          "message": "Observer mode open failed: page.evaluate: Error: Reporter disconnected/reconnected during run\n    at assert (<anonymous>:212:22)\n    at next (<anonymous>)\n    at iterate (<anonymous>:345:107)\n    at async handle (<anonymous>:370:22)\n    at async retry (<anonymous>:326:18)\n    at async iterate (<anonymous>:345:96)\n    at async handle (<anonymous>:370:22)\n    at async globalThis.__dynoSpikeValidate (<anonymous>:1790:5)\n    at async <anonymous>:396:30"
+        },
+        {
+          "message": "Reporter output/timings/attachments differ from the persisted complete report."
+        }
+      ]
+    },
+    {
+      "name": "candidate-open-1",
+      "variant": "candidate",
+      "mode": "open",
+      "artifactDirectory": "/private/tmp/dyno-stream-spike-ubfvAa/results/candidate-open-1",
+      "status": "passed",
+      "applicationPassed": true,
+      "healthyTiming": true,
+      "startedAt": "2026-10-31T05:23:23.817Z",
+      "commandMS": 214694.545625,
+      "browserMS": 204511.90000009537,
+      "outsideTestsMS": 5084.400000095367,
+      "browserCounts": {
+        "expected": 338,
+        "declared": 338,
+        "finished": 338,
+        "unique": 338,
+        "passed": 338,
+        "failed": 0,
+        "skipped": 0
+      },
+      "nodeCounts": {
+        "count": 1,
+        "passed": 1,
+        "failed": 0,
+        "duration": 203.02558299999987
+      },
+      "images": 232,
+      "checkpointStatus": "passed",
+      "sourceSHA256": "fc1756ebacfcbd6cdecc3029c5768e4a31a25c39bd16aebb320abb6594c5e2b8",
+      "lockSHA256": "6397c880000c01fd2df63f258f719fc3b106b54feea7d597260e88c27ebd7801",
+      "sourceUnchanged": true,
+      "routes": {
+        "capture": {
+          "count": 1,
+          "duration": 3.4000000953674316,
+          "maximum": 3.4000000953674316,
+          "stringChars": 68,
+          "serializeDuration": 0.10000002384185791
+        },
+        "context:set": {
+          "count": 2087,
+          "duration": 4296.499997973442,
+          "maximum": 36.800000071525574,
+          "stringChars": 525724,
+          "serializeDuration": 5.399999737739563
+        },
+        "view": {
+          "count": 2307,
+          "duration": 4665.599998474121,
+          "maximum": 170.20000004768372,
+          "stringChars": 583445,
+          "serializeDuration": 6.400000095367432
+        },
+        "events:start": {
+          "count": 1,
+          "duration": 120.30000007152557,
+          "maximum": 120.30000007152557,
+          "stringChars": 121947,
+          "serializeDuration": 0.10000002384185791
+        },
+        "operations:activate": {
+          "count": 245,
+          "duration": 419.799999833107,
+          "maximum": 5.899999976158142,
+          "stringChars": 72560,
+          "serializeDuration": 1.0999996662139893
+        },
+        "operations:screenshot": {
+          "count": 245,
+          "duration": 13411.499999403954,
+          "maximum": 289.2999999523163,
+          "stringChars": 153640,
+          "serializeDuration": 1.7999998331069946
+        },
+        "attachments/commit": {
+          "count": 245,
+          "duration": 252.10000002384186,
+          "maximum": 3.5,
+          "stringChars": 36015,
+          "serializeDuration": 1.399999976158142
+        },
+        "operations:reset-native": {
+          "count": 338,
+          "duration": 570.1000008583069,
+          "maximum": 170.10000002384186,
+          "stringChars": 63855,
+          "serializeDuration": 1.0999999046325684
+        },
+        "context:clear": {
+          "count": 383,
+          "duration": 317.2999997138977,
+          "maximum": 7.800000071525574,
+          "stringChars": 45194,
+          "serializeDuration": 0.6999999284744263
+        },
+        "events:test": {
+          "count": 338,
+          "duration": 319.3000000715256,
+          "maximum": 12.899999976158142,
+          "stringChars": 1402289,
+          "serializeDuration": 2.299999952316284
+        },
+        "operations:resize": {
+          "count": 155,
+          "duration": 620.1999995708466,
+          "maximum": 12.600000023841858,
+          "stringChars": 31215,
+          "serializeDuration": 0.09999990463256836
+        },
+        "operations:native": {
+          "count": 126,
+          "duration": 1803.6000000238419,
+          "maximum": 33,
+          "stringChars": 49134,
+          "serializeDuration": 0.7999998331069946
+        }
+      },
+      "lifecycle": {
+        "reporting-flush": {
+          "count": 340,
+          "duration": 0.6999999284744263,
+          "maximum": 0.10000002384185791,
+          "stringChars": 0,
+          "serializeDuration": 0
+        },
+        "create-runtime": {
+          "count": 338,
+          "duration": 617.4000000953674,
+          "maximum": 5.899999976158142,
+          "stringChars": 0,
+          "serializeDuration": 0
+        },
+        "runtime-frame-to-ready:test": {
+          "count": 338,
+          "duration": 3559.2999997138977,
+          "maximum": 25.700000047683716,
+          "stringChars": 0,
+          "serializeDuration": 0
+        },
+        "post-test-native-reset": {
+          "count": 338,
+          "duration": 571.7000007629395,
+          "maximum": 170.10000002384186,
+          "stringChars": 0,
+          "serializeDuration": 0
+        },
+        "post-test-context-clear": {
+          "count": 338,
+          "duration": 275.599999666214,
+          "maximum": 7.899999976158142,
+          "stringChars": 0,
+          "serializeDuration": 0
+        }
+      },
+      "interactor": {
+        "assertions": 4254,
+        "initialReady": 3590,
+        "failed": 0,
+        "attempts": 11603,
+        "failedAttempts": 3095,
+        "attemptDuration": 2697.8999987840652,
+        "convergenceWaits": 3095,
+        "convergenceWaitDuration": 58731.400000333786,
+        "confirmationWaits": 4254,
+        "confirmationWaitDuration": 73308.20000350475,
+        "requestedConvergenceWaitDuration": 51583.33333333332,
+        "requestedConfirmationWaitDuration": 70899.99999999994,
+        "schedulerExcess": 10047.833335359885,
+        "assertionDuration": 134829.90000259876
+      },
+      "observer": {
+        "valid": true,
+        "startupMS": 374.05270900000005,
+        "initialRenderMS": 99.28279100000009,
+        "finalValidationMS": 423.3462500000023,
+        "gateMS": {
+          "start": 117.88104199999998,
+          "finish": 435.37275000000955
+        },
+        "server": {
+          "snapshots": 1,
+          "changes": 2646,
+          "skipped": 1,
+          "messages": 2647,
+          "bytes": 3098186,
+          "serializeDuration": 23.426791000484172,
+          "backpressureCloses": 0,
+          "connections": 1,
+          "maximumBufferedBytes": 251,
+          "scheduledFlushes": 2645,
+          "coalescedViews": 0
+        },
+        "ui": {
+          "opens": 1,
+          "errors": 0,
+          "messages": 2648,
+          "sourceCharacters": 3026557,
+          "renders": 2053,
+          "renderDurationMS": 3004.600002169609,
+          "maximumRenderMS": 3.899999976158142,
+          "maximumWireToRenderMS": 19.399999976158142,
+          "hiddenEvents": 0,
+          "nonOverviewRenders": 0,
+          "events": {
+            "snapshot": 1,
+            "host-status": 1,
+            "view-change": 2646
+          },
+          "phase": "completed",
+          "visible": true,
+          "completedAt": 204819.79999995232,
+          "modelTests": 338,
+          "modelPassed": 338,
+          "renderedTests": 338,
+          "renderedPassed": 338,
+          "renderedPassedCount": 338,
+          "renderedPhase": "completed",
+          "dataDigest": "88ab355f9dd150a3910c9c238db41f582abb3f781c3c5d72a3e31eb87b2544f3",
+          "detailCounts": {
+            "output": 484,
+            "timings": 8491,
+            "attachments": 245
+          },
+          "validObserver": true
+        },
+        "progressSamples": 339,
+        "firstProgress": {
+          "passed": 0,
+          "at": 63
+        },
+        "lastProgress": {
+          "passed": 338,
+          "at": 204639.5
+        },
+        "selectedDetail": {
+          "id": "[\"tests/e2e/billing-settings.spec.js\",\"Billing Settings - Basic Functionality\",\"should display billing page structure\"]",
+          "outputVerified": true,
+          "timingRows": 18,
+          "attachment": {
+            "name": "billing-settings-page-initial-structure",
+            "width": 1920,
+            "height": 2728,
+            "decoded": true
+          }
+        },
+        "retainedDataMatchesSavedReport": true,
+        "integrityNote": "All-test projected status, duration, output, timings and attachment identity/name/status/dimensions digest, checked against persisted report; real selected PNG decoded."
+      },
+      "serviceCleanupPassed": true,
+      "errors": []
+    },
+    {
+      "name": "candidate-closed-1",
+      "variant": "candidate",
+      "mode": "closed",
+      "artifactDirectory": "/private/tmp/dyno-stream-spike-ubfvAa/results/candidate-closed-1",
+      "status": "passed",
+      "applicationPassed": true,
+      "healthyTiming": true,
+      "startedAt": "2026-10-31T05:27:01.964Z",
+      "commandMS": 211039.353125,
+      "browserMS": 201042.39999997616,
+      "outsideTestsMS": 4960.499999403954,
+      "browserCounts": {
+        "expected": 338,
+        "declared": 338,
+        "finished": 338,
+        "unique": 338,
+        "passed": 338,
+        "failed": 0,
+        "skipped": 0
+      },
+      "nodeCounts": {
+        "count": 1,
+        "passed": 1,
+        "failed": 0,
+        "duration": 205.14870799999994
+      },
+      "images": 232,
+      "checkpointStatus": "passed",
+      "sourceSHA256": "fc1756ebacfcbd6cdecc3029c5768e4a31a25c39bd16aebb320abb6594c5e2b8",
+      "lockSHA256": "6397c880000c01fd2df63f258f719fc3b106b54feea7d597260e88c27ebd7801",
+      "sourceUnchanged": true,
+      "routes": {
+        "capture": {
+          "count": 1,
+          "duration": 2,
+          "maximum": 2,
+          "stringChars": 68,
+          "serializeDuration": 0
+        },
+        "context:set": {
+          "count": 2093,
+          "duration": 4347.3000012636185,
+          "maximum": 39.699999928474426,
+          "stringChars": 527574,
+          "serializeDuration": 5.299999833106995
+        },
+        "view": {
+          "count": 2313,
+          "duration": 4424.500003457069,
+          "maximum": 39.39999997615814,
+          "stringChars": 584804,
+          "serializeDuration": 6.800000786781311
+        },
+        "events:start": {
+          "count": 1,
+          "duration": 22.899999976158142,
+          "maximum": 22.899999976158142,
+          "stringChars": 121947,
+          "serializeDuration": 0.5
+        },
+        "operations:activate": {
+          "count": 245,
+          "duration": 395.6999988555908,
+          "maximum": 5.300000071525574,
+          "stringChars": 72550,
+          "serializeDuration": 0.7999997138977051
+        },
+        "operations:screenshot": {
+          "count": 245,
+          "duration": 13682.199999809265,
+          "maximum": 450,
+          "stringChars": 153651,
+          "serializeDuration": 1.8000001907348633
+        },
+        "attachments/commit": {
+          "count": 245,
+          "duration": 236.49999904632568,
+          "maximum": 2.600000023841858,
+          "stringChars": 36015,
+          "serializeDuration": 1.0999997854232788
+        },
+        "operations:reset-native": {
+          "count": 338,
+          "duration": 378.89999985694885,
+          "maximum": 5.299999952316284,
+          "stringChars": 63867,
+          "serializeDuration": 1.399999976158142
+        },
+        "context:clear": {
+          "count": 383,
+          "duration": 283.9999990463257,
+          "maximum": 4.399999976158142,
+          "stringChars": 45194,
+          "serializeDuration": 1.3000003099441528
+        },
+        "events:test": {
+          "count": 338,
+          "duration": 282.0000001192093,
+          "maximum": 3.5,
+          "stringChars": 1402697,
+          "serializeDuration": 3.7999995946884155
+        },
+        "operations:resize": {
+          "count": 155,
+          "duration": 645.0000013113022,
+          "maximum": 18.09999990463257,
+          "stringChars": 31215,
+          "serializeDuration": 0.6000001430511475
+        },
+        "operations:native": {
+          "count": 126,
+          "duration": 1806.2000005245209,
+          "maximum": 36.40000009536743,
+          "stringChars": 48996,
+          "serializeDuration": 0.7000000476837158
+        }
+      },
+      "lifecycle": {
+        "reporting-flush": {
+          "count": 340,
+          "duration": 0.8000001907348633,
+          "maximum": 0.10000002384185791,
+          "stringChars": 0,
+          "serializeDuration": 0
+        },
+        "create-runtime": {
+          "count": 338,
+          "duration": 664.8999992609024,
+          "maximum": 14.299999952316284,
+          "stringChars": 0,
+          "serializeDuration": 0
+        },
+        "runtime-frame-to-ready:test": {
+          "count": 338,
+          "duration": 3652.1999992132187,
+          "maximum": 92.30000007152557,
+          "stringChars": 0,
+          "serializeDuration": 0
+        },
+        "post-test-native-reset": {
+          "count": 338,
+          "duration": 380.2999999523163,
+          "maximum": 5.299999952316284,
+          "stringChars": 0,
+          "serializeDuration": 0
+        },
+        "post-test-context-clear": {
+          "count": 338,
+          "duration": 242.39999890327454,
+          "maximum": 4.200000047683716,
+          "stringChars": 0,
+          "serializeDuration": 0
+        }
+      },
+      "interactor": {
+        "assertions": 4254,
+        "initialReady": 3612,
+        "failed": 0,
+        "attempts": 11424,
+        "failedAttempts": 2916,
+        "attemptDuration": 2654.10000538826,
+        "convergenceWaits": 2916,
+        "convergenceWaitDuration": 56525.099999427795,
+        "confirmationWaits": 4254,
+        "confirmationWaitDuration": 73417.2999972105,
+        "requestedConvergenceWaitDuration": 48599.99999999998,
+        "requestedConfirmationWaitDuration": 70899.99999999994,
+        "schedulerExcess": 10997.76666311423,
+        "assertionDuration": 132689.40000104904
+      },
+      "observer": {
+        "valid": true,
+        "startupMS": 0,
+        "initialRenderMS": 0,
+        "finalValidationMS": 0,
+        "gateMS": {
+          "start": 19.923749999999927,
+          "finish": 14.77591699999175
+        },
+        "server": {
+          "snapshots": 0,
+          "changes": 0,
+          "skipped": 0,
+          "messages": 0,
+          "bytes": 0,
+          "serializeDuration": 0,
+          "backpressureCloses": 0,
+          "connections": 0,
+          "maximumBufferedBytes": 0,
+          "scheduledFlushes": 0,
+          "coalescedViews": 0
+        },
+        "ui": {},
+        "progressSamples": 0,
+        "firstProgress": null,
+        "lastProgress": null,
+        "selectedDetail": null,
+        "retainedDataMatchesSavedReport": null,
+        "integrityNote": "No standalone observer in closed mode."
+      },
+      "serviceCleanupPassed": true,
+      "errors": []
+    },
+    {
+      "name": "candidate-closed-2",
+      "variant": "candidate",
+      "mode": "closed",
+      "artifactDirectory": "/private/tmp/dyno-stream-spike-ubfvAa/results/candidate-closed-2",
+      "status": "passed",
+      "applicationPassed": true,
+      "healthyTiming": true,
+      "startedAt": "2026-10-31T05:30:36.912Z",
+      "commandMS": 213096.740417,
+      "browserMS": 202375.89999997616,
+      "outsideTestsMS": 4893.900000214577,
+      "browserCounts": {
+        "expected": 338,
+        "declared": 338,
+        "finished": 338,
+        "unique": 338,
+        "passed": 338,
+        "failed": 0,
+        "skipped": 0
+      },
+      "nodeCounts": {
+        "count": 1,
+        "passed": 1,
+        "failed": 0,
+        "duration": 258.9119169999997
+      },
+      "images": 232,
+      "checkpointStatus": "passed",
+      "sourceSHA256": "fc1756ebacfcbd6cdecc3029c5768e4a31a25c39bd16aebb320abb6594c5e2b8",
+      "lockSHA256": "6397c880000c01fd2df63f258f719fc3b106b54feea7d597260e88c27ebd7801",
+      "sourceUnchanged": true,
+      "routes": {
+        "capture": {
+          "count": 1,
+          "duration": 2.3000000715255737,
+          "maximum": 2.3000000715255737,
+          "stringChars": 68,
+          "serializeDuration": 0
+        },
+        "context:set": {
+          "count": 2089,
+          "duration": 4192.100001692772,
+          "maximum": 63.90000009536743,
+          "stringChars": 526273,
+          "serializeDuration": 4.8999998569488525
+        },
+        "view": {
+          "count": 2310,
+          "duration": 4245.400002241135,
+          "maximum": 65.40000009536743,
+          "stringChars": 584147,
+          "serializeDuration": 7.600000977516174
+        },
+        "events:start": {
+          "count": 1,
+          "duration": 49.60000002384186,
+          "maximum": 49.60000002384186,
+          "stringChars": 121947,
+          "serializeDuration": 0.20000004768371582
+        },
+        "operations:activate": {
+          "count": 245,
+          "duration": 433.40000009536743,
+          "maximum": 24.299999952316284,
+          "stringChars": 72549,
+          "serializeDuration": 1.3999998569488525
+        },
+        "operations:screenshot": {
+          "count": 245,
+          "duration": 13817.899999022484,
+          "maximum": 333.89999997615814,
+          "stringChars": 153618,
+          "serializeDuration": 1.2000000476837158
+        },
+        "attachments/commit": {
+          "count": 245,
+          "duration": 254.3000007867813,
+          "maximum": 24.90000009536743,
+          "stringChars": 36015,
+          "serializeDuration": 1.0000001192092896
+        },
+        "operations:reset-native": {
+          "count": 338,
+          "duration": 391.69999980926514,
+          "maximum": 11.5,
+          "stringChars": 63850,
+          "serializeDuration": 1.5
+        },
+        "context:clear": {
+          "count": 383,
+          "duration": 299.6999999284744,
+          "maximum": 12.899999976158142,
+          "stringChars": 45194,
+          "serializeDuration": 0.7999999523162842
+        },
+        "events:test": {
+          "count": 338,
+          "duration": 300.79999935626984,
+          "maximum": 13.199999928474426,
+          "stringChars": 1401692,
+          "serializeDuration": 3.200000047683716
+        },
+        "operations:resize": {
+          "count": 155,
+          "duration": 670.8999999761581,
+          "maximum": 18.600000023841858,
+          "stringChars": 31215,
+          "serializeDuration": 0.6999999284744263
+        },
+        "operations:native": {
+          "count": 126,
+          "duration": 1957.600000500679,
+          "maximum": 47.39999997615814,
+          "stringChars": 49072,
+          "serializeDuration": 0.6000000238418579
+        }
+      },
+      "lifecycle": {
+        "reporting-flush": {
+          "count": 340,
+          "duration": 0.6000000238418579,
+          "maximum": 0.10000002384185791,
+          "stringChars": 0,
+          "serializeDuration": 0
+        },
+        "create-runtime": {
+          "count": 338,
+          "duration": 642.8999984264374,
+          "maximum": 6.700000047683716,
+          "stringChars": 0,
+          "serializeDuration": 0
+        },
+        "runtime-frame-to-ready:test": {
+          "count": 338,
+          "duration": 3534.4999982118607,
+          "maximum": 47.799999952316284,
+          "stringChars": 0,
+          "serializeDuration": 0
+        },
+        "post-test-native-reset": {
+          "count": 338,
+          "duration": 393.7999999523163,
+          "maximum": 11.5,
+          "stringChars": 0,
+          "serializeDuration": 0
+        },
+        "post-test-context-clear": {
+          "count": 338,
+          "duration": 237.19999980926514,
+          "maximum": 4.899999976158142,
+          "stringChars": 0,
+          "serializeDuration": 0
+        }
+      },
+      "interactor": {
+        "assertions": 4254,
+        "initialReady": 3616,
+        "failed": 0,
+        "attempts": 11385,
+        "failedAttempts": 2877,
+        "attemptDuration": 2762.2000044584274,
+        "convergenceWaits": 2877,
+        "convergenceWaitDuration": 55997.60000050068,
+        "confirmationWaits": 4254,
+        "confirmationWaitDuration": 73814.49999690056,
+        "requestedConvergenceWaitDuration": 47950.00000000006,
+        "requestedConfirmationWaitDuration": 70899.99999999994,
+        "schedulerExcess": 11400.566664020222,
+        "assertionDuration": 132673.89999961853
+      },
+      "observer": {
+        "valid": true,
+        "startupMS": 0,
+        "initialRenderMS": 0,
+        "finalValidationMS": 0,
+        "gateMS": {
+          "start": 39.65824999999995,
+          "finish": 13.634250000002794
+        },
+        "server": {
+          "snapshots": 0,
+          "changes": 0,
+          "skipped": 0,
+          "messages": 0,
+          "bytes": 0,
+          "serializeDuration": 0,
+          "backpressureCloses": 0,
+          "connections": 0,
+          "maximumBufferedBytes": 0,
+          "scheduledFlushes": 0,
+          "coalescedViews": 0
+        },
+        "ui": {},
+        "progressSamples": 0,
+        "firstProgress": null,
+        "lastProgress": null,
+        "selectedDetail": null,
+        "retainedDataMatchesSavedReport": null,
+        "integrityNote": "No standalone observer in closed mode."
+      },
+      "serviceCleanupPassed": true,
+      "errors": []
+    },
+    {
+      "name": "candidate-open-2",
+      "variant": "candidate",
+      "mode": "open",
+      "artifactDirectory": "/private/tmp/dyno-stream-spike-ubfvAa/results/candidate-open-2",
+      "status": "passed",
+      "applicationPassed": true,
+      "healthyTiming": true,
+      "startedAt": "2026-10-31T05:34:13.476Z",
+      "commandMS": 206677.813958,
+      "browserMS": 196418.40000009537,
+      "outsideTestsMS": 4675.39999973774,
+      "browserCounts": {
+        "expected": 338,
+        "declared": 338,
+        "finished": 338,
+        "unique": 338,
+        "passed": 338,
+        "failed": 0,
+        "skipped": 0
+      },
+      "nodeCounts": {
+        "count": 1,
+        "passed": 1,
+        "failed": 0,
+        "duration": 202.89216699999997
+      },
+      "images": 232,
+      "checkpointStatus": "passed",
+      "sourceSHA256": "fc1756ebacfcbd6cdecc3029c5768e4a31a25c39bd16aebb320abb6594c5e2b8",
+      "lockSHA256": "6397c880000c01fd2df63f258f719fc3b106b54feea7d597260e88c27ebd7801",
+      "sourceUnchanged": true,
+      "routes": {
+        "capture": {
+          "count": 1,
+          "duration": 1.8000000715255737,
+          "maximum": 1.8000000715255737,
+          "stringChars": 68,
+          "serializeDuration": 0
+        },
+        "context:set": {
+          "count": 2089,
+          "duration": 4044.8999997377396,
+          "maximum": 141.90000009536743,
+          "stringChars": 526354,
+          "serializeDuration": 5.899999737739563
+        },
+        "view": {
+          "count": 2309,
+          "duration": 4114.800000071526,
+          "maximum": 142.29999995231628,
+          "stringChars": 583720,
+          "serializeDuration": 5.90000057220459
+        },
+        "events:start": {
+          "count": 1,
+          "duration": 106.10000002384186,
+          "maximum": 106.10000002384186,
+          "stringChars": 121947,
+          "serializeDuration": 0.2999999523162842
+        },
+        "operations:activate": {
+          "count": 245,
+          "duration": 452.5000011920929,
+          "maximum": 42.59999990463257,
+          "stringChars": 72522,
+          "serializeDuration": 1.1000001430511475
+        },
+        "operations:screenshot": {
+          "count": 245,
+          "duration": 13528.39999961853,
+          "maximum": 281.5,
+          "stringChars": 153588,
+          "serializeDuration": 1.8999998569488525
+        },
+        "attachments/commit": {
+          "count": 245,
+          "duration": 239.50000035762787,
+          "maximum": 2.600000023841858,
+          "stringChars": 36015,
+          "serializeDuration": 0.8999998569488525
+        },
+        "operations:reset-native": {
+          "count": 338,
+          "duration": 370.39999878406525,
+          "maximum": 5.099999904632568,
+          "stringChars": 63868,
+          "serializeDuration": 0.7000000476837158
+        },
+        "context:clear": {
+          "count": 383,
+          "duration": 269.10000014305115,
+          "maximum": 7,
+          "stringChars": 45194,
+          "serializeDuration": 1.100000023841858
+        },
+        "events:test": {
+          "count": 338,
+          "duration": 280.3999996185303,
+          "maximum": 11.800000071525574,
+          "stringChars": 1400984,
+          "serializeDuration": 3.3000001907348633
+        },
+        "operations:resize": {
+          "count": 155,
+          "duration": 621.800000667572,
+          "maximum": 13.700000047683716,
+          "stringChars": 31215,
+          "serializeDuration": 0.5000001192092896
+        },
+        "operations:native": {
+          "count": 126,
+          "duration": 1726.4999995231628,
+          "maximum": 31.100000023841858,
+          "stringChars": 49007,
+          "serializeDuration": 0.3999999761581421
+        }
+      },
+      "lifecycle": {
+        "reporting-flush": {
+          "count": 340,
+          "duration": 0.6000001430511475,
+          "maximum": 0.10000002384185791,
+          "stringChars": 0,
+          "serializeDuration": 0
+        },
+        "create-runtime": {
+          "count": 338,
+          "duration": 615.1999992132187,
+          "maximum": 7.399999976158142,
+          "stringChars": 0,
+          "serializeDuration": 0
+        },
+        "runtime-frame-to-ready:test": {
+          "count": 338,
+          "duration": 3433.5999999046326,
+          "maximum": 49,
+          "stringChars": 0,
+          "serializeDuration": 0
+        },
+        "post-test-native-reset": {
+          "count": 338,
+          "duration": 372.59999907016754,
+          "maximum": 5.199999928474426,
+          "stringChars": 0,
+          "serializeDuration": 0
+        },
+        "post-test-context-clear": {
+          "count": 338,
+          "duration": 225.60000038146973,
+          "maximum": 7,
+          "stringChars": 0,
+          "serializeDuration": 0
+        }
+      },
+      "interactor": {
+        "assertions": 4254,
+        "initialReady": 3601,
+        "failed": 0,
+        "attempts": 11351,
+        "failedAttempts": 2843,
+        "attemptDuration": 2674.999989271164,
+        "convergenceWaits": 2843,
+        "convergenceWaitDuration": 54624.900003671646,
+        "confirmationWaits": 4254,
+        "confirmationWaitDuration": 73351.10000622272,
+        "requestedConvergenceWaitDuration": 47383.33333333332,
+        "requestedConfirmationWaitDuration": 70899.99999999994,
+        "schedulerExcess": 10147.033342440905,
+        "assertionDuration": 130741.0999994278
+      },
+      "observer": {
+        "valid": true,
+        "startupMS": 146.71925000000002,
+        "initialRenderMS": 83.50637499999993,
+        "finalValidationMS": 419.1992500000051,
+        "gateMS": {
+          "start": 103.5664999999999,
+          "finish": 422.89804100000765
+        },
+        "server": {
+          "snapshots": 1,
+          "changes": 2648,
+          "skipped": 1,
+          "messages": 2649,
+          "bytes": 3096914,
+          "serializeDuration": 23.53302999968855,
+          "backpressureCloses": 0,
+          "connections": 1,
+          "maximumBufferedBytes": 251,
+          "scheduledFlushes": 2647,
+          "coalescedViews": 0
+        },
+        "ui": {
+          "opens": 1,
+          "errors": 0,
+          "messages": 2650,
+          "sourceCharacters": 3025231,
+          "renders": 2048,
+          "renderDurationMS": 2999.1000007390976,
+          "maximumRenderMS": 3.700000047683716,
+          "maximumWireToRenderMS": 19.700000047683716,
+          "hiddenEvents": 0,
+          "nonOverviewRenders": 0,
+          "events": {
+            "snapshot": 1,
+            "host-status": 1,
+            "view-change": 2648
+          },
+          "phase": "completed",
+          "visible": true,
+          "completedAt": 196730.5,
+          "modelTests": 338,
+          "modelPassed": 338,
+          "renderedTests": 338,
+          "renderedPassed": 338,
+          "renderedPassedCount": 338,
+          "renderedPhase": "completed",
+          "dataDigest": "ce702662bec3bc1502f50cb6fa4428e28bc8c93c25c8265eb525fee0235b16fd",
+          "detailCounts": {
+            "output": 484,
+            "timings": 8491,
+            "attachments": 245
+          },
+          "validObserver": true
+        },
+        "progressSamples": 339,
+        "firstProgress": {
+          "passed": 0,
+          "at": 57.5
+        },
+        "lastProgress": {
+          "passed": 338,
+          "at": 196524.29999995232
+        },
+        "selectedDetail": {
+          "id": "[\"tests/e2e/billing-settings.spec.js\",\"Billing Settings - Basic Functionality\",\"should display billing page structure\"]",
+          "outputVerified": true,
+          "timingRows": 18,
+          "attachment": {
+            "name": "billing-settings-page-initial-structure",
+            "width": 1920,
+            "height": 2728,
+            "decoded": true
+          }
+        },
+        "retainedDataMatchesSavedReport": true,
+        "integrityNote": "All-test projected status, duration, output, timings and attachment identity/name/status/dimensions digest, checked against persisted report; real selected PNG decoded."
+      },
+      "serviceCleanupPassed": true,
+      "errors": []
+    },
+    {
+      "name": "control-open-2",
+      "variant": "control",
+      "mode": "open",
+      "artifactDirectory": "/private/tmp/dyno-stream-spike-ubfvAa/results/control-open-2",
+      "status": "failed",
+      "applicationPassed": true,
+      "healthyTiming": false,
+      "startedAt": "2026-10-31T05:37:43.781Z",
+      "commandMS": 226416.84270799998,
+      "browserMS": 203046.79999995232,
+      "outsideTestsMS": 7440.000000357628,
+      "browserCounts": {
+        "expected": 338,
+        "declared": 338,
+        "finished": 338,
+        "unique": 338,
+        "passed": 338,
+        "failed": 0,
+        "skipped": 0
+      },
+      "nodeCounts": {
+        "count": 1,
+        "passed": 1,
+        "failed": 0,
+        "duration": 254.5578330000003
+      },
+      "images": 232,
+      "checkpointStatus": "passed",
+      "sourceSHA256": "fc1756ebacfcbd6cdecc3029c5768e4a31a25c39bd16aebb320abb6594c5e2b8",
+      "lockSHA256": "6397c880000c01fd2df63f258f719fc3b106b54feea7d597260e88c27ebd7801",
+      "sourceUnchanged": true,
+      "routes": {
+        "capture": {
+          "count": 1,
+          "duration": 3.4000000953674316,
+          "maximum": 3.4000000953674316,
+          "stringChars": 68,
+          "serializeDuration": 0
+        },
+        "view": {
+          "count": 3655,
+          "duration": 14296.70000052452,
+          "maximum": 22.899999976158142,
+          "stringChars": 4104059,
+          "serializeDuration": 38.00000083446503
+        },
+        "context:set": {
+          "count": 2094,
+          "duration": 7432.799998998642,
+          "maximum": 18.5,
+          "stringChars": 527978,
+          "serializeDuration": 6.100000023841858
+        },
+        "events:start": {
+          "count": 1,
+          "duration": 143.10000002384186,
+          "maximum": 143.10000002384186,
+          "stringChars": 121947,
+          "serializeDuration": 0.30000007152557373
+        },
+        "operations:activate": {
+          "count": 245,
+          "duration": 375.69999957084656,
+          "maximum": 5.600000023841858,
+          "stringChars": 72580,
+          "serializeDuration": 1
+        },
+        "operations:screenshot": {
+          "count": 245,
+          "duration": 12922.39999973774,
+          "maximum": 293.5,
+          "stringChars": 153665,
+          "serializeDuration": 1.7000000476837158
+        },
+        "attachments/commit": {
+          "count": 245,
+          "duration": 223.39999985694885,
+          "maximum": 2.799999952316284,
+          "stringChars": 36015,
+          "serializeDuration": 1.500000238418579
+        },
+        "operations:reset-native": {
+          "count": 338,
+          "duration": 1435.6000000238419,
+          "maximum": 16.300000071525574,
+          "stringChars": 63902,
+          "serializeDuration": 0.5999999046325684
+        },
+        "context:clear": {
+          "count": 383,
+          "duration": 346,
+          "maximum": 9.799999952316284,
+          "stringChars": 45194,
+          "serializeDuration": 0.7999999523162842
+        },
+        "events:test": {
+          "count": 338,
+          "duration": 251.60000038146973,
+          "maximum": 3.100000023841858,
+          "stringChars": 1520311,
+          "serializeDuration": 3.4999998807907104
+        },
+        "operations:resize": {
+          "count": 155,
+          "duration": 650.200001001358,
+          "maximum": 16.299999952316284,
+          "stringChars": 31215,
+          "serializeDuration": 0.2999999523162842
+        },
+        "operations:native": {
+          "count": 126,
+          "duration": 1779.0999999046326,
+          "maximum": 34.299999952316284,
+          "stringChars": 48983,
+          "serializeDuration": 1.1999999284744263
+        }
+      },
+      "lifecycle": {
+        "create-runtime": {
+          "count": 338,
+          "duration": 1414.0999993085861,
+          "maximum": 15.399999976158142,
+          "stringChars": 0,
+          "serializeDuration": 0
+        },
+        "runtime-frame-to-ready:test": {
+          "count": 338,
+          "duration": 4953.899999260902,
+          "maximum": 36.39999997615814,
+          "stringChars": 0,
+          "serializeDuration": 0
+        },
+        "post-test-native-reset": {
+          "count": 338,
+          "duration": 1437.3999999761581,
+          "maximum": 16.300000071525574,
+          "stringChars": 0,
+          "serializeDuration": 0
+        },
+        "post-test-context-clear": {
+          "count": 338,
+          "duration": 244.39999997615814,
+          "maximum": 5.600000023841858,
+          "stringChars": 0,
+          "serializeDuration": 0
+        }
+      },
+      "interactor": {
+        "assertions": 4254,
+        "initialReady": 3618,
+        "failed": 0,
+        "attempts": 11438,
+        "failedAttempts": 2930,
+        "attemptDuration": 2555.000013113022,
+        "convergenceWaits": 2930,
+        "convergenceWaitDuration": 55309.5999982357,
+        "confirmationWaits": 4254,
+        "confirmationWaitDuration": 73190.29999387264,
+        "requestedConvergenceWaitDuration": 48833.33333333336,
+        "requestedConfirmationWaitDuration": 70899.99999999994,
+        "schedulerExcess": 9352.799991846083,
+        "assertionDuration": 131142.20000338554
+      },
+      "observer": {
+        "valid": false,
+        "startupMS": 149.4215,
+        "initialRenderMS": 108.22112500000003,
+        "finalValidationMS": 0,
+        "gateMS": {
+          "start": 139.58170800000016,
+          "finish": 12173.44858300002
+        },
+        "server": {
+          "messages": 3452,
+          "bytes": 3037251936,
+          "snapshots": 3452,
+          "serializeDuration": 6128.338902000321,
+          "connections": 5,
+          "backpressureCloses": 4,
+          "maximumBufferedBytes": 7921045
+        },
+        "ui": {
+          "opens": 5,
+          "errors": 4,
+          "messages": 3457,
+          "sourceCharacters": 3036883329,
+          "renders": 3467,
+          "renderDurationMS": 4132.69999229908,
+          "maximumRenderMS": 4.599999904632568,
+          "maximumWireToRenderMS": 3022,
+          "hiddenEvents": 0,
+          "nonOverviewRenders": 0,
+          "events": {
+            "snapshot": 3452,
+            "host-status": 5
+          },
+          "phase": "completed",
+          "visible": true,
+          "completedAt": 205470.89999997616,
+          "modelTests": 338,
+          "modelPassed": 338,
+          "renderedTests": 338,
+          "renderedPassed": 338,
+          "renderedPassedCount": 338,
+          "renderedPhase": "completed"
+        },
+        "progressSamples": 325,
+        "firstProgress": {
+          "passed": 0,
+          "at": 85.60000002384186
+        },
+        "lastProgress": {
+          "passed": 338,
+          "at": 205454.20000004768
+        },
+        "selectedDetail": null,
+        "retainedDataMatchesSavedReport": null,
+        "integrityNote": "Not checked after observer health failure."
+      },
+      "serviceCleanupPassed": true,
+      "errors": [
+        {
+          "message": "Test command exited with 1.",
+          "entry": {
+            "name": "Test command",
+            "duration": 226416.84270799998,
+            "code": 1,
+            "signal": null
+          }
+        },
+        {
+          "message": "Observer mode open failed: page.evaluate: Error: Reporter disconnected/reconnected during run\n    at assert (<anonymous>:212:22)\n    at next (<anonymous>)\n    at iterate (<anonymous>:345:107)\n    at async handle (<anonymous>:370:22)\n    at async retry (<anonymous>:326:18)\n    at async iterate (<anonymous>:345:96)\n    at async handle (<anonymous>:370:22)\n    at async globalThis.__dynoSpikeValidate (<anonymous>:1790:5)\n    at async <anonymous>:396:30"
+        },
+        {
+          "message": "Reporter output/timings/attachments differ from the persisted complete report."
+        }
+      ]
+    },
+    {
+      "name": "control-closed-3",
+      "variant": "control",
+      "mode": "closed",
+      "artifactDirectory": "/private/tmp/dyno-stream-spike-ubfvAa/results/control-closed-3",
+      "status": "passed",
+      "applicationPassed": true,
+      "healthyTiming": true,
+      "startedAt": "2026-10-31T05:41:33.516Z",
+      "commandMS": 212400.564042,
+      "browserMS": 202944.39999997616,
+      "outsideTestsMS": 4844.499999880791,
+      "browserCounts": {
+        "expected": 338,
+        "declared": 338,
+        "finished": 338,
+        "unique": 338,
+        "passed": 338,
+        "failed": 0,
+        "skipped": 0
+      },
+      "nodeCounts": {
+        "count": 1,
+        "passed": 1,
+        "failed": 0,
+        "duration": 200.52366700000016
+      },
+      "images": 232,
+      "checkpointStatus": "passed",
+      "sourceSHA256": "fc1756ebacfcbd6cdecc3029c5768e4a31a25c39bd16aebb320abb6594c5e2b8",
+      "lockSHA256": "6397c880000c01fd2df63f258f719fc3b106b54feea7d597260e88c27ebd7801",
+      "sourceUnchanged": true,
+      "routes": {
+        "capture": {
+          "count": 1,
+          "duration": 1.6999999284744263,
+          "maximum": 1.6999999284744263,
+          "stringChars": 68,
+          "serializeDuration": 0
+        },
+        "view": {
+          "count": 3653,
+          "duration": 6983.299999594688,
+          "maximum": 83.5,
+          "stringChars": 4105681,
+          "serializeDuration": 34.59999990463257
+        },
+        "context:set": {
+          "count": 2089,
+          "duration": 4639.400000095367,
+          "maximum": 103.60000002384186,
+          "stringChars": 526501,
+          "serializeDuration": 4.600000023841858
+        },
+        "events:start": {
+          "count": 1,
+          "duration": 22.59999990463257,
+          "maximum": 22.59999990463257,
+          "stringChars": 121947,
+          "serializeDuration": 0.2999999523162842
+        },
+        "operations:activate": {
+          "count": 245,
+          "duration": 424.1000006198883,
+          "maximum": 9,
+          "stringChars": 72553,
+          "serializeDuration": 1.4000000953674316
+        },
+        "operations:screenshot": {
+          "count": 245,
+          "duration": 13382.399999260902,
+          "maximum": 296.8000000715256,
+          "stringChars": 153618,
+          "serializeDuration": 1.399999976158142
+        },
+        "attachments/commit": {
+          "count": 245,
+          "duration": 250.60000014305115,
+          "maximum": 4.5,
+          "stringChars": 36015,
+          "serializeDuration": 0.8000001907348633
+        },
+        "operations:reset-native": {
+          "count": 338,
+          "duration": 357.80000042915344,
+          "maximum": 16.600000023841858,
+          "stringChars": 63888,
+          "serializeDuration": 0.30000007152557373
+        },
+        "context:clear": {
+          "count": 383,
+          "duration": 276.4000006914139,
+          "maximum": 10.799999952316284,
+          "stringChars": 45194,
+          "serializeDuration": 0.7999995946884155
+        },
+        "events:test": {
+          "count": 338,
+          "duration": 278.0999982357025,
+          "maximum": 10.599999904632568,
+          "stringChars": 1519767,
+          "serializeDuration": 3.0000001192092896
+        },
+        "operations:resize": {
+          "count": 155,
+          "duration": 586.399999499321,
+          "maximum": 12.099999904632568,
+          "stringChars": 31215,
+          "serializeDuration": 0.2999999523162842
+        },
+        "operations:native": {
+          "count": 126,
+          "duration": 1766.3000011444092,
+          "maximum": 30.300000071525574,
+          "stringChars": 49085,
+          "serializeDuration": 0.7000001668930054
+        }
+      },
+      "lifecycle": {
+        "create-runtime": {
+          "count": 338,
+          "duration": 617.099999666214,
+          "maximum": 6.299999952316284,
+          "stringChars": 0,
+          "serializeDuration": 0
+        },
+        "runtime-frame-to-ready:test": {
+          "count": 338,
+          "duration": 3483.899999856949,
+          "maximum": 23.600000023841858,
+          "stringChars": 0,
+          "serializeDuration": 0
+        },
+        "post-test-native-reset": {
+          "count": 338,
+          "duration": 358.60000026226044,
+          "maximum": 16.600000023841858,
+          "stringChars": 0,
+          "serializeDuration": 0
+        },
+        "post-test-context-clear": {
+          "count": 338,
+          "duration": 246.8000007867813,
+          "maximum": 10.799999952316284,
+          "stringChars": 0,
+          "serializeDuration": 0
+        }
+      },
+      "interactor": {
+        "assertions": 4254,
+        "initialReady": 3585,
+        "failed": 0,
+        "attempts": 11561,
+        "failedAttempts": 3053,
+        "attemptDuration": 2694.500002503395,
+        "convergenceWaits": 3053,
+        "convergenceWaitDuration": 58254.99999845028,
+        "confirmationWaits": 4254,
+        "confirmationWaitDuration": 73259.19999969006,
+        "requestedConvergenceWaitDuration": 50883.33333333333,
+        "requestedConfirmationWaitDuration": 70899.99999999994,
+        "schedulerExcess": 10226.23333068688,
+        "assertionDuration": 134298.69999814034
+      },
+      "observer": {
+        "valid": true,
+        "startupMS": 0,
+        "initialRenderMS": 0,
+        "finalValidationMS": 0,
+        "gateMS": {
+          "start": 20.322124999999687,
+          "finish": 3.112250000005588
+        },
+        "server": {
+          "messages": 0,
+          "bytes": 0,
+          "snapshots": 0,
+          "serializeDuration": 0.0012079999996785773,
+          "connections": 0,
+          "backpressureCloses": 0,
+          "maximumBufferedBytes": 0
+        },
+        "ui": {},
+        "progressSamples": 0,
+        "firstProgress": null,
+        "lastProgress": null,
+        "selectedDetail": null,
+        "retainedDataMatchesSavedReport": null,
+        "integrityNote": "No standalone observer in closed mode."
+      },
+      "serviceCleanupPassed": true,
+      "errors": []
+    }
+  ],
+  "proofs": {
+    "canonicalReplay": {
+      "checks": 1369,
+      "artifact": "canonical/REPORT.md"
+    },
+    "realCanonicalCLIAndExistingReporterReports": {
+      "passed": 6,
+      "artifact": "canonical/browser-proof.log"
+    },
+    "observerReplay": {
+      "equalities": 1349,
+      "freshSnapshots": 33,
+      "coalescedGroups": 193,
+      "artifact": "observers/replay-proof.json"
+    },
+    "realObserverWorkflow": {
+      "nodeTests": 1,
+      "browserWorkflows": 2,
+      "artifact": "observers/observer-workflow-final.log"
+    },
+    "slowReader": {
+      "passed": true,
+      "updatesBeforeBound": 46,
+      "queuedBytes": 7827205,
+      "artifact": "observers/slow-reader-proof.json"
+    },
+    "failureContract": {
+      "pureCases": 5,
+      "httpGroups": 6,
+      "sparseSelection": true,
+      "artifact": "failures/REPORT.md",
+      "note": "Separate contract sketch; not all checks target chosen integration implementation."
+    },
+    "interactorPrerequisite": {
+      "pure": 12,
+      "realDOMChromium": 12,
+      "artifact": "canonical/prerequisite-dom-proof.log"
+    },
+    "privacyPrerequisite": {
+      "cases": 4,
+      "browserChecks": 10,
+      "artifact": "harness/privacy-prerequisite/results.json"
+    },
+    "databasePrerequisite": {
+      "realHTTPPostgresCases": 4,
+      "artifact": "failures/reset/postgres-results.json"
+    },
+    "focusedVizzly": {
+      "passed": 36,
+      "skipped": 0,
+      "browserMS": 20447.1,
+      "artifact": "integration/focused-vizzly.log"
+    },
+    "finalIntegratedCLIAndReporterBoundary": {
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0,
+      "durationMS": 6590.226125,
+      "artifact": "integration/final-boundary-tests.log",
+      "runner": "integration/candidate",
+      "runtimeFingerprintUnchangedAfterTests": true
+    }
+  },
+  "limits": [
+    "Two local samples per condition; no confidence interval, CI or cross-browser performance claim.",
+    "Open control with reconnects is an observer failure despite complete passing app coverage; failed audit wall time is not a healthy speed comparison.",
+    "SSE byte count is actual serialized event bytes accepted by Node write, not TCP/TLS overhead. Browser view sizes are source characters, not bytes.",
+    "UI render duration measures synchronous JavaScript/DOM work, not compositor paint; latest-message-to-render metric is not oldest-queued-message latency.",
+    "Embedded overlay remains hidden during execution; its full postMessage transport is not the measured live observer transport.",
+    "Initial snapshots over 8MB cannot pass the current observer guard; chunked initialization or lazy detail delivery needs design.",
+    "Slow-reader proof bounds one connection; response.end does not immediately free queued data until peer reads/disconnects.",
+    "Candidate live metadata and output validation/replay/terminal persistence failures need full production hardening. Contract sketch evidence is not a claim those behaviors ship.",
+    "API drain covers admitted finite handlers, not later timers/background jobs.",
+    "Interactor selection helper and timing observer remain proposed upstream work; do not ship a Dyno fork."
+  ],
+  "validation": {
+    "passed": true,
+    "comparisons": 8,
+    "browserCasesPerRun": 338,
+    "nodeCasesPerRun": 1,
+    "exactPNGNamesAndDimensionsPerRun": 232,
+    "identicalOrderedTestCatalogs": true,
+    "identicalImageCatalogs": true,
+    "sourceUnchangedAcrossAndWithinRuns": true,
+    "frozenRunnerInteractorHarnessUnchanged": true,
+    "allOwnedServiceCleanupCommandsPassed": true,
+    "openControlContinuityFailures": 2,
+    "openCandidateHealthy": 2,
+    "sourceSHA256": "fc1756ebacfcbd6cdecc3029c5768e4a31a25c39bd16aebb320abb6594c5e2b8",
+    "lockSHA256": "6397c880000c01fd2df63f258f719fc3b106b54feea7d597260e88c27ebd7801"
+  },
+  "cleanup": {
+    "passed": true,
+    "ownedProjectsChecked": [
+      "dyno-stream-focused-ubfvaa",
+      "vizzly-dyno-benchmark-14f8a6fd",
+      "vizzly-dyno-benchmark-2aa2a52e",
+      "vizzly-dyno-benchmark-2d787a38",
+      "vizzly-dyno-benchmark-5f98b71d",
+      "vizzly-dyno-benchmark-8503e31c",
+      "vizzly-dyno-benchmark-8d72d2bd",
+      "vizzly-dyno-benchmark-ba779d47",
+      "vizzly-dyno-benchmark-f69b0470",
+      "vizzly-dyno-benchmark-fba3bf84"
+    ],
+    "remaining": []
+  },
+  "conclusion": {
+    "demonstratedSuiteSpeedup": false,
+    "closedCandidateMedianChangeMS": 1418.6532289999886,
+    "closedCandidateMedianChangePercent": 0.6734665622083247,
+    "candidateOpenMedianMS": 210686.1797915,
+    "candidateClosedMedianMS": 212068.046771,
+    "openControlHasNoHealthySamples": true,
+    "observerSerializedByteMedian": {
+      "control": 3042640567.0,
+      "candidate": 3097550.0,
+      "reductionFactor": 982.2732698422947,
+      "reductionPercent": 99.89819533619595
+    },
+    "decision": "Adopt canonical accepted outcomes and incremental observer delivery after hardening; keep existing result HTTP acknowledgements. This is a reporting reliability/bandwidth win, not an established wall-time speedup."
+  },
+  "productionCutline": [
+    "Validate allowed metadata/output fields and duplicate indices atomically.",
+    "Define result/terminal lost-acknowledgement handling; exact replay receipt currently covers only the last live update.",
+    "Prove interrupted output durability, persistence failure, screenshot cancellation and command responsiveness on chosen implementation.",
+    "Preserve complete reporter reconstruction, sequence/reconnect behavior and local routes/search/focus.",
+    "Design initialization for snapshots above 8MB and bound connection count/lifetime.",
+    "Land required supported Interactor changes upstream."
+  ]
+}
