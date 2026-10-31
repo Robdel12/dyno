@@ -7,7 +7,7 @@ import { build } from 'esbuild';
 import { createBrowserPool, resolveSession } from '../../src/browser-session.js';
 import { repository } from './project.js';
 
-export async function inspectOfflineReport(t, path, browser, { images = 0, timings = false, interruptedOutput } = {}) {
+export async function inspectOfflineReport(t, path, browser, { images = 0, timings = false, interruptedOutput, seed } = {}) {
   let result = Promise.withResolvers();
   let server = createServer(async (request, response) => {
     let chunks = [];
@@ -33,6 +33,7 @@ export async function inspectOfflineReport(t, path, browser, { images = 0, timin
     let step='heading';
     try{
       await UI.find('$(.saved-report h1)').visible();
+      ${seed ? `step='seed'; await UI.find(${JSON.stringify('Seed: ' + seed)}).visible();` : ''}
       step='xml';
       let xml = new DOMParser().parseFromString(${JSON.stringify(await readFile(join(dirname(path), 'junit.xml'), 'utf8'))},'application/xml');
       await UI.assert(()=>!xml.querySelector('parsererror') && !!xml.querySelector('testsuites'),'JUnit is not valid XML');

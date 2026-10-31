@@ -23,7 +23,11 @@ export function addSuite(parent, child) {
     throw new Error(`Duplicate describe block: ${child.name}`);
   return Object.freeze({ ...parent, children: list([...parent.children, child]) });
 }
-export function addTest(suite, name, run, { timeout, reason } = {}, declaration, mode = 'run') {
+export function addTest(suite, name, run, options = {}, declaration, mode = 'run') {
+  if (!options || typeof options !== 'object' || Array.isArray(options)) throw new Error('Test options must be an object.');
+  for (let key of Object.keys(options))
+    if (!['timeout', 'reason', 'resources'].includes(key)) throw new Error(`Unknown test option: ${key}.`);
+  let { timeout, reason, resources = [] } = options;
   if (suite.file) throw new Error('test() must be inside a describe block. Wrap the test in describe("Suite name", () => { ... }).');
   if (!validName(name) || (typeof run !== 'function' && !(mode === 'skip' && run === undefined)))
     throw new Error('test requires a name and a function.');
@@ -32,7 +36,11 @@ export function addTest(suite, name, run, { timeout, reason } = {}, declaration,
   if (timeout !== undefined && (!Number.isInteger(timeout) || timeout <= 0 || timeout > 2147483647))
     throw new Error(`Invalid timeout for ${name}.`);
   if (reason !== undefined && !validName(reason)) throw new Error('A skip reason must be a non-empty string.');
-  let test = Object.freeze({ kind: 'test', name, run, timeout, reason, declaration, mode: modeOf(mode) });
+  if (!Array.isArray(resources) || resources.length > 32 ||
+    resources.some((name) => typeof name !== 'string' || !name.trim() || name.length > 128) ||
+    new Set(resources).size !== resources.length)
+    throw new Error(`Invalid resources for ${name}. Use unique, non-empty names.`);
+  let test = Object.freeze({ resources: list([...resources].sort()), kind: 'test', name, run, timeout, reason, declaration, mode: modeOf(mode) });
   return Object.freeze({ ...suite, children: list([...suite.children, test]) });
 }
 export function addHook(suite, phase, run, declaration) {
@@ -75,6 +83,7 @@ export function compileSuite(definitions, { forbidOnly = false } = {}) {
             name: child.name,
             index: tests.length,
             timeout: child.timeout,
+            resources: child.resources,
             run: child.run,
             declaration: child.declaration,
             scopes: list(scopes),
@@ -88,7 +97,7 @@ export function compileSuite(definitions, { forbidOnly = false } = {}) {
   visit(definitions);
   if (forbidOnly && hasOnly)
     throw new Error('Focused tests are not allowed in CI. Remove test.only and describe.only.');
-  let focused = tests.some((test) => test.focused && !test.skipReason);
+  let focused = hasOnly;
   return list(
     tests.map((test) =>
       Object.freeze({
@@ -98,8 +107,8 @@ export function compileSuite(definitions, { forbidOnly = false } = {}) {
     )
   );
 }
-export function testDescriptor({ id, file, suites, name, index, timeout, skipReason }) {
-  return Object.freeze({ id, file, suites, name, index, ...(timeout === undefined ? {} : { timeout }), skipReason });
+export function testDescriptor({ id, file, suites, name, index, timeout, skipReason, resources = [] }) {
+  return Object.freeze({ id, file, suites, name, index, resources: list(resources), ...(timeout === undefined ? {} : { timeout }), skipReason });
 }
 export function selectTests(tests, { ids = [], names = [], files = [], suites = [] } = {}) {
   for (let id of ids) if (!tests.some(test => test.id === id)) throw new Error(`No test with ID ${id}. Rebuild and select it again.`);

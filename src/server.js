@@ -5,7 +5,7 @@ import { randomUUID, createHash } from 'node:crypto';
 import { networkInterfaces } from 'node:os';
 import { proxyRequest, proxyUpgrade } from './proxy.js';
 import { mapStack, sourceContext } from './stack.js';
-import { createRun, acceptEvent } from './run.js';
+import { createRun, acceptEvent, claimTest, releaseTest, reportedExecution, retainExecution, pauseRun } from './run.js';
 import { defaultViewport } from './browser/viewport.js';
 import { createBrowserControl } from './browser-control.js';
 import { partialOutput, validOutput } from './browser/reporting.js';
@@ -42,6 +42,7 @@ export async function createGateway(
     onEvent = () => {},
     onRun = async () => {},
     onError = () => {},
+    onDrain,
     rebuild,
     interactive = false,
   } = {},
@@ -101,11 +102,29 @@ export async function createGateway(
       throw error;
     });
   };
+  let projectDrains = new Map();
+  let drainProject = (context) => {
+    if (!onDrain) return Promise.resolve();
+    let scopes = projectDrains.get(context.runId) ?? new Map();
+    if (scopes.has(context.executionId)) return scopes.get(context.executionId);
+    let work = Promise.resolve().then(async () => {
+      let signal = AbortSignal.timeout(config.cleanupTimeout);
+      let expired = Promise.withResolvers();
+      let abort = () => expired.reject(new Error(`Project execution cleanup exceeded ${config.cleanupTimeout} ms.`));
+      signal.addEventListener('abort', abort, { once: true });
+      try { await Promise.race([onDrain({ ...context, signal }), expired.promise]); }
+      finally { signal.removeEventListener('abort', abort); }
+    });
+    scopes.set(context.executionId, work);
+    projectDrains.set(context.runId, scopes);
+    return work;
+  };
   let control = createBrowserControl({
     artifactsDir: config.artifactsDir,
+    onConnection: (event) => { if (!stopping) onEvent({ type: 'browser-connection', ...event }); },
     getRun: (runId) => runs.get(runId),
     onReplaced: (runId) => {
-      void serializeEvent(runId, async () => {
+      return serializeEvent(runId, async () => {
         let previous = runs.get(runId);
         if (previous && !['completed', 'failed'].includes(previous.status)) {
           let { run, event } = acceptEvent(previous, {
@@ -117,23 +136,42 @@ export async function createGateway(
           ({ event } = await commitTerminal(previous, { run, event }));
           onEvent(event);
         }
-      }).catch(() => {});
+      });
+    },
+    onCommand(input) {
+      let run = runs.get(input.runId);
+      if (!run || ['completed', 'failed'].includes(run.status)) return;
+      if (['pause', 'continue', 'stop'].includes(input.command))
+        runs.set(run.runId, pauseRun(run, input.command === 'pause' ? !run.paused : input.command === 'stop'));
     },
   });
   let commitTerminal = async (previous, candidate) => {
     let { run, event } = candidate;
-    try { await control.finish(run.runId); }
-    catch (error) {
-      let message = event.error
-        ? `${event.error.message} Native cleanup: ${error.message}`
-        : `Native browser cleanup failed: ${error.message}`;
+    let failures = [];
+    let draining = previous.assignments.filter((assignment) => !previous.tests[assignment.index].skipReason);
+    let cleanup = await Promise.allSettled([
+      control.finish(run.runId),
+      ...draining.map((assignment) => drainProject({
+        runId: run.runId, executionId: assignment.id, workerId: assignment.workerId, test: previous.tests[assignment.index],
+      })),
+    ]);
+    for (let [index, result] of cleanup.entries()) {
+      if (result.status !== 'rejected') continue;
+      let error = result.reason;
+      stopping = true;
+      failures.push(`${index === 0 ? (event.error ? 'Native cleanup' : 'Native browser cleanup failed') : 'Project execution cleanup failed'}: ${error.message}`);
+      if (index > 0) onError(Object.assign(error, { phase: 'cleanup' }));
+    }
+    if (failures.length) {
+      let message = [event.error?.message, ...failures.filter((message) => !event.error?.message?.includes(message))].filter(Boolean).join(' ');
       ({ run, event } = acceptEvent(previous, {
         runId: run.runId, type: 'fatal', partial: run.partial ?? partialOutput(control.view(run.runId), previous),
-        error: { ...event.error, message, phase: 'runtime' },
+        error: { ...event.error, message, phase: 'cleanup' },
       }));
     }
     try { await persist(run); }
     catch (error) {
+      stopping = true;
       let failed = Object.freeze({ ...previous, status: 'failed',
         error: Object.freeze({ phase: 'runtime', message: error.message }),
         partial: run.partial ?? partialOutput(control.view(run.runId), previous) });
@@ -149,6 +187,7 @@ export async function createGateway(
   let allowedHosts;
   let settings = {
     forbidOnly: config.forbidOnly,
+    seed: config.seed,
     cleanupTimeout: config.cleanupTimeout,
     timeout: config.timeout,
     expectTimeout: config.expectTimeout,
@@ -193,6 +232,8 @@ export async function createGateway(
             'text/html; charset=utf-8',
             '<!doctype html><html><head><meta name="viewport" content="width=device-width"><script src="/__dyno__/bridge.js"></script></head><body></body></html>',
           );
+        if (route === 'park' && request.method === 'GET')
+          return send('text/html; charset=utf-8', page('Ready for the next test', '', 'park.js'));
         if (route === 'reporter' && request.method === 'GET')
           return send('text/html; charset=utf-8', reporter);
         if (
@@ -200,6 +241,7 @@ export async function createGateway(
             'view',
             'control',
             'command-result',
+            'connection-status',
             'context',
             'operations',
             'operations/cancel',
@@ -214,7 +256,7 @@ export async function createGateway(
           requireOpen();
           if (!input || typeof input !== 'object' || Array.isArray(input))
             throw new Error('Browser commands must be objects.');
-          if (route === 'view') {
+          if (['view', 'control'].includes(route)) {
             await serializeEvent(input.runId, () => {
               requireOpen();
               return control.handle(route, url, request, response, input);
@@ -248,6 +290,8 @@ export async function createGateway(
             'shell.js',
             'bootstrap.js',
             'guard.js',
+            'park.js',
+            'companion.js',
           ].includes(route)
         )
           return send(
@@ -283,6 +327,68 @@ export async function createGateway(
           );
         if (route === 'results' && request.method === 'GET')
           return send('application/json', JSON.stringify([...runs.values()]));
+        if (['assignment', 'released'].includes(route) && request.method === 'POST') {
+          if (request.headers.origin && request.headers.origin !== `http://${request.headers.host}`)
+            throw new Error('Assignments must be same-origin.');
+          let input = await reporterInput(request);
+          if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('Invalid assignment request.');
+          if (typeof input.requestId !== 'string' || !input.requestId || input.requestId.length > 256)
+            throw new Error('Assignments require a request ID.');
+          let key = route + ':' + input.requestId;
+          let digest = createHash('sha256').update(JSON.stringify(input)).digest('hex');
+          let replay = () => {
+            let receipt = receipts.get(input.runId)?.get(key);
+            if (receipt && receipt.digest !== digest)
+              throw Object.assign(new Error('Changed assignment replay.'), { status: 409 });
+            return receipt?.reply;
+          };
+          let prepared = await serializeEvent(input.runId, () => {
+            requireOpen();
+            control.authorize(input);
+            let reply = replay();
+            if (reply) return { reply };
+            let previous = runs.get(input.runId);
+            if (route === 'released') {
+              let assignment = reportedExecution(previous, { workerId: '0', executionId: input.executionId });
+              return { assignment: { ...assignment, test: previous.tests[assignment.index] }, skipped: Boolean(previous.tests[assignment.index].skipReason) };
+            }
+            let claimed = claimTest(previous, { workerId: '0', executionId: randomUUID(), now: performance.now() });
+            runs.set(previous.runId, claimed.run);
+            control.recordEvent({ type: route }, claimed.run);
+            reply = JSON.stringify({ assignment: claimed.assignment, done: claimed.done, paused: claimed.run.paused });
+            remember(previous.runId, key, digest, reply);
+            return { reply };
+          });
+          if (prepared.reply) return send('application/json', prepared.reply);
+          try {
+            if (!prepared.skipped) await drainProject({ runId: input.runId, executionId: input.executionId, workerId: prepared.assignment.workerId, test: prepared.assignment.test });
+          } catch (error) {
+            await serializeEvent(input.runId, async () => {
+              let previous = runs.get(input.runId);
+              if (['completed', 'failed'].includes(previous.status)) return;
+              let terminal = await commitTerminal(previous, acceptEvent(previous, {
+                runId: previous.runId, type: 'fatal', partial: partialOutput(control.view(previous.runId), previous),
+                error: { phase: 'cleanup', message: `Project execution cleanup failed: ${error.message}` },
+              }));
+              onEvent(terminal.event);
+            });
+            throw error;
+          }
+          await serializeEvent(input.runId, () => {
+            requireOpen();
+            control.authorize(input);
+            let reply = replay();
+            if (!reply) {
+              let run = releaseTest(runs.get(input.runId), { workerId: '0', executionId: input.executionId, now: performance.now() });
+              runs.set(run.runId, run);
+              control.recordEvent({ type: route }, run);
+              reply = '{}';
+              remember(run.runId, key, digest, reply);
+            }
+            send('application/json', reply);
+          });
+          return;
+        }
         if (['capture', 'events'].includes(route) && request.method === 'POST') {
           if (request.headers.origin && request.headers.origin !== `http://${request.headers.host}`)
             throw new Error('Reporter requests must be same-origin.');
@@ -308,9 +414,11 @@ export async function createGateway(
               control.drop(finished.runId);
               runs.delete(finished.runId);
               receipts.delete(finished.runId);
+              projectDrains.delete(finished.runId);
               bundles.delete(finished.runId);
             }
             let runId = randomUUID();
+            onEvent({ type: 'joining', runId, previousRunId: typeof joining.previous?.runId === 'string' ? joining.previous.runId : null });
             let joined = await control.join(runId, joining.launchKey, joining.previous);
             try {
               requireOpen();
@@ -320,7 +428,7 @@ export async function createGateway(
             }
             runs.set(
               runId,
-              Object.freeze({ ...createRun(runId), startedAt: new Date().toISOString() }),
+              Object.freeze({ ...createRun(runId, { seed: config.seed }), startedAt: new Date().toISOString() }),
             );
             bundles.set(runId, snapshot);
             onEvent({
@@ -346,6 +454,7 @@ export async function createGateway(
               return;
             }
             let { connectionKey, ...eventInput } = input;
+            if (input.type === 'start') eventInput = { ...eventInput, seed: runs.get(input.runId).seed };
             if (input.type === 'test')
               eventInput = {
                 ...eventInput,
@@ -393,7 +502,13 @@ export async function createGateway(
               }
               eventInput = { ...eventInput, partial: [...partial.values()] };
             }
-            let { run, event } = acceptEvent(previous, eventInput);
+            // Terminal reports can retain the final app for inspection. This
+            // candidate is published only after native/project draining and save.
+            let proposed = previous;
+            if (input.type === 'complete')
+              for (let assignment of previous.assignments.filter(assignment => assignment.status === 'reported'))
+                proposed = retainExecution(proposed, { workerId: assignment.workerId, executionId: assignment.id });
+            let { run, event } = acceptEvent(proposed, eventInput);
             if (!['complete', 'fatal'].includes(event.type)) {
               runs.set(run.runId, run);
               control.recordEvent(event, run);
@@ -410,7 +525,8 @@ export async function createGateway(
               });
             if (['complete', 'fatal'].includes(event.type))
               ({ run, event } = await commitTerminal(previous, { run, event }));
-            let reply = JSON.stringify({ error: event.error, additionalErrors: event.additionalErrors, attachments: event.attachments });
+            let reply = JSON.stringify({ error: event.error, additionalErrors: event.additionalErrors, attachments: event.attachments, remaining: run.tests.length - run.outcomes.length,
+              workRemaining: run.tests.filter(test => !test.skipReason && !run.outcomes.some(outcome => outcome.testId === test.id)).length });
             remember(run.runId, receiptKey, digest, reply);
             send('application/json', reply);
             onEvent(event);

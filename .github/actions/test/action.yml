@@ -2,7 +2,7 @@ name: Run Dyno tests
 description: Run one suite and retain its console and JUnit output.
 inputs:
   suite:
-    description: core, browser, reporter, package, capture, or native.
+    description: core, browser, execution, reporter, package, capture, or native.
     required: true
   browser:
     description: Playwright engine for browser suites.
@@ -27,6 +27,9 @@ runs:
           command+=("$DYNO_TEST_BROWSER")
         fi
         if [[ "$RUNNER_OS" == 'Linux' ]]; then
+          if [[ "$DYNO_TEST_SUITE" != 'core' ]]; then
+            command=(xvfb-run --auto-servernum "${command[@]}")
+          fi
           command=(dbus-run-session -- "${command[@]}")
         fi
         "${command[@]}" 2>&1 | tee test-results/output.log

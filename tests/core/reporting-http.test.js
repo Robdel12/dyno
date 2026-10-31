@@ -1,14 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { request as httpRequest } from 'node:http';
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { readFile, writeFile, appendFile, mkdir } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
 import { project } from '../helpers/project.js';
 import { loadConfig } from '../../src/config.js';
 import { buildSuite } from '../../src/build.js';
 import { createGateway } from '../../src/server.js';
 import { createReportWriter } from '../../src/reports.js';
-import { acceptObserverFrame } from '../../src/browser/reporting.js';
+import { observeRun as observe } from '../helpers/observer.js';
 
 let descriptors = (count) => Array.from({ length: count }, (_, index) => ({
   id: JSON.stringify(['tests/browser/workflow.test.js', 'Contacts', 'case ' + index]),
@@ -17,7 +17,7 @@ let descriptors = (count) => Array.from({ length: count }, (_, index) => ({
 }));
 let output = (text) => [{ source: 'test', level: 'log', elapsed: 1, text }];
 
-async function gateway(t, { save, expectCloseFailure = false } = {}) {
+async function gateway(t, { save, drain, expectCloseFailure = false } = {}) {
   let instance;
   t.after(async () => {
     if (!instance) return;
@@ -28,45 +28,19 @@ async function gateway(t, { save, expectCloseFailure = false } = {}) {
   let config = await loadConfig(join(fixture.directory, 'dyno.config.js'));
   let writer = createReportWriter(config.reportDir), events = [], errors = [];
   instance = await createGateway(config, await buildSuite(config), {
+    onDrain: drain,
     onRun: (run) => save ? save(run, writer) : writer.save(run),
     onEvent: (event) => events.push(event), onError: (error) => errors.push(error),
   });
   let owner = await (await fetch(instance.url + 'capture', { method: 'POST', signal: t.signal })).json();
   let post = (route, input) => fetch(instance.url + route, { method: 'POST', signal: t.signal,
     headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...owner, ...input }) });
-  return { ...instance, owner, post, config, events, errors };
-}
-
-async function observe(t, url) {
-  let abort = new AbortController();
-  let response = await fetch(url, { signal: AbortSignal.any([t.signal, abort.signal]) });
-  assert.equal(response.status, 200);
-  let reader = response.body.getReader(), decoder = new TextDecoder(), pending = '', observed;
-  let phases = [];
-  t.after(async () => { abort.abort(); await reader.cancel().catch(() => {}); });
-  return {
-    phases,
-    async until(predicate) {
-      while (true) {
-        let end;
-        while ((end = pending.indexOf('\n\n')) !== -1) {
-          let event = pending.slice(0, end);
-          pending = pending.slice(end + 2);
-          let type = /^event: (.+)$/m.exec(event)?.[1], data = /^data: (.+)$/m.exec(event)?.[1];
-          if (!data || !['view-start', 'view-tests', 'snapshot', 'view-change'].includes(type)) continue;
-          data = JSON.parse(data);
-          observed = acceptObserverFrame(observed, type, data);
-          if (!observed.pending) {
-            phases.push(observed.view.phase);
-            if (predicate(observed.view)) return observed.view;
-          }
-        }
-        let chunk = await reader.read();
-        assert.equal(chunk.done, false, 'Reporter disconnected before the requested view.');
-        pending += decoder.decode(chunk.value, { stream: true });
-      }
-    },
+  let claim = async (requestId) => {
+    let response = await post('assignment', { requestId });
+    assert.equal(response.status, 200, await response.clone().text());
+    return (await response.json()).assignment;
   };
+  return { ...instance, owner, post, claim, config, events, errors };
 }
 
 test('HTTP reporting validates whole changes, replays exact acknowledgements, and persists canonical outcomes', { timeout: 15000 }, async t => {
@@ -94,14 +68,17 @@ test('HTTP reporting validates whole changes, replays exact acknowledgements, an
     { set: {}, tests: [{ index: 2, set: {}, output: null }] },
     { set: {}, tests: [{ index: 2, set: {}, output: { start: 1, entries: [{ source: 'foreign' }] } }] },
   ]) assert.equal((await app.post('view', { sequence: 2, change: invalid })).status, 400);
-  let result = { type: 'test', testId: tests[0].id, index: 0, name: tests[0].name, status: 'passed', output: output('Saved 🦖'), duration: 2 };
+  let assignment = await app.claim('first');
+  let result = { type: 'test', executionId: assignment.id, testId: tests[0].id, index: 0, name: tests[0].name, status: 'passed', output: output('Saved 🦖'), duration: 2 };
   let replies = await Promise.all([app.post('events', result), app.post('events', result)]);
   assert.deepEqual(replies.map((reply) => reply.status), [200, 200]);
   assert.equal(app.events.filter((event) => event.type === 'test').length, 1);
   assert.equal((await app.post('events', { ...result, status: 'skipped', skipReason: 'Changed' })).status, 409);
   let late = { set: {}, tests: [{ index: 2, set: { status: 'running' }, output: { start: 0, entries: output('Stale') } }] };
   assert.equal((await app.post('view', { sequence: 2, change: late })).status, 200);
-  assert.equal((await app.post('events', { ...result, testId: tests[1].id, index: 1, name: tests[1].name, output: [] })).status, 200);
+  assert.equal((await app.post('released', { requestId: 'release-first', executionId: assignment.id })).status, 200);
+  let second = await app.claim('second');
+  assert.equal((await app.post('events', { ...result, executionId: second.id, testId: tests[1].id, index: 1, name: tests[1].name, output: [] })).status, 200);
   let completing = app.post('events', { type: 'complete', duration: 9 });
   await entered.promise;
   assert.equal(app.events.filter((event) => event.type === 'complete').length, 0, 'No successful completion before persistence.');
@@ -125,7 +102,8 @@ test('HTTP reporting validates whole changes, replays exact acknowledgements, an
 test('an unread HTTP acknowledgement can be lost without duplicating its accepted result', { timeout: 15000 }, async t => {
   let app = await gateway(t), tests = descriptors(1);
   assert.equal((await app.post('events', { type: 'start', tests })).status, 200);
-  let result = { type: 'test', testId: tests[0].id, name: tests[0].name, index: 0, status: 'passed', output: output('Saved once') };
+  let assignment = await app.claim('first');
+  let result = { type: 'test', executionId: assignment.id, testId: tests[0].id, name: tests[0].name, index: 0, status: 'passed', output: output('Saved once') };
   let headers = Promise.withResolvers();
   let request = httpRequest(app.url + 'events', { method: 'POST', headers: { 'Content-Type': 'application/json' } }, (response) => {
     response.pause();
@@ -149,8 +127,11 @@ test('late reporters receive snapshots larger than 8 MB while an unread observer
   let blocked = await fetch(app.url + 'stream?run=' + app.owner.runId, { signal: t.signal });
   t.after(() => blocked.body.cancel());
   let entries = Array.from({ length: 100 }, () => ({ source: 'test', level: 'log', elapsed: 1, text: '🦖'.repeat(1000) }));
-  for (let [index, test] of tests.entries())
-    assert.equal((await app.post('events', { type: 'test', testId: test.id, name: test.name, index, status: 'passed', output: entries })).status, 200);
+  for (let [index, test] of tests.entries()) {
+    let assignment = await app.claim('case-' + index);
+    assert.equal((await app.post('events', { type: 'test', executionId: assignment.id, testId: test.id, name: test.name, index, status: 'passed', output: entries })).status, 200);
+    assert.equal((await app.post('released', { requestId: 'release-' + index, executionId: assignment.id })).status, 200);
+  }
   assert.equal((await app.post('events', { type: 'complete' })).status, 200);
   let reader = await observe(t, app.url + 'stream?run=' + app.owner.runId);
   let final = await reader.until((view) => view.phase === 'completed');
@@ -165,7 +146,8 @@ test('real report storage failure returns 503 and leaves the live run failed wit
   await mkdir(dirname(app.config.reportDir), { recursive: true });
   await writeFile(app.config.reportDir, 'This path is a file.');
   assert.equal((await app.post('events', { type: 'start', tests })).status, 200);
-  assert.equal((await app.post('events', { type: 'test', index: 0, name: tests[0].name, testId: tests[0].id, status: 'passed', output: output('Saved') })).status, 200);
+  let assignment = await app.claim('first');
+  assert.equal((await app.post('events', { type: 'test', executionId: assignment.id, index: 0, name: tests[0].name, testId: tests[0].id, status: 'passed', output: output('Saved') })).status, 200);
   let observer = await observe(t, app.url + 'stream?run=' + app.owner.runId);
   assert.equal((await app.post('events', { type: 'complete' })).status, 503);
   assert.equal(app.events.some((event) => event.type === 'complete'), false);
@@ -208,18 +190,20 @@ test('failed persistence after a user stop stays an error and never appears as a
 });
 
 test('replacing a browser reports a real save failure instead of hiding it behind the replacement', { timeout: 15000 }, async t => {
-  let app = await gateway(t, { expectCloseFailure: true }), tests = descriptors(1);
+  let app = await gateway(t), tests = descriptors(1);
   await mkdir(dirname(app.config.reportDir), { recursive: true });
   await writeFile(app.config.reportDir, 'Blocked');
   assert.equal((await app.post('events', { type: 'start', tests })).status, 200);
   let change = { set: {}, tests: [{ index: 2, set: { status: 'running' }, output: { start: 0, entries: output('Before replacement') } }] };
   assert.equal((await app.post('view', { sequence: 1, change })).status, 200);
   let observer = await observe(t, app.url + 'stream?run=' + app.owner.runId);
-  assert.equal((await app.post('capture', { previous: app.owner })).status, 200);
+  assert.equal((await app.post('capture', { previous: app.owner })).status, 503);
   let view = await observer.until((view) => view.phase === 'error');
   assert.match(view.error, /Could not save/);
   assert.deepEqual(view.tests[0].output, output('Before replacement'));
   assert.equal(app.errors.length, 1);
+  let runs = await (await fetch(app.url + 'results', { signal:t.signal })).json();
+  assert.deepEqual(runs.map(run => run.runId), [app.owner.runId], 'A failed save cannot admit the replacement.');
 });
 
 test('gateway shutdown rejects its real write failure and closes all HTTP connections', { timeout: 15000 }, async t => {
@@ -229,4 +213,39 @@ test('gateway shutdown rejects its real write failure and closes all HTTP connec
   await assert.rejects(app.close(), /Could not finish/);
   assert.equal(app.errors.length, 1);
   await assert.rejects(fetch(app.url + 'results', { signal: t.signal }));
+});
+
+test('lost assignment and release acknowledgements preserve execution identity and never repeat project effects', { timeout: 15000 }, async t => {
+  let app = await gateway(t, { drain: ({executionId}) => appendFile(join(app.config.root, 'drained'), executionId + '\n') });
+  let tests = descriptors(2);
+  assert.equal((await app.post('events', {type:'start',tests})).status, 200);
+  let lose = async (route, input) => {
+    let headers = Promise.withResolvers();
+    let request = httpRequest(app.url + route, {method:'POST', headers:{'Content-Type':'application/json'}}, response => {
+      response.pause(); headers.resolve(response.statusCode);
+    });
+    request.on('error', headers.reject);
+    request.end(JSON.stringify({...app.owner,...input}));
+    assert.equal(await headers.promise, 200);
+    request.destroy();
+  };
+  await lose('assignment', {requestId:'first'});
+  let first = await app.claim('first');
+  let duplicate = await app.claim('first');
+  assert.equal(first.id, duplicate.id);
+  let [running] = await (await fetch(app.url + 'results', {signal:t.signal})).json();
+  assert.equal(running.assignments.length, 1);
+  assert.equal((await app.post('assignment', {requestId:'first',changed:true})).status, 409);
+  assert.equal((await app.post('released', {requestId:'foreign',executionId:'not-owned'})).status, 400);
+  assert.equal((await app.post('events', {type:'test',executionId:first.id,testId:first.testId,index:first.index,name:first.test.name,status:'passed'})).status, 200);
+  await lose('released', {requestId:'release-first',executionId:first.id});
+  assert.equal((await app.post('released', {requestId:'release-first',executionId:first.id})).status, 200);
+  assert.equal(await readFile(join(app.config.root, 'drained'),'utf8'), first.id + '\n');
+  let second = await app.claim('second');
+  assert.notEqual(first.id, second.id);
+  assert.equal(second.testId, tests[1].id);
+  assert.equal((await app.post('events', {type:'test',executionId:second.id,testId:second.testId,index:second.index,name:second.test.name,status:'passed'})).status, 200);
+  assert.equal((await app.post('events', {type:'complete'})).status, 200);
+  assert.equal((await app.post('events', {type:'complete'})).status, 200);
+  assert.equal(await readFile(join(app.config.root, 'drained'),'utf8'), first.id + '\n' + second.id + '\n');
 });

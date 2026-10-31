@@ -143,7 +143,7 @@ function appImage(bytes, metrics, options) {
   return { bytes: PNG.sync.write(image), ...target, pixelRatio };
 }
 
-export function createBrowserControl({ artifactsDir, onReplaced = () => {}, getRun }) {
+export function createBrowserControl({ artifactsDir, onReplaced = () => {}, getRun, onCommand = () => {}, onConnection = () => {} }) {
   let session, launchKey, ownedRun;
   let connections = new Map(),
     contexts = new Map(),
@@ -247,7 +247,7 @@ export function createBrowserControl({ artifactsDir, onReplaced = () => {}, getR
           invalidate(replaced, true);
           await resetNative(replaced);
           broadcast(replaced, 'replacement', { runId });
-          onReplaced(replaced);
+          await onReplaced(replaced);
         }
         if (closed) throw problem(409, 'This browser session is closed.');
         if (owned && ownedRun !== runId)
@@ -353,6 +353,10 @@ export function createBrowserControl({ artifactsDir, onReplaced = () => {}, getR
         });
         response.write(': connected\n\n');
         let role = url.searchParams.get('role') === 'host' ? 'host' : 'observer';
+        let connectedAt = performance.now(), timedOut = false;
+        let socket = request.socket;
+        let timeout = () => { timedOut = true; };
+        if (role === 'host') socket.on('timeout', timeout);
         let listener = { response, role, ...createObserver(response, reserveObserverBytes) };
         let listeners = streams.get(runId) ?? new Set();
         listeners.add(listener);
@@ -365,9 +369,16 @@ export function createBrowserControl({ artifactsDir, onReplaced = () => {}, getR
           );
         listener.send('host-status', { connected: hostConnected() });
         if (role === 'host') broadcast(runId, 'host-status', { connected: true });
+        if (role === 'host') onConnection({ runId, source: 'socket', status: 'connected', socketTimeout: socket.timeout ?? 0 });
         response.on('close', () => {
           listeners.delete(listener);
-          if (role === 'host') broadcast(runId, 'host-status', { connected: hostConnected() });
+          if (role === 'host') {
+            socket.removeListener('timeout', timeout);
+            broadcast(runId, 'host-status', { connected: hostConnected() });
+            onConnection({ runId, source: 'socket', status: 'closed', duration: performance.now() - connectedAt,
+              reason: timedOut ? 'socket-timeout' : response.writableEnded ? 'ended' : 'disconnected',
+              socketTimeout: socket.timeout ?? 0 });
+          }
         });
         return true;
       }
@@ -391,6 +402,7 @@ export function createBrowserControl({ artifactsDir, onReplaced = () => {}, getR
           'view',
           'control',
           'command-result',
+          'connection-status',
           'context',
           'operations',
           'operations/cancel',
@@ -424,11 +436,19 @@ export function createBrowserControl({ artifactsDir, onReplaced = () => {}, getR
           (!Array.isArray(input.ids) || input.ids.some((name) => typeof name !== 'string'))
         )
           throw problem(400, 'Invalid test selection.');
+        onCommand(input);
         broadcast(input.runId, 'command', { ...input, requestId: input.requestId ?? randomUUID() });
         send({ accepted: true });
         return true;
       }
       let connection = authorize(input);
+      if (route === 'connection-status') {
+        if (!['closed', 'reconnecting'].includes(input.status))
+          throw problem(400, 'Unknown browser connection status.');
+        onConnection({ runId: input.runId, source: 'browser', status: input.status });
+        send({});
+        return true;
+      }
       if (route === 'command-result') {
         broadcast(input.runId, 'command-result', {
           requestId: input.requestId,
@@ -456,6 +476,11 @@ export function createBrowserControl({ artifactsDir, onReplaced = () => {}, getR
         return true;
       }
       if (route === 'context') {
+        let run = getRun(input.runId);
+        if (input.context && !(run.status === 'captured' && input.context.documentId === null) &&
+          !(['running', 'completed'].includes(run.status) && run.assignments.some((assignment) => assignment.workerId === '0' &&
+            assignment.id === input.context.executionId && assignment.status !== 'released' && !run.tests[assignment.index].skipReason)))
+          throw problem(409, 'This execution does not own an active test assignment.');
         let previous = contexts.get(input.runId);
         if (!sameContext(previous, input.context)) invalidate(input.runId);
         if (input.context) {

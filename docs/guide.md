@@ -59,6 +59,10 @@ Exit codes are 0 for passing tests, 1 for failures, 130 for SIGINT, and 143 for 
 
 With `--json`, stdout contains one JSON event per line. Project `console` messages from config, setup, and teardown go to stderr, as does app-server output. Project code that writes directly to a stream should use `process.stderr`. Errors remain available as JSON events and stderr diagnostics. Use the process exit code for the final CLI outcome; a failure can emit an error after `session-timing`.
 
+`browser-connection` events show the controller stream connecting or closing, including its duration and whether the socket timed out. Managed `browser-diagnostic` events include stream request failures from the browser. These are connection diagnostics, not test outcomes.
+
+Idle event streams send small keepalive comments through the same bounded writer as results. They keep the browser connection active during inspection; they do not create progress snapshots or change test state.
+
 Open the start URL at `/__dyno__/`. Dyno opens a companion window for test execution, then loads the app in the original window. If the popup is blocked, click **Start**. Keep both windows open: tests stay in the companion while the app navigates normally.
 
 Press **Ctrl+Shift+D** in the app to request inspection. Dyno finishes the current test before opening the reporter iframe over the app. The app keeps its full viewport underneath.
@@ -285,6 +289,27 @@ Capture options are `fullPage` (default `false`), `mask` (an array of app `Eleme
 
 Screenshots are attachments, without baseline comparison. They record a rendered frame during the request; they don't freeze other app work. Animation suppression finishes finite animations and suspends infinite ones before measuring the document and masks. Temporary styles are removed and suspended animations restart afterward. Use Interactor to wait for the state you want first.
 
+## Execution order
+
+Tests use declared order by default. Randomize them with a recorded seed:
+
+```sh
+dyno --random
+dyno --seed issue-184
+```
+
+Dyno prints the seed and includes it in live run info and saved reports. The same seed preserves priority for the same test IDs, including when filtering. It does not control app randomness or asynchronous timing. `schedule.json` records the actual assignments and completion order. A final retained assignment keeps the app available until session shutdown; browser shutdown is recorded in `session.json`. Queue replay is not available yet. The CLI still runs one worker.
+
+Declare shared resources before execution when a test uses something such as the OS clipboard:
+
+```js
+test('copies a token', async ({ I }) => {
+  await I.click('Copy token');
+}, { resources: ['clipboard'] });
+```
+
+Dyno reserves all named resources together. They stay held until the execution's documents and project work are finished. More browser tabs alone do not isolate your app's database or storage.
+
 ## Find slow work
 
 Timings are always recorded. Open **Slowest tests** in the reporter, then a test’s **Timings** tab. It separates fresh-document setup, hooks, the body, and queued errors. Individual hooks keep their function name and execution order. Navigation, requests, screenshots, viewport changes, native calls, and debug pauses have their own intervals.
@@ -322,7 +347,7 @@ Each test retains up to 500 entries; `truncated` counts omitted intervals. An in
 
 ## Saved reports
 
-Each browser run saves `.dyno/reports/<run-id>/` with `run.json`, `junit.xml`, `index.html`, and `session.json`. Set `reportDir` or pass `--report-dir path` to choose another folder. The CLI prints the HTML path; JSON output includes a `report-saved` event.
+Each browser run saves `.dyno/reports/<run-id>/` with `run.json`, `junit.xml`, `index.html`, `schedule.json`, and `session.json`. Set `reportDir` or pass `--report-dir path` to choose another folder. The CLI prints the HTML path; JSON output includes a `report-saved` event.
 
 Open `index.html` directly in a browser after Dyno stops. It includes searchable files/suites, failures, source excerpts, console output, timings, and screenshots copied into `images/`. Copy the whole run folder to share it. A source image removed before saving appears as Screenshot unavailable.
 
@@ -377,11 +402,16 @@ Paths are relative to the config file unless noted. See `dyno --help` for CLI ov
 | `webServer.timeout` | `30000` | App startup deadline |
 | `webServer.reuseExistingServer` | `false` | Reuse a responding server |
 | `setup` | None | Node setup module |
+| `seed`, `random` | None, `false` | Repeatable randomized priority or a generated seed |
 | `forbidOnly` | Whether `CI` is set | Reject focused test/suite definitions |
 
 ### Node setup
 
-The setup module exports an async function receiving `{ config, signal }`. Return `{ env, fixtures, teardown }`: app environment overrides, JSON-safe data for browser tests, and an async cleanup function. Honor the signal during long work, and keep real credentials out of browser fixtures. Console messages go to stderr. If setup throws before returning, it must clean up resources it already created.
+The setup module exports an async function receiving `{ config, signal }`. Return `{ env, fixtures, drain, teardown }`: `env` adds app environment values, `fixtures` provides JSON-safe browser data, and `teardown` releases the setup. Optional `drain` joins work between executions. Honor the signal during long work, and keep real credentials out of browser fixtures. Console messages go to stderr. If setup throws before returning, it must clean up resources it already created.
+
+Optional `drain({ runId, executionId, workerId, test, signal })` joins the project work an execution started. Before another test body, Dyno first removes the old runtime and app document, preserving the controller and browser storage. It then awaits `drain`. The callback also runs for the last non-skipped execution before terminal persistence, if it has not already drained; skipped tests do not invoke it. Each non-skipped execution drains once. Its named duration is included in CLI session timings. Honor the signal and keep this callback within `cleanupTimeout`. A failure or deadline ends the session, saves accepted results and leaves remaining tests unassigned.
+
+Navigation does not cancel server writes or service workers. Your project must close old admission, release fixture gates, join its requests/jobs and return resources ready for reuse. Keep database, queues, storage and session policy in the app. Use `teardown` to release the entire setup, including after failed draining.
 
 ## Vizzly example
 
@@ -395,7 +425,7 @@ This example is optional. `npm test` uses the self-contained fixture app.
 
 The runner uses ES2022 syntax and modern APIs, including `AbortSignal.timeout`, `AbortSignal.any`, `Promise.withResolvers`, `crypto.getRandomValues`, and `EventSource`. Older browsers, including historical WebOS builds, need compatibility work. See [browser setup](browsers.md#known-limits) for verification gaps.
 
-Ordinary Interactor actions use DOM methods and synthetic events. Use explicit native actions when a workflow needs browser defaults or trusted input. Closed shadow roots, native dialogs, downloads, video capture, visual baselines, parallel scheduling and HTTPS gateway serving are outside this version. Companion popups and background execution on iOS, phones, and TVs still need real-device verification; URL-only execution across browsers remains the goal.
+Ordinary Interactor actions use DOM methods and synthetic events. Use explicit native actions when a workflow needs browser defaults or trusted input. Closed shadow roots, downloads, video capture, visual baselines, parallel scheduling and HTTPS gateway serving are outside this version. Companion popups and background execution on iOS, phones, and TVs still need real-device verification; URL-only execution across browsers remains the goal.
 
 The gateway uses HTTP. Secure cookies and secure-context-only features may need a different test origin. Cooperating HTML routes, including test fixtures, need the same opener and agent-cluster isolation headers as the app; changing them can sever the companion even on the same origin. The app and test contexts share an origin and aren't a security sandbox. An infinite loop can freeze the browser; the Node deadline can stop a browser it owns but can't recover a manual browser's event loop.
 

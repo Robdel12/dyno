@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createRun, acceptEvent } from '../../src/run.js';
+import { createRun, acceptEvent, claimTest } from '../../src/run.js';
 import { createReport } from '../../src/report-model.js';
 import { liveChange, applyLiveChange, runView, partialOutput, observerChange, applyObserverChange, acceptObserverFrame } from '../../src/browser/reporting.js';
 
@@ -44,7 +44,8 @@ test('whole malformed live changes reject without changing state, including late
   ];
   for (let change of invalid) assert.throws(() => applyLiveChange(view, change, run));
   let outcome = { runId: 'run', type: 'test', testId: catalog[0].id, index: 0, name: 'first', status: 'passed', output: [entry] };
-  run = acceptEvent(run, outcome).run;
+  run = claimTest(run, { executionId: 'first' }).run;
+  run = acceptEvent(run, { ...outcome, executionId: 'first' }).run;
   view = runView(view, run);
   assert.throws(() => applyLiveChange(view, { set: {}, tests: [{ index: 2, set: {}, output: { start: 0, entries: [{ ...entry, source: 'foreign' }] } }] }, run));
   let late = applyLiveChange(view, { set: {}, tests: [{ index: 2, set: { status: 'running' }, output: { start: 0, entries: [entry] } }] }, run);

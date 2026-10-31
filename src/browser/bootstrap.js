@@ -20,4 +20,5 @@ let launch = () => {
   window.focus();
 };
 start.addEventListener('click', launch);
-launch();
+if (new URLSearchParams(location.hash.slice(1)).get('start') === 'managed') start.hidden = false;
+else launch();

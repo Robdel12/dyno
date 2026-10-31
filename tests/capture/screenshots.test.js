@@ -195,29 +195,38 @@ test('keeps managed capture bound to this browser', async ({ app, I }) => {
     })
   });
   await I.assert(() => forged.status === 403, 'A manual join changed the managed result');
-  await app.request('/__dyno__/events', {
+  let manualStart = await app.request('/__dyno__/events', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       runId: joined.runId,
       connectionKey: joined.connectionKey,
       type: 'start',
-      tests: [{ id: JSON.stringify(['manual', 'manual companion']), name: 'manual companion', file: 'manual', suites: [], index: 0, skipReason: null }]
+      tests: [{ id: JSON.stringify(['manual', 'Manual', 'manual companion']), name: 'manual companion', file: 'manual', suites: ['Manual'], index: 0, skipReason: null }]
     })
   });
-  await app.request('/__dyno__/events', {
+  await I.assert(() => manualStart.ok, 'The independent manual catalog was rejected');
+  let assigned = await app.request('/__dyno__/assignment', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({runId:joined.runId,connectionKey:joined.connectionKey,requestId:'manual-case'})
+  });
+  await I.assert(() => assigned.ok, 'The manual browser could not claim its own test');
+  let {assignment} = await assigned.json();
+  let manualResult = await app.request('/__dyno__/events', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       runId: joined.runId,
       connectionKey: joined.connectionKey,
+      executionId: assignment.id,
       type: 'test',
       index: 0,
       name: 'manual companion',
-      testId: JSON.stringify(['manual', 'manual companion']),
+      testId: JSON.stringify(['manual', 'Manual', 'manual companion']),
       status: 'passed'
     })
   });
+  await I.assert(() => manualResult.ok, 'The manual result was rejected');
   await app.request('/__dyno__/events', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

@@ -4,6 +4,8 @@ export interface Viewport {
 }
 export interface Config {
   testDir?: string;
+  seed?: string;
+  random?: boolean;
   testMatch?: string;
   timeout?: number;
   cleanupTimeout?: number;

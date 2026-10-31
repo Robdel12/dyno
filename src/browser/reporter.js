@@ -592,6 +592,8 @@ export function createReporter(actions) {
       get('files').replaceChildren(...state.files.map((file) => element('li', '', file)));
     write(get('browser-name'), state.browser);
     write(get('app-host'), state.appHost);
+    get('run-seed').hidden = state.seed == null;
+    write(get('run-seed'), state.seed == null ? '' : `Seed: ${state.seed}`);
     get('standalone-reporter').hidden = !actions.embedded;
     get('standalone-reporter').href = `/__dyno__/reporter?run=${encodeURIComponent(state.runId)}${location.hash}`;
     write(get('selected-context'), test ? [test.file, ...test.suites].join(' › ') : '');

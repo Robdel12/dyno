@@ -80,7 +80,7 @@ export function runView(view = createExecution({ width: 1280, height: 800 }), ru
   let terminal = run.status === 'completed'
     ? { phase: 'completed', duration: run.summary.duration }
     : run.status === 'failed' ? { phase: run.stopped ? 'stopped' : 'error', error: run.error.message } : {};
-  return freeze({ ...view, runId: run.runId, ...terminal,
+  return freeze({ ...view, runId: run.runId, seed: run.seed ?? null, ...terminal,
     ...(['completed', 'failed'].includes(run.status) ? { presentation: view.interactive ? 'reporter' : 'app' } : {}), tests: freeze(tests) });
 }
 

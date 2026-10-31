@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { project, reportPayload } from '../helpers/project.js';
+import { project, reportPayload, claimAssignment } from '../helpers/project.js';
 
 test(
   'the launched browser owns CLI completion even when a manual browser finishes first',
@@ -20,7 +20,8 @@ test(
         body: JSON.stringify({ runId: manual.runId, connectionKey: manual.connectionKey, ...reportPayload(event) })
       });
     assert.equal((await post({ type: 'start', tests: ['manual companion'] })).status, 200);
-    await post({ type: 'test', index: 0, name: 'manual companion', status: 'passed' });
+    let assignment = await claimAssignment(url, manual, 'manual-case');
+    assert.equal((await post({ type: 'test', executionId: assignment.id, index: 0, name: 'manual companion', status: 'passed' })).status, 200);
     await post({ type: 'complete' });
     await fetch(new URL('/api/release-navigation', url), { method: 'POST', signal: t.signal });
     let result = await session.completion;

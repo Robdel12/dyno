@@ -46,7 +46,7 @@ async function closeBrowser(server) {
   } finally { deadline.removeEventListener('abort', abort); }
 }
 
-export async function createBrowserPool(plan, { size = 1, signal, onExit = () => {} } = {}) {
+export async function createBrowserPool(plan, { size = 1, signal, onExit = () => {}, onDiagnostic = () => {} } = {}) {
   if (!Number.isSafeInteger(size) || size < 1 || size > 32)
     throw new Error('Browser pool size must be between 1 and 32.');
   signal?.throwIfAborted();
@@ -89,6 +89,10 @@ export async function createBrowserPool(plan, { size = 1, signal, onExit = () =>
   };
   server.on('close', () => fail(new Error('The managed browser disconnected.')));
   owned.child.on('message', (message) => {
+    if (message.kind === 'diagnostic') {
+      onDiagnostic({ workerId: message.workerId, message: message.message });
+      return;
+    }
     if (message.kind === 'disconnected') {
       fail(new Error(`Managed browser worker ${message.workerId} lost its application page.`));
       return;

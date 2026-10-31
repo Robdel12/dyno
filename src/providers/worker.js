@@ -29,8 +29,9 @@ async function perform(request) {
   if (stopping) throw new Error('The browser pool is stopping.');
   if (method === 'create') {
     if (sessions.has(workerId)) throw new Error('Browser worker already exists.');
-    let session = await openWorker(browser, input.plan, input.viewport, () =>
-      reply({ kind: 'disconnected', workerId }));
+    let session = await openWorker(browser, input.plan, input.viewport,
+      () => reply({ kind: 'disconnected', workerId }),
+      (message) => reply({ kind: 'diagnostic', workerId, message: message.slice(0, 4000) }));
     sessions.set(workerId, session);
     return session.identity;
   }

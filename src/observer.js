@@ -1,3 +1,4 @@
+import { setInterval } from 'node:timers/promises';
 import { observerChange } from './browser/reporting.js';
 
 // A slow observer retains one in-flight message and one latest view. It never
@@ -73,18 +74,30 @@ export function createObserver(response, reserve) {
       if (!controller.signal.aborted && (latest || commands.length)) drain();
     });
   };
+  let enqueue = (message) => {
+    if (controller.signal.aborted) return;
+    queuedBytes += Buffer.byteLength(message);
+    if (commands.length >= 32 || queuedBytes > 1_000_000) {
+      response.destroy();
+      return;
+    }
+    commands = [...commands, message];
+    drain();
+  };
+  // Keep idle browser transports active. Comments share the framed writer so
+  // they cannot split a JSON record or accumulate behind a slow reader.
+  void (async () => {
+    try {
+      for await (let tick of setInterval(4000, undefined, { signal: controller.signal, ref: false })) {
+        let comment = ': keepalive\n\n';
+        if (!commands.includes(comment)) enqueue(comment);
+      }
+    } catch (error) {
+      if (!controller.signal.aborted) response.destroy(error);
+    }
+  })();
   return Object.freeze({
     publish(view) { if (!controller.signal.aborted) { latest = view; drain(); } },
-    send(type, value) {
-      if (controller.signal.aborted) return;
-      let message = `event: ${type}\ndata: ${JSON.stringify(value)}\n\n`;
-      queuedBytes += Buffer.byteLength(message);
-      if (commands.length >= 32 || queuedBytes > 1_000_000) {
-        response.destroy();
-        return;
-      }
-      commands = [...commands, message];
-      drain();
-    },
+    send: (type, value) => enqueue(`event: ${type}\ndata: ${JSON.stringify(value)}\n\n`),
   });
 }

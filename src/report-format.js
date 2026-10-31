@@ -100,10 +100,11 @@ export function htmlReport(report, css, { session = false } = {}) {
     <meta charset="utf-8"><meta name="viewport" content="width=device-width">
     <title>Dyno · ${x(report.status)}</title><style>${css}</style>
   </head><body><main class="saved-report">
-    <a href="run.json">Run JSON</a> · <a href="junit.xml">JUnit</a>${session ? ' · <a href="session.json">Session timings</a>' : ''}
+    <a href="run.json">Run JSON</a> · <a href="junit.xml">JUnit</a> · <a href="schedule.json">Execution order</a>${session ? ' · <a href="session.json">Session timings</a>' : ''}
     <h1>${title}</h1>
     <p>${report.summary.passed} passed · ${report.summary.failed} failed · ${report.summary.skipped} skipped · ${report.summary.notRun} not run</p>
     <p>Saved report · ${x(report.runId)}${report.startedAt ? ` · ${x(report.startedAt)}` : ''}</p>
+    ${report.schedule?.seed != null ? `<p>Seed: ${x(report.schedule.seed)}</p>` : ''}
     ${report.error ? errorMarkup(report.error) : ''}
     ${slowestTests(report.tests).length ? `<details class="run-info"><summary>Slowest tests</summary><ol class="slow-test-list">${slowestTests(report.tests).map(test => `<li><a href="#test-${test.index}">${x(testTitle(test))}</a><span>${x(timingDuration(test.duration))}</span></li>`).join('')}</ol></details>` : ''}
     <label>Filter tests<input type="search" id="search" placeholder="Search files, suites, and test output"></label>

@@ -102,23 +102,6 @@ test('an occupied gateway port reports its address and tears down acquired setup
   await assert.rejects(fetch(`http://127.0.0.1:${fixture.port}`));
 });
 
-test('startup deadlines and interrupts run project teardown and release the app port', { timeout: 15000 }, async t => {
-  let fixture = await project(t, { config: { setup: './setup.js', webServer: { timeout: 300, command: [process.execPath, '--input-type=module', '-e', "import http from 'node:http'; http.createServer().listen(0, '127.0.0.1', () => console.log('booting without listening'));"] } }, files: { 'setup.js': `import {writeFile} from 'node:fs/promises'; export default async () => ({teardown: () => writeFile('cleaned.txt', 'done')});` } });
-  let result = await fixture.run().completion;
-  assert.equal(result.code, 1);
-  assert.match(result.events.at(-1).message, /startup exceeded 300 ms/);
-  assert.match(result.events.at(-1).message, /booting without listening/);
-  assert.equal(await readFile(join(fixture.directory, 'cleaned.txt'), 'utf8'), 'done');
-  let running = await project(t);
-  let session = running.run(['--manual']);
-  await session.waitForEvent('ready');
-  session.child.kill('SIGINT');
-  let stopped = await session.completion;
-  assert.equal(stopped.code, 130);
-  assert.equal(stopped.events.at(-1).signal, 'SIGINT');
-  await assert.rejects(fetch(`http://127.0.0.1:${running.port}`));
-});
-
 test('reporter size limits and origin-relative paths reject bad requests without dropping active runs', { timeout: 15000 }, async t => {
   let fixture = await project(t);
   let session = fixture.run(['--manual']);

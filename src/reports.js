@@ -35,6 +35,7 @@ export function createReportWriter(directory, { redact = (value) => value } = {}
       );
       let css = styles.join('\n');
       await Promise.all([
+        writeFile(join(staging, 'schedule.json'), redact(JSON.stringify(report.schedule, null, 2) + '\n')),
         writeFile(join(staging, 'run.json'), redact(JSON.stringify(report, null, 2) + '\n')),
         writeFile(join(staging, 'junit.xml'), redact(junitReport(report))),
         writeFile(join(staging, 'index.html'), redact(htmlReport(report, css, { session: Boolean(session) }))),
@@ -47,6 +48,7 @@ export function createReportWriter(directory, { redact = (value) => value } = {}
         runId: run.runId,
         directory: target,
         json: join(target, 'run.json'),
+        schedule: join(target, 'schedule.json'),
         junit: join(target, 'junit.xml'),
         html: join(target, 'index.html')
       });

@@ -34,7 +34,10 @@ export function createCLIOutput({ json, stdout = process.stdout, stderr = proces
           break;
         case 'ready': line(`\nDyno: ${event.url}\nApp: ${event.appURL}\n${event.files.length} test file(s) bundled`); break;
         case 'capture': if (persistent) line(`Reporter: ${event.reporterURL}`); break;
-        case 'start': line(`\nRunning ${event.tests.length} browser tests`); break;
+        case 'start':
+          line(`\nRunning ${event.tests.length} browser tests`);
+          if (event.seed !== null && event.seed !== undefined) line(`Seed: ${event.seed}`);
+          break;
         case 'test': {
           let mark = { passed: '✓', skipped: '−', failed: '✗' }[event.status];
           line(`${mark} ${testTitle(event)}${event.duration === undefined ? '' : ` (${Math.round(event.duration)} ms)`}`);
