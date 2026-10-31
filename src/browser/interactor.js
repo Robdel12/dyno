@@ -80,10 +80,12 @@ Interactor.defineAction('click', function* click(selector) {
     yield ({ signal }) => {
       signal?.throwIfAborted();
       option.selected = select.multiple ? !option.selected : true;
+      // Controlled forms can render again at the next yield. Deliver the edit
+      // before waiting for the select's context to converge.
+      dispatch(select, 'input', { cancelable: false }, signal);
+      dispatch(select, 'change', { cancelable: false }, signal);
     };
     yield this.find(select);
-    yield this.trigger('input', { cancelable: false });
-    yield this.trigger('change', { cancelable: false });
     return select;
   }
   // A React navigation may remove the target during dispatch. Return the clicked
