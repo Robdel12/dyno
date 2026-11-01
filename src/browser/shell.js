@@ -58,7 +58,7 @@ let post = async (route, input = {}, signal) => {
     } catch (error) {
       // Only idempotent reporting requests can repeat after a lost response.
       // Actions and test callbacks are never retried.
-      if (attempt || !['events', 'view'].includes(route) || requestSignal.aborted ||
+      if (attempt || !['events', 'view', 'assignment', 'released'].includes(route) || requestSignal.aborted ||
         error.name !== 'TypeError') throw error;
     }
   }
@@ -419,6 +419,9 @@ window.addEventListener('message', (event) => {
   }
 });
 window.addEventListener('pagehide', () => {
+  // Retain the command stream for this document's lifetime, including long
+  // pauses. Custom EventSource listeners alone do not prevent collection.
+  stream?.close();
   overlay('disconnected', { message: 'The test controller closed. Start a new run to reconnect.' });
   if (runId && !['completed', 'stopped', 'error'].includes(state.phase))
     navigator.sendBeacon(
@@ -432,7 +435,7 @@ window.addEventListener('pagehide', () => {
     );
 });
 
-async function runtime(mode, timeout, index, testId) {
+async function runtime(mode, timeout, index, testId, executionId = id()) {
   let frame = document.createElement('iframe');
   frame.title =
     mode === 'discover'
@@ -442,7 +445,7 @@ async function runtime(mode, timeout, index, testId) {
   frame.tabIndex = mode === 'discover' ? -1 : 0;
   let current = {
     frame,
-    id: id(),
+    id: executionId,
     documentId: null,
     finished: false,
     ready: false,
@@ -576,6 +579,36 @@ async function runtime(mode, timeout, index, testId) {
   execution.append(frame);
   return current;
 }
+async function parkApp(executionId) {
+  resource?.remove();
+  resource = undefined;
+  window.__dynoAppRuntime = null;
+  let requestId = id();
+  let pending = Promise.withResolvers();
+  let deadline = AbortSignal.any([controller.signal, AbortSignal.timeout(settings.cleanupTimeout)]);
+  let receive = (event) => {
+    let message = event.data;
+    if (event.origin === location.origin && event.source === appWindow && message?.channel === 'dyno-park' &&
+      message.runId === runId && message.executionId === executionId && message.requestId === requestId)
+      pending.resolve();
+  };
+  let abort = () => pending.reject(new Error('The app document did not stop before worker cleanup.', { cause: deadline.reason }));
+  window.addEventListener('message', receive);
+  deadline.addEventListener('abort', abort, { once: true });
+  try {
+    deadline.throwIfAborted();
+    // Registration can time out before the runtime has bound an app document.
+    appWindow.name = JSON.stringify({ dyno: 1, controller: window.name,
+      runId, executionId, appName: 'park-' + requestId });
+    appWindow.location.replace(root + 'park?request=' + encodeURIComponent(requestId));
+    await pending.promise;
+    await post('released', { requestId, executionId }, controller.signal);
+  } finally {
+    window.removeEventListener('message', receive);
+    deadline.removeEventListener('abort', abort);
+  }
+}
+
 async function paused() {
   let pending = Promise.withResolvers();
   resume = pending.resolve;
@@ -634,6 +667,7 @@ try {
     type: 'connected',
     settings: {
       files: settings.files,
+      seed: settings.seed,
       interactive: settings.interactive,
       pauseOnFailure,
       appHost: new URL(settings.appURL).host,
@@ -654,6 +688,13 @@ try {
     update({ type: 'watch.changed', watch: JSON.parse(event.data) }),
   );
   stream.addEventListener('command', (event) => void dispatchCommand(JSON.parse(event.data)));
+  stream.addEventListener('error', () => {
+    let status = stream.readyState === EventSource.CLOSED ? 'closed' : 'reconnecting';
+    console.warn(status === 'closed'
+      ? 'Dyno controller connection closed. Start a new run to reconnect.'
+      : 'Dyno controller connection interrupted. Reconnecting.');
+    void post('connection-status', { status }, controller.signal).catch(() => {});
+  });
   let discovery = await runtime('discover', settings.timeout);
   let tests;
   try {
@@ -673,18 +714,29 @@ try {
   await post('events', { type: 'start', tests, userAgent: navigator.userAgent });
   update({ type: 'started', tests });
   let started = performance.now();
-  for (let [position, test] of tests.entries()) {
+  let position = 0;
+  while (true) {
+    if (state.interactive && state.phase === 'pausing') await paused();
+    let { assignment, done, paused: admissionPaused } = await post('assignment', { requestId: id() }, controller.signal);
+    if (done) break;
+    if (admissionPaused && !assignment) { await paused(); continue; }
+    if (!assignment) throw new Error('No eligible test assignment is available.');
+    if (state.interactive && state.phase === 'pausing') await paused();
+    let test = assignment.test;
+    position = assignment.index;
     controller.signal.throwIfAborted();
     if (test.skipReason) {
       let outcome = { status: 'skipped', skipReason: test.skipReason, duration: 0, output: [] };
-      await post('events', {
+      let reported = await post('events', {
         type: 'test',
+        executionId: assignment.id,
         testId: test.id,
         index: position,
         name: test.name,
         ...outcome,
       });
       update({ type: 'test.finished', index: test.index, outcome });
+      await post('released', { requestId: id(), executionId: assignment.id }, controller.signal);
       continue;
     }
     resource?.remove();
@@ -703,7 +755,7 @@ try {
       observedViewport.pixelRatio !== appWindow.devicePixelRatio
     )
       await sizeViewport(viewport, null, viewportMode);
-    let runner = await runtime('test', test.timeout ?? settings.timeout, test.index, test.id);
+    let runner = await runtime('test', test.timeout ?? settings.timeout, test.index, test.id, assignment.id);
     update({ type: 'test.started', index: test.index });
     let outcome;
     try {
@@ -752,10 +804,11 @@ try {
     controller.signal.throwIfAborted();
     if (
       state.interactive &&
-      position < tests.length - 1 &&
+      reported.remaining > 0 &&
       (state.phase === 'pausing' || (state.pauseOnFailure && status === 'failed'))
     )
       await paused();
+    if (reported.workRemaining) await parkApp(runner.id);
   }
   let failed = state.tests.filter((test) => test.status === 'failed').length;
   let skipped = state.tests.filter((test) => test.status === 'skipped').length;

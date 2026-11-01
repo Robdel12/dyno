@@ -51,6 +51,8 @@ Tests, actions, and assertions execute in the browser. Use --manual for Safari a
         .map(([key, value]) => [key, Array.isArray(value) ? Object.freeze([...value]) : value])));
     });
   appOptions(command('run', 'Run tests (the default command)', { isDefault: true }))
+    .addOption(valueOption('--seed <value>', 'Run in a repeatable randomized order'))
+    .addOption(new Option('--random', 'Generate and print a seed for this run').conflicts('seed'))
     .option('--watch', 'Rerun when tests or imported helpers change')
     .addOption(valueOption('--test <name>', 'Exact test name or suite-qualified title'))
     .addOption(new Option('--id <id>', 'Stable test ID; repeat to select several').argParser(collect))
@@ -89,6 +91,6 @@ Examples:
 export function configOverrides(options) {
   return {
     port: options.port, host: options.host, browser: options.browser,
-    browserPath: options.browserPath, reportDir: options.reportDir
+    browserPath: options.browserPath, reportDir: options.reportDir, seed: options.seed, random: options.random
   };
 }

@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { project } from '../helpers/project.js';
+import { openURL } from '../helpers/manual.js';
+import { observeRun } from '../helpers/observer.js';
 import { acceptObserverFrame } from '../../src/browser/reporting.js';
 
 let browser = process.env.DYNO_TEST_BROWSER ?? 'chromium';
@@ -93,7 +95,8 @@ test('inspect midway',async({app,I})=>{
       await reader.cancel();
       await observe;
     });
-    let diagnostics = (run, responseBody) => JSON.stringify({ run, latestSnapshot, snapshots, hostStatuses, streamError, responseBody });
+    let diagnostics = (run, responseBody) => JSON.stringify({ run, latestSnapshot, snapshots, hostStatuses, streamError, responseBody,
+      transport: session.events.filter(event => ['browser-connection', 'browser-diagnostic'].includes(event.type)) });
     let completedBeforePause = async () => {
       await session.waitForEvent('complete');
       throw new Error(`Run completed before pausing: ${JSON.stringify(await (await fetch(url + 'results')).json())}`);
@@ -110,6 +113,9 @@ test('inspect midway',async({app,I})=>{
     assert.equal(latestSnapshot?.phase, 'debugging', diagnostics(run));
     assert.equal(streamError, undefined, diagnostics(run));
     assert.equal(run.outcomes.length, 0, diagnostics(run));
+    let connected = hostStatuses.findIndex(status => status.connected);
+    assert.ok(connected >= 0, diagnostics(run));
+    assert.equal(hostStatuses.slice(connected).some(status => !status.connected), false, diagnostics(run));
     let response = await fetch(url + 'control', {
       method: 'POST',
       body: JSON.stringify({ runId: capture.runId, command: 'continue' })
@@ -131,6 +137,35 @@ afterEach(async({app})=>{await app.request('/api/lifecycle',{method:'POST',body:
   assert.equal(result.summary.failed, 1);
   assert.equal(result.summary.passed, 1);
   assert.match(result.events.find((event) => event.type === 'test').error.message, /requires --ui or --manual/);
+});
+
+test('a URL-only paused test keeps its controller connection through real garbage collection', { timeout: 90000 }, async t => {
+  let fixture = await project(t, {
+    source: `describe('Controller lifetime',()=>{test('continues the same contact',async({app,I})=>{
+      await app.goto('/');await I.find('Name').then.fill('Retained contact');
+      await app.pause('Inspect before saving');
+      await I.find('Name').value('Retained contact');await I.click('Save');
+      await I.find('$([role=status])').text('Saved Retained contact · 1');
+    });});`,
+  });
+  let session = fixture.run(['--manual']);
+  let { url } = await session.waitForEvent('ready');
+  let page = await openURL(t, url);
+  let { runId } = await session.waitForEvent('capture');
+  let observer = await observeRun(t, url + 'stream?run=' + runId);
+  await observer.until(view => view.phase === 'debugging');
+  let companion = page.context().pages().find(candidate => new URL(candidate.url()).pathname === '/__dyno__/controller');
+  assert.ok(companion, 'Expected the actual companion window.');
+  // Collect the real browser heap; no driver commands interact with the app.
+  await companion.requestGC();
+  let response = await fetch(url + 'control', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ runId, command: 'continue' }), signal: t.signal,
+  });
+  assert.equal(response.status, 200, await response.text());
+  let complete = await session.waitForEvent('complete');
+  assert.equal(complete.passed, 1);
+  assert.equal(complete.failed, 0);
 });
 
 test(

@@ -34,6 +34,7 @@
     "test": "node scripts/test.js",
     "test:core": "node scripts/test.js core",
     "test:browser": "node scripts/test.js browser",
+    "test:execution": "node scripts/test.js execution",
     "test:reporter": "node scripts/test.js reporter",
     "test:package": "node scripts/test.js package",
     "test:capture": "node scripts/test.js capture",

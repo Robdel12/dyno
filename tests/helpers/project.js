@@ -56,6 +56,7 @@ export function launch(command, args, cwd, signal, { env = process.env } = {}) {
         signal: exitSignal,
         wallDuration: completedAt - launchedAt,
         exitToCloseDuration: exitedAt === undefined ? null : completedAt - exitedAt,
+        transport: events.filter(event => ['browser-connection', 'browser-diagnostic'].includes(event.type)),
         sessions: events.filter(event => event.type === 'session-timing').map(event => ({
           sessionId: event.sessionId,
           status: event.status,
@@ -69,6 +70,7 @@ export function launch(command, args, cwd, signal, { env = process.env } = {}) {
   let stopping;
   return {
     child, completion,
+    get events() { return [...events]; },
     waitForEvent(type, predicate = () => true) {
       let found = events.find(event => event.type === type && predicate(event));
       if (found) return Promise.resolve(found);
@@ -166,8 +168,17 @@ export async function project(t, { source = "describe('Workflow', () => { test('
 
 // Valid wire data for the real HTTP clients used by gateway contract tests.
 export function reportPayload(event) {
-  let descriptor = (name, index = 0) => ({ id: JSON.stringify(['tests/browser/workflow.test.js', name]), name, file: 'tests/browser/workflow.test.js', suites: [], index, skipReason: null });
+  let descriptor = (name, index = 0) => ({ id: JSON.stringify(['tests/browser/workflow.test.js', 'Workflow', name]), name, file: 'tests/browser/workflow.test.js', suites: ['Workflow'], index, skipReason: null });
   if (event.type === 'start') return { ...event, tests: event.tests.map(descriptor) };
   if (event.type === 'test') return { ...event, testId: descriptor(event.name).id };
   return event;
+}
+
+export async function claimAssignment(url, owner, requestId) {
+  let response = await fetch(new URL('assignment', url), {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...owner, requestId }),
+  });
+  if (!response.ok) throw new Error(`Assignment failed: ${await response.text()}`);
+  return (await response.json()).assignment;
 }

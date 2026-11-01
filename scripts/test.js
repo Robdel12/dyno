@@ -7,11 +7,11 @@ import { fileURLToPath } from 'node:url';
 import { browserEngine } from '../src/browsers.js';
 
 let [suite = 'all', browser = 'chromium', ...extra] = process.argv.slice(2);
-let directories = ['core', 'browser', 'reporter', 'package', 'capture', 'native'];
+let directories = ['core', 'browser', 'execution', 'reporter', 'package', 'capture', 'native'];
 let suites = ['all', ...directories];
 let needsBrowser = suite === 'all' || (directories.includes(suite) && suite !== 'core');
 if (!suites.includes(suite) || extra.length || (!needsBrowser && process.argv[3]))
-  throw new Error('Usage: node scripts/test.js [all|core|browser|reporter|package|capture|native] [chromium|firefox|webkit for browser suites]');
+  throw new Error('Usage: node scripts/test.js [all|core|browser|execution|reporter|package|capture|native] [chromium|firefox|webkit for browser suites]');
 
 let root = fileURLToPath(new URL('../', import.meta.url));
 let files = [];
@@ -39,7 +39,7 @@ if (needsBrowser) {
   environment.DYNO_CAPTURE_BROWSER = browser;
 }
 // Each browser file owns its app, gateway, profiles, and fixture directory.
-let args = ['--test', `--test-concurrency=${suite === 'browser' ? 3 : 1}`, '--test-reporter=spec'];
+let args = ['--test', `--test-concurrency=${['browser', 'execution'].includes(suite) ? 3 : 1}`, '--test-reporter=spec'];
 if (process.env.DYNO_TEST_REPORT_DIR) {
   let directory = resolve(root, process.env.DYNO_TEST_REPORT_DIR);
   await mkdir(directory, { recursive: true });

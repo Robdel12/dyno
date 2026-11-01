@@ -152,6 +152,7 @@ export interface Application {
   readonly native: NativeBrowser;
 }
 export interface TestDescriptor {
+  readonly resources: readonly string[];
   readonly id: string;
   readonly file: string;
   readonly suites: readonly string[];
@@ -188,6 +189,7 @@ export interface TestContext {
 }
 export type TestCallback = (context: TestContext) => void | PromiseLike<unknown>;
 export interface TestOptions {
+  resources?: readonly string[];
   timeout?: number;
   reason?: string;
 }

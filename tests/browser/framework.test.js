@@ -256,12 +256,18 @@ test('edited workflow', () => {});
           }),
         });
       assert.equal((await post({ type: 'start', tests: ['edited workflow'] })).status, 200);
+      let assignmentReply = await fetch(url + 'assignment', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ runId: second.runId, connectionKey: second.connectionKey, requestId: 'edited-case' }),
+      });
+      assert.equal(assignmentReply.status, 200);
+      let { assignment } = await assignmentReply.json();
       assert.equal(
-        (await post({ type: 'test', index: 0, name: 'edited workflow', status: 'passed' })).status,
+        (await post({ type: 'test', executionId: assignment.id, index: 0, name: 'edited workflow', status: 'passed' })).status,
         200,
       );
       assert.equal(
-        (await post({ type: 'test', index: 0, name: 'edited workflow', status: 'passed' })).status,
+        (await post({ type: 'test', executionId: assignment.id, index: 0, name: 'edited workflow', status: 'passed' })).status,
         200,
       );
       assert.equal((await post({ type: 'complete', failed: 99, passed: 0 })).status, 200);

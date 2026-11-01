@@ -2,7 +2,7 @@ import { browserChannel } from '../browsers.js';
 import { nativeCapabilities } from '../native.js';
 import { createNative } from './native.js';
 
-export async function open(browser, plan, viewport, onExit) {
+export async function open(browser, plan, viewport, onExit, onDiagnostic = () => {}) {
   let context = await browser.newContext({
     viewport,
     deviceScaleFactor: plan.deviceScaleFactor ?? 1,
@@ -10,6 +10,10 @@ export async function open(browser, plan, viewport, onExit) {
     ...(plan.timezoneId ? { timezoneId: plan.timezoneId } : {}),
   });
   try {
+    context.on('requestfailed', (request) => {
+      if (new URL(request.url()).pathname === '/__dyno__/stream')
+        onDiagnostic(`Controller event stream: ${request.failure()?.errorText ?? 'request failed'}`);
+    });
     let page = context.pages()[0] ?? (await context.newPage());
     let closing = false;
     let disconnected = () => {
@@ -34,7 +38,26 @@ export async function open(browser, plan, viewport, onExit) {
         version: browser.version(),
         build: plan.path ? 'custom' : browserChannel(plan.name) ? 'installed' : 'playwright',
       }),
-      open: (url) => page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 }),
+      open: async (address) => {
+        let url = new URL(address);
+        let starter = url.pathname === '/__dyno__/';
+        if (starter) {
+          let fragment = new URLSearchParams(url.hash.slice(1));
+          fragment.set('start', 'managed');
+          url.hash = fragment.toString();
+        }
+        let deadline = Date.now() + 30000;
+        await page.goto(url.href, { waitUntil: 'domcontentloaded', timeout: 30000 });
+        if (starter) {
+          let timeout = Math.max(1, deadline - Date.now());
+          // Acknowledge the companion's creation without waiting for app
+          // navigations that the browser-local tests may immediately start.
+          await Promise.all([
+            page.waitForEvent('popup', { timeout }),
+            page.getByRole('button', { name: 'Start tests', exact: true }).press('Enter', { timeout, noWaitAfter: true }),
+          ]);
+        }
+      },
       activate: () => page.bringToFront(),
       retire: async (url) => {
         // Keep the app's browsing context (including sessionStorage), but end

@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
 import { createServer } from 'node:http';
+import { readFile } from 'node:fs/promises';
 import { project } from '../helpers/project.js';
 import { loadConfig } from '../../src/config.js';
 import { buildSuite } from '../../src/build.js';
@@ -9,6 +10,78 @@ import { createGateway } from '../../src/server.js';
 import { createBrowserPool, resolveSession } from '../../src/browser-session.js';
 
 let browser = { name: process.env.DYNO_TEST_BROWSER ?? 'chromium' };
+
+test('managed stream diagnostics expose a real broken connection without leaking its URL', { timeout: 90000 }, async t => {
+  let entered = Promise.withResolvers(), diagnostic = Promise.withResolvers();
+  let stream;
+  let server = createServer((request, response) => {
+    if (request.url.startsWith('/__dyno__/stream')) {
+      stream = response;
+      response.writeHead(200, { 'Content-Type': 'text/event-stream' });
+      response.write(': connected\n\n');
+      entered.resolve();
+    } else {
+      response.setHeader('Content-Type', 'text/html');
+      response.end(`<!doctype html><script>
+        window.events=new EventSource('/__dyno__/stream?private=secret-value');
+        window.events.onerror=()=>{};
+      </script>`);
+    }
+  });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  t.after(() => { server.closeAllConnections(); return new Promise(resolve => server.close(resolve)); });
+  let pool = await createBrowserPool(await resolveSession(browser), {
+    signal: t.signal, onDiagnostic: diagnostic.resolve,
+  });
+  t.after(pool.stop);
+  let worker = await pool.createWorker('diagnostic');
+  await worker.open(`http://127.0.0.1:${server.address().port}/app`);
+  await entered.promise;
+  stream.destroy();
+  let event = await diagnostic.promise;
+  assert.equal(event.workerId, 'diagnostic');
+  assert.match(event.message, /Controller event stream: .+/);
+  assert.equal(event.message.includes('secret-value'), false);
+});
+
+test('managed startup opens its companion with a trusted keyboard gesture and preserves launch ownership', { timeout: 90000 }, async t => {
+  let connected = Promise.withResolvers();
+  let bootstrap = await readFile(new URL('../../src/browser/bootstrap.js', import.meta.url));
+  let server = createServer(async (request, response) => {
+    let url = new URL(request.url, 'http://localhost');
+    if (url.pathname === '/connected') {
+      let chunks = [];
+      for await (let chunk of request) chunks.push(chunk);
+      connected.resolve(JSON.parse(Buffer.concat(chunks).toString()));
+      response.end('connected');
+    } else if (url.pathname === '/__dyno__/bootstrap.js') {
+      response.setHeader('Content-Type', 'text/javascript');
+      response.end(bootstrap);
+    } else {
+      response.setHeader('Content-Type', 'text/html');
+      response.end(url.pathname === '/__dyno__/controller'
+        ? `<!doctype html><script>fetch('/connected',{method:'POST',body:JSON.stringify({
+            trusted:opener?.startedWithTrustedGesture === true,
+            keyboard:opener?.startActivatedByKeyboard === true,
+            launch:new URLSearchParams(location.hash.slice(1)).get('launch')
+          })});</script>`
+        : `<!doctype html><p id="start-status">Connecting</p><button id="start" hidden>Start tests</button>
+          <script>document.getElementById('start').addEventListener('click',event=>{
+            window.startedWithTrustedGesture=event.isTrusted;
+            window.startActivatedByKeyboard=event.detail===0;
+          });</script><script type="module" src="/__dyno__/bootstrap.js"></script>`);
+    }
+  });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  t.after(() => { server.closeAllConnections(); return new Promise(resolve => server.close(resolve)); });
+  let pool = await createBrowserPool(await resolveSession(browser), { signal: t.signal });
+  t.after(pool.stop);
+  let worker = await pool.createWorker('0');
+  await worker.open(`http://127.0.0.1:${server.address().port}/__dyno__/#launch=preserved`);
+  assert.deepEqual(await connected.promise, { trusted: true, keyboard: true, launch: 'preserved' });
+});
 
 test('browser pool isolates simultaneous storage and retires documents without losing app storage', { timeout: 90000 }, async t => {
   let arrivals = new Map(), messages = [], errors = [];

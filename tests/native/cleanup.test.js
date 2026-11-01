@@ -136,10 +136,12 @@ describe('Native cleanup failure', () => {
             let runs = await (
               await fetch(gateway.url + 'results', { signal: t.signal })
             ).json();
-            let descriptor = runs.find((run) => run.runId === credentials.runId).tests[0];
+            let run = runs.find((run) => run.runId === credentials.runId);
+            let descriptor = run.tests[0];
             let reported = await post({
               type: 'test',
               testId: descriptor.id,
+              executionId: run.assignments[0].id,
               index: 0,
               name: descriptor.name,
               status: 'passed',

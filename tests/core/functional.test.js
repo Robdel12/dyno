@@ -4,7 +4,7 @@ import { mkdtemp, appendFile, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createSuite, addTest, addHook, addSuite, compileSuite } from '../../src/suite.js';
-import { createRun, acceptEvent } from '../../src/run.js';
+import { createRun, acceptEvent, claimTest, releaseTest } from '../../src/run.js';
 import { normalizeConfig } from '../../src/config.js';
 import { createCleanup } from '../../src/cleanup.js';
 
@@ -22,14 +22,16 @@ test('suite snapshots keep earlier test and hook definitions unchanged', () => {
 
 test('reported outcomes produce new run snapshots and authoritative totals', () => {
   let initial = createRun('browser-1');
-  let definition = { id: JSON.stringify(['file', 'save a name']), file: 'file', suites: [], index: 0, name: 'save a name', skipReason: null };
+  let definition = { id: JSON.stringify(['file', 'Workflow', 'save a name']), file: 'file', suites: ['Workflow'], index: 0, name: 'save a name', skipReason: null };
   let input = { runId: initial.runId, type: 'start', tests: [definition] };
   let started = acceptEvent(initial, input).run;
   input.tests.push('changed by caller');
   assert.equal(initial.status, 'captured');
   assert.deepEqual(started.tests.map(test=>test.name), ['save a name']);
-  let passed = acceptEvent(started, { runId: initial.runId, type: 'test', index: 0, testId: definition.id, name: 'save a name', status: 'passed' }).run;
-  let complete = acceptEvent(passed, { runId: initial.runId, type: 'complete', passed: 99, failed: 99 });
+  let assigned = claimTest(started, { executionId: 'save' }).run;
+  let passed = acceptEvent(assigned, { executionId: 'save', runId: initial.runId, type: 'test', index: 0, testId: definition.id, name: 'save a name', status: 'passed' }).run;
+  let released = releaseTest(passed, { executionId: 'save' });
+  let complete = acceptEvent(released, { runId: initial.runId, type: 'complete', passed: 99, failed: 99 });
   assert.deepEqual(started.outcomes, []);
   assert.equal(passed.status, 'running');
   assert.equal(complete.run.status, 'completed');

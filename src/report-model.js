@@ -61,6 +61,15 @@ export function createReport(run) {
     });
   });
   return freeze({
+    schedule: freeze({ version: 1, algorithm: 'sha256-id-rank-v1', seed: run.seed ?? null,
+      selected: freeze(run.tests.map(test => test.id)), priority: freeze([...(run.priority ?? [])]),
+      workers: freeze((run.workers ?? []).map(worker => worker.id)),
+      assignments: freeze((run.assignments ?? []).map(assignment => freeze({
+        executionId: assignment.id, workerId: assignment.workerId, testId: assignment.testId,
+        status: assignment.status,
+      }))),
+      completion: freeze(run.outcomes.map(outcome => outcome.testId)),
+    }),
     schemaVersion: 1,
     runId: run.runId,
     status: run.status === 'completed' ? 'completed' : 'interrupted',

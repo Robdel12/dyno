@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { PNG } from 'pngjs';
-import { project, repository } from '../helpers/project.js';
+import { project, repository, reportPayload, claimAssignment } from '../helpers/project.js';
 
 let browserName = process.env.DYNO_TEST_BROWSER ?? 'chromium';
 let chromiumOnly = browserName === 'chromium';
@@ -231,6 +231,9 @@ test('manual runs cannot invoke native input or borrow another run', {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
+  assert.equal((await post('events', { ...first, ...reportPayload({ type: 'start', tests: ['manual native'] }) })).status, 200);
+  let assignment = await claimAssignment(url, first, 'manual-native');
+  context.executionId = assignment.id;
   assert.equal(
     (await post('context', { runId: first.runId, connectionKey: first.connectionKey, context }))
       .status,

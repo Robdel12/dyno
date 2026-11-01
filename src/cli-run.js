@@ -13,6 +13,15 @@ import { createWatchSession } from './watch-session.js';
 import { createReportWriter } from './reports.js';
 import { createTimings } from './browser/timings.js';
 
+async function duringStartup(signal, start) {
+  let controller = new AbortController();
+  let abort = () => controller.abort(signal.reason);
+  signal.addEventListener('abort', abort, { once: true });
+  if (signal.aborted) abort();
+  try { return await start(controller.signal); }
+  finally { signal.removeEventListener('abort', abort); }
+}
+
 export async function runTests(options, { signal, output }) {
   let controller = new AbortController();
   let runSignal = AbortSignal.any([signal, controller.signal]);
@@ -26,7 +35,8 @@ export async function runTests(options, { signal, output }) {
     ...(browserCleanup ? { browserCleanup } : {})
   });
   let measure = (name, work) => sessionTimings.measure('lifecycle', name, work);
-  let config = await measure('Load config', () => loadConfig(options.config, configOverrides(options)));
+  let loaded = await measure('Load config', () => loadConfig(options.config, configOverrides(options)));
+  let config = Object.freeze({ ...loaded, seed: loaded.seed ?? (loaded.random ? randomUUID() : null) });
   let browserPlan = options.manual ? null : await measure('Resolve browser', () => resolveSession(config.browser, { headless: !options.ui }));
   let cleanups = createCleanup();
   let cleanup = (name, work) => cleanups.add(() => sessionTimings.measure('lifecycle', name, work));
@@ -68,7 +78,8 @@ export async function runTests(options, { signal, output }) {
     let pool = browserPlan
       ? await measure('Prepare browser', () => createBrowserPool(browserPlan, {
           signal: runSignal,
-          onExit: failed
+          onExit: failed,
+          onDiagnostic: (event) => { if (!runSignal.aborted) output.event({ type: 'browser-diagnostic', ...event }); }
         }))
       : null;
     if (pool) cleanup('Stop browser', async () => {
@@ -80,21 +91,28 @@ export async function runTests(options, { signal, output }) {
     launchKey = browser ? randomUUID() : null;
     let setup;
     if (config.setup) {
-      setup = await measure('Project setup', async () => {
+      setup = await measure('Project setup', () => duringStartup(runSignal, async (startupSignal) => {
         let module = await import(pathToFileURL(config.setup).href);
         if (typeof module.default !== 'function') throw new Error('setup must export a function.');
-        return module.default({ config, signal: runSignal });
-      });
+        return module.default({ config, signal: startupSignal });
+      }));
       if (typeof setup?.teardown === 'function') cleanup('Project teardown', setup.teardown);
+      if (setup?.drain !== undefined && typeof setup.drain !== 'function')
+        throw new Error('setup.drain must be a function.');
     }
     runSignal.throwIfAborted();
+    let appServer;
+    cleanup('Stop app server', () => appServer?.stop());
     gateway = await measure('Start gateway', () => createGateway(config, bundle, {
       fixtures: setup?.fixtures,
+      onDrain: setup?.drain ? (context) => sessionTimings.measure('lifecycle',
+        ('Project cleanup: ' + [...context.test.suites, context.test.name].join(' › ')).slice(0, 200),
+        () => setup.drain(context), { signal: context.signal }) : undefined,
       interactive: Boolean(options.ui || options.manual),
       onEvent: report,
       onRun: saveRun,
       onError: (error) => {
-        output.event({ type: 'error', phase: 'report', message: error.message });
+        output.event({ type: 'error', phase: error.phase ?? 'report', message: error.message });
         failed(error);
       },
       rebuild: persistent ? () => buildSuite(config) : null
@@ -118,15 +136,14 @@ export async function runTests(options, { signal, output }) {
     }
     reporterAddress = gateway.origin + '/__dyno__/reporter';
     if (browser) gateway.attachSession(browser, launchKey);
-    let appServer = await measure('App server ready', () => startWebServer(
+    appServer = await measure('App server ready', () => duringStartup(runSignal, (startupSignal) => startWebServer(
       { ...config.webServer, env: { ...config.webServer.env, ...setup?.env, DYNO_URL: gateway.origin } },
       {
-        signal: runSignal,
+        signal: startupSignal,
         onReady: (headers) => gateway.setDocumentPolicy(headers),
         output: (message) => output.diagnostic(`[app] ${message}`)
       }
-    ));
-    cleanup('Stop app server', () => appServer.stop());
+    )));
     let appExited = () => failed(appServer.failure ?? new Error('App server stopped.'));
     appServer.child?.once('exit', appExited);
     cleanups.add(async () => appServer.child?.removeListener('exit', appExited));
@@ -141,7 +158,7 @@ export async function runTests(options, { signal, output }) {
       : null;
     output.event({
       type: 'ready', url: captureURL.href, appURL: config.webServer.url,
-      files: bundle.files, browser: browserInfo
+      files: bundle.files, browser: browserInfo, seed: config.seed
     });
     if (['0.0.0.0', '::'].includes(config.host) && !output.json) {
       for (let entries of Object.values(networkInterfaces()))

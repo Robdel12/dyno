@@ -1,7 +1,7 @@
 import { openURL } from '../helpers/manual.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { project, reportPayload } from '../helpers/project.js';
+import { project, reportPayload, claimAssignment } from '../helpers/project.js';
 
 let browser = process.env.DYNO_TEST_BROWSER ?? 'chromium';
 let visibleConfig = {
@@ -207,12 +207,14 @@ test('logs bounded output', async ({ app, I }) => {
   let post = (event) =>
     fetch(url + 'events', { method: 'POST', body: JSON.stringify({ runId, connectionKey, ...reportPayload(event) }) });
   assert.equal((await post({ type: 'start', tests: ['real reporter boundary'] })).status, 200);
+  let assignment = await claimAssignment(url, { runId, connectionKey }, 'malformed-output');
   assert.equal(
     (
       await post({
         type: 'test',
         index: 0,
         name: 'real reporter boundary',
+        executionId: assignment.id,
         status: 'passed',
         output: [{ level: 'log', source: 'foreign', text: 'bad', elapsed: 0 }]
       })

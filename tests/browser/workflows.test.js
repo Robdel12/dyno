@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, readFile, rm, writeFile, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { project, exec, repository, reportPayload } from '../helpers/project.js';
+import { project, exec, repository, reportPayload, claimAssignment } from '../helpers/project.js';
 
 function outcomes(result, passed, failed) {
   assert.equal(result.code, failed ? 1 : 0, result.stderr + result.stdout);
@@ -121,6 +121,7 @@ test(
     let first = await capture();
     let second = await capture();
     assert.notEqual(first.runId, second.runId);
+    let assignments = new Map();
     let post = (runId, event) =>
       fetch(url + 'events', {
         method: 'POST',
@@ -128,6 +129,7 @@ test(
         body: JSON.stringify({
           runId,
           connectionKey: [first, second].find((run) => run.runId === runId)?.connectionKey,
+          ...(event.type === 'test' ? { executionId: assignments.get(runId) } : {}),
           ...reportPayload(event)
         })
       });
@@ -137,6 +139,7 @@ test(
     );
     assert.equal((await post(first.runId, { type: 'start', tests: ['first'] })).status, 200);
     assert.equal((await post(second.runId, { type: 'start', tests: ['second'] })).status, 200);
+    for (let owner of [first, second]) assignments.set(owner.runId, (await claimAssignment(url, owner, 'case')).id);
     for (let event of [
       { type: 'complete' },
       { type: 'test', index: 1, name: 'first', status: 'passed' },

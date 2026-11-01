@@ -34,9 +34,14 @@ export function normalizeConfig(input, file, overrides = {}) {
       'forbidOnly',
       'cleanupTimeout',
       'reportDir',
+      'seed',
+      'random',
     ],
     'config',
   );
+  if (input.random !== undefined && typeof input.random !== 'boolean') throw new Error('random must be a boolean.');
+  if (input.seed !== undefined && (typeof input.seed !== 'string' || !input.seed.trim() || input.seed.length > 256))
+    throw new Error('seed must be a non-empty string of at most 256 characters.');
   if (input.forbidOnly !== undefined && typeof input.forbidOnly !== 'boolean')
     throw new Error('forbidOnly must be a boolean.');
   let root = dirname(file);
@@ -144,6 +149,8 @@ export function normalizeConfig(input, file, overrides = {}) {
   let config = {
     root,
     file,
+    seed: overrides.random ? null : overrides.seed ?? input.seed ?? null,
+    random: overrides.random ?? input.random ?? false,
     forbidOnly: input.forbidOnly ?? Boolean(process.env.CI),
     testDir: resolve(root, input.testDir ?? 'tests/browser'),
     testMatch: input.testMatch ?? '**/*.test.{js,jsx,ts,tsx}',
@@ -180,6 +187,8 @@ export function normalizeConfig(input, file, overrides = {}) {
         : resolve(root, input.setup)
       : null,
   };
+  if (config.seed !== null && (typeof config.seed !== 'string' || !config.seed.trim() || config.seed.length > 256))
+    throw new Error('seed must be a non-empty string of at most 256 characters.');
   for (let [key, value] of Object.entries({
     timeout: config.timeout,
     cleanupTimeout: config.cleanupTimeout,

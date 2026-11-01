@@ -48,3 +48,78 @@ server.listen(0,'127.0.0.1',()=>process.send({pid:process.pid,port:server.addres
   assert.equal(await response.text(), 'retained helper');
   await assert.rejects(fetch(`http://127.0.0.1:${fixture.port}`));
 });
+
+let setupFiles = {
+  'setup.js': `import {writeFile} from 'node:fs/promises';
+    export default async () => ({teardown: () => writeFile('cleaned.txt', 'done')});`
+};
+
+test('an app startup deadline tears down the project and releases its port', { timeout: 15000 }, async t => {
+  let fixture = await project(t, {
+    config: { setup: './setup.js', webServer: {
+      timeout: 300,
+      command: [process.execPath, '--input-type=module', '-e',
+        "import http from 'node:http'; http.createServer().listen(0, '127.0.0.1', () => console.log('booting without listening'));"],
+    } },
+    files: setupFiles,
+  });
+  let result = await fixture.run(['--manual']).completion;
+  assert.equal(result.code, 1, result.stdout + result.stderr);
+  assert.match(result.events.at(-1).message, /startup exceeded 300 ms/);
+  assert.equal(await readFile(join(fixture.directory, 'cleaned.txt'), 'utf8'), 'done');
+  await assert.rejects(fetch(`http://127.0.0.1:${fixture.port}`));
+});
+
+test('app startup failure includes emitted output and tears down the project', { timeout: 15000 }, async t => {
+  let fixture = await project(t, {
+    config: { setup: './setup.js', webServer: {
+      command: [process.execPath, '--input-type=module', '-e',
+        "console.log('booting before failure'); process.exitCode = 7;"],
+    } },
+    files: setupFiles,
+  });
+  let result = await fixture.run(['--manual']).completion;
+  assert.equal(result.code, 1, result.stdout + result.stderr);
+  assert.match(result.events.at(-1).message, /Process exited \(7\)/);
+  assert.match(result.events.at(-1).message, /booting before failure/);
+  assert.equal(await readFile(join(fixture.directory, 'cleaned.txt'), 'utf8'), 'done');
+  await assert.rejects(fetch(`http://127.0.0.1:${fixture.port}`));
+});
+
+test('interrupting a ready app tears down the project and releases its port', { timeout: 15000 }, async t => {
+  let fixture = await project(t, { config: { setup: './setup.js' }, files: setupFiles });
+  let session = fixture.run(['--manual']);
+  await session.waitForEvent('ready');
+  session.child.kill('SIGINT');
+  let result = await session.completion;
+  assert.equal(result.code, 130, result.stdout + result.stderr);
+  assert.equal(result.events.at(-1).signal, 'SIGINT');
+  assert.equal(await readFile(join(fixture.directory, 'cleaned.txt'), 'utf8'), 'done');
+  await assert.rejects(fetch(`http://127.0.0.1:${fixture.port}`));
+});
+
+test('an idle controller stream receives keepalives and reports closing without producing test outcomes', { timeout: 15000 }, async t => {
+  let fixture = await project(t);
+  let session = fixture.run(['--manual']);
+  let { url } = await session.waitForEvent('ready');
+  let owner = await (await fetch(url + 'capture', { method: 'POST', signal: t.signal })).json();
+  let { runId } = owner;
+  let stream = await fetch(url + 'stream?role=host&run=' + runId, { signal: t.signal });
+  assert.equal(stream.status, 200);
+  await session.waitForEvent('browser-connection', event => event.runId === runId && event.status === 'connected');
+  let reader = stream.body.getReader(), decoder = new TextDecoder(), received = '';
+  while (!received.includes(': keepalive\n\n')) {
+    let chunk = await reader.read();
+    assert.equal(chunk.done, false, 'The idle controller disconnected before its keepalive.');
+    received += decoder.decode(chunk.value, { stream: true });
+  }
+  let status = await fetch(url + 'connection-status', { method: 'POST', signal: t.signal,
+    body: JSON.stringify({ ...owner, status: 'reconnecting' }) });
+  assert.equal(status.status, 200);
+  await session.waitForEvent('browser-connection', event => event.runId === runId && event.source === 'browser' && event.status === 'reconnecting');
+  await reader.cancel();
+  let closed = await session.waitForEvent('browser-connection', event => event.runId === runId && event.status === 'closed');
+  assert.equal(closed.reason, 'disconnected');
+  assert.ok(closed.duration >= 0);
+  assert.equal(session.events.some(event => ['test', 'complete', 'fatal'].includes(event.type)), false);
+});

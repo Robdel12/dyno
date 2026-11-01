@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createRun, acceptEvent } from '../../src/run.js';
+import { createRun, acceptEvent, claimTest } from '../../src/run.js';
 import {createReport,missingImages} from '../../src/report-model.js';
 import {junitReport,htmlReport} from '../../src/report-format.js';
 import { testId } from '../../src/suite.js';
@@ -15,8 +15,10 @@ test('portable report snapshots whitelist results, preserve stable IDs, and neve
   };
   let run = createRun('report-run');
   run = acceptEvent(run, { runId: run.runId, type: 'start', tests: [descriptor], userAgent: 'Test browser' }).run;
+  run = claimTest(run, { executionId: 'save' }).run;
   run = acceptEvent(run, {
     runId: run.runId,
+    executionId: 'save',
     type: 'test',
     testId: descriptor.id,
     name: 'save',
