@@ -54,6 +54,7 @@ test('HTTP reporting validates whole changes, replays exact acknowledgements, an
   } });
   let tests = descriptors(2);
   assert.equal((await app.post('events', { type: 'start', tests })).status, 200);
+  let assignment = await app.claim('first');
   let observer = await observe(t, app.url + 'stream?run=' + app.owner.runId);
   await observer.until((view) => view.tests.length === 2);
   let change = { set: { current: 2 }, tests: [{ index: 2, set: { status: 'running' }, output: { start: 0, entries: output('Saving 🦖') } }] };
@@ -68,7 +69,6 @@ test('HTTP reporting validates whole changes, replays exact acknowledgements, an
     { set: {}, tests: [{ index: 2, set: {}, output: null }] },
     { set: {}, tests: [{ index: 2, set: {}, output: { start: 1, entries: [{ source: 'foreign' }] } }] },
   ]) assert.equal((await app.post('view', { sequence: 2, change: invalid })).status, 400);
-  let assignment = await app.claim('first');
   let result = { type: 'test', executionId: assignment.id, testId: tests[0].id, index: 0, name: tests[0].name, status: 'passed', output: output('Saved 🦖'), duration: 2 };
   let replies = await Promise.all([app.post('events', result), app.post('events', result)]);
   assert.deepEqual(replies.map((reply) => reply.status), [200, 200]);
@@ -162,6 +162,7 @@ test('real report storage failure returns 503 and leaves the live run failed wit
 test('fatal output is canonical in live and saved reports, and late progress cannot change it', { timeout: 15000 }, async t => {
   let app = await gateway(t), tests = descriptors(1);
   assert.equal((await app.post('events', { type: 'start', tests })).status, 200);
+  await app.claim('first');
   let change = { set: { current: 2 }, tests: [{ index: 2, set: { status: 'running' }, output: { start: 0, entries: output('Acknowledged output') } }] };
   assert.equal((await app.post('view', { sequence: 1, change })).status, 200);
   let retained = [...output('Acknowledged output'), ...output('Final unflushed output')];
@@ -181,6 +182,7 @@ test('failed persistence after a user stop stays an error and never appears as a
   await mkdir(dirname(app.config.reportDir), { recursive: true });
   await writeFile(app.config.reportDir, 'Blocked');
   assert.equal((await app.post('events', { type: 'start', tests })).status, 200);
+  await app.claim('first');
   assert.equal((await app.post('events', { type: 'fatal', stopped: true, error: { message: 'Stopped by user' }, partial: [{ id: tests[0].id, output: output('Preserved') }] })).status, 503);
   let observer = await observe(t, app.url + 'stream?run=' + app.owner.runId);
   let view = await observer.until((view) => view.tests.length === 1);
@@ -194,6 +196,7 @@ test('replacing a browser reports a real save failure instead of hiding it behin
   await mkdir(dirname(app.config.reportDir), { recursive: true });
   await writeFile(app.config.reportDir, 'Blocked');
   assert.equal((await app.post('events', { type: 'start', tests })).status, 200);
+  await app.claim('first');
   let change = { set: {}, tests: [{ index: 2, set: { status: 'running' }, output: { start: 0, entries: output('Before replacement') } }] };
   assert.equal((await app.post('view', { sequence: 1, change })).status, 200);
   let observer = await observe(t, app.url + 'stream?run=' + app.owner.runId);

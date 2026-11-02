@@ -49,6 +49,7 @@ export async function inspectOfflineReport(t, path, browser, { images = 0, timin
       ${interruptedOutput ? `step='interrupted output';
       await UI.click('$(.saved-test[data-status="not-run"] summary)');
       await UI.assert(()=>document.querySelector('.saved-test[data-status="not-run"] pre').innerText.includes(${JSON.stringify(interruptedOutput)}),'Interrupted output is missing');
+      await UI.find('$(.saved-test[data-status="not-run"] pre)').then.act(({ $ }) => $.scrollIntoView({block:'center'}));
       await UI.find('$(.saved-test[data-status="not-run"] pre)').visible();` : ''}
       ${timings ? `step='timings';
       await UI.click('$(.saved-test summary)');

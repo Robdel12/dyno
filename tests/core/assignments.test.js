@@ -8,8 +8,8 @@ let catalog = ['copy', 'paste', 'save', 'review'].map((name, position) => ({
   name, index: position * 3 + 2, skipReason: null,
   resources: position < 2 ? ['clipboard'] : [],
 }));
-function ready({ workers = ['a', 'b'], tests = catalog, seed = null } = {}) {
-  let run = createRun('run', { workers, seed });
+function ready({ workers = ['a', 'b'], tests = catalog, seed = null, replay = null } = {}) {
+  let run = createRun('run', { workers, seed, replay });
   for (let workerId of workers) run = acceptEvent(run, { runId: 'run', type: 'start', workerId, tests }).run;
   return run;
 }
@@ -31,9 +31,24 @@ test('all workers validate the same immutable catalog before any test is assigne
   let assigned = claimTest(registered.run, { workerId: 'a', executionId: 'one' });
   assert.equal(assigned.assignment.testId, catalog[0].id);
   assert.equal(initial.tests.length, 0);
-  assert.equal(started.workers[1].ready, false);
+  assert.equal(started.workers[1].status, 'pending');
   assert.throws(() => registered.run.tests[0].resources.push('late'), TypeError);
   assert.throws(() => claimTest(registered.run, { workerId: 'unknown', executionId: 'two' }), /Unknown/);
+});
+
+test('replay preserves worker queue heads when a later test could bypass a reserved resource', () => {
+  let ids = catalog.map(test => test.id);
+  let replay = { workers: ['0', '1'], source: {}, selected: ids, priority: ids, catalog,
+    queues: { '0': [ids[0], ids[3]], '1': [ids[1], ids[2]] }, omitted: 0 };
+  let run = ready({ workers: ['0', '1'], replay });
+  replay.queues['1'].reverse();
+  let first = claimTest(run, { workerId: '0', executionId: 'copy' });
+  assert.equal(first.assignment.testId, ids[0]);
+  assert.equal(claimTest(first.run, { workerId: '1', executionId: 'blocked' }).assignment, null);
+  let reported = acceptEvent(first.run, result(first.assignment)).run;
+  let released = releaseTest(reported, { workerId: '0', executionId: 'copy' });
+  assert.equal(claimTest(released, { workerId: '1', executionId: 'paste' }).assignment.testId, ids[1]);
+  assert.deepEqual(run.replay.queues['1'], [ids[1], ids[2]]);
 });
 
 test('whole resource sets stay reserved through result acceptance until document and project cleanup release them', () => {

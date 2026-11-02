@@ -2,6 +2,28 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { project } from '../helpers/project.js';
 
+test('scoped custom assertions converge when the application renders their target asynchronously', { timeout: 90000 }, async t => {
+  let fixture = await project(t, { source: `
+    describe('Async rendering', () => {
+      test('waits for a later application message', async ({ app, I }) => {
+        await app.goto('/interactor');
+        let channel = new app.window.MessageChannel();
+        channel.port1.onmessage = () => {
+          let status = app.document.createElement('p');
+          status.id = 'saved-later';
+          status.textContent = 'Contact saved';
+          app.document.body.append(status);
+          channel.port1.close();channel.port2.close();
+        };
+        channel.port2.postMessage(null);
+        await I.scope('$(#saved-later)').assert(({ $ }) => $.textContent === 'Contact saved');
+      });
+    });` });
+  let result = await fixture.run().completion;
+  assert.equal(result.code, 0, result.stdout + result.stderr);
+  assert.equal(result.summary.passed, 1);
+});
+
 test('controlled selects keep the chosen value through UI updates and save it to the server', { timeout: 90000 }, async t => {
   let fixture = await project(t, { source: `
     describe('Project settings', () => {

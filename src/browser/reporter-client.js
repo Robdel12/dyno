@@ -19,6 +19,8 @@ let state = Object.freeze({
   command: { status: 'idle' }
 });
 let pending;
+let connection;
+let connect;
 let lastCommand;
 let renderScheduled = false;
 let renderer = new MessageChannel();
@@ -46,7 +48,7 @@ let acknowledge = (message) => {
 let command = (name, extra = {}) => {
   if (pending) return;
   let requestId = [...crypto.getRandomValues(new Uint32Array(4))].join('-');
-  let value = { channel: 'dyno-reporter', kind: 'command', runId, command: name, requestId, ...extra };
+  let value = { runId, workerId: state.selectedWorker, command: name, requestId, ...extra };
   lastCommand = { name, extra };
   let deadline = AbortSignal.timeout(10000);
   let expired = () =>
@@ -57,9 +59,7 @@ let command = (name, extra = {}) => {
   pending = { id: requestId, detach: () => deadline.removeEventListener('abort', expired) };
   deadline.addEventListener('abort', expired, { once: true });
   update({ command: { status: 'pending', name } });
-  if (embedded) parent.postMessage(value, location.origin);
-  else
-    void fetch('/__dyno__/control', {
+  void fetch('/__dyno__/control', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(value),
@@ -67,6 +67,7 @@ let command = (name, extra = {}) => {
     })
       .then(async (response) => {
         if (!response.ok) throw new Error(await response.text());
+        acknowledge({ requestId, ...(await response.json()) });
       })
       .catch((error) => acknowledge({ requestId, error }));
 };
@@ -75,8 +76,18 @@ let navigate = (patch, replace = false) => {
   history[replace ? 'replaceState' : 'pushState'](null, '', reporterHref(route));
   update({ route: reporterRoute(location.hash) });
 };
+let selectWorker = (id) => {
+  let url = new URL(location.href);
+  url.searchParams.set('worker', id);
+  history.replaceState(null, '', url);
+  parameters.set('worker', id);
+  connection?.close();
+  connection = undefined;
+  update({ connection: 'connecting' });
+  connect();
+};
 let render = createReporter({
-  embedded,
+  embedded, selectWorker,
   rerun: (ids) => command('rerun', { ids }),
   runFailed: () =>
     command('rerun', { ids: state.tests.filter((test) => test.status === 'failed').map((test) => test.id) }),
@@ -128,14 +139,23 @@ if (embedded) {
       message.runId !== runId
     )
       return;
-    if (message.kind === 'snapshot') receive(message.view);
-    if (message.kind === 'command-result') acknowledge(message);
+    if (message.kind === 'visibility') {
+      if (message.visible) connect?.();
+      else { connection?.close(); connection = undefined; }
+    }
     if (message.kind === 'focus' && (!document.hasFocus() || document.activeElement === document.body))
       document.getElementById('main').focus();
   });
   parent.postMessage({ channel: 'dyno-reporter', kind: 'ready', runId }, location.origin);
-} else if (runId) {
-  let stream = new EventSource(`/__dyno__/stream?run=${encodeURIComponent(runId)}`);
+}
+connect = () => {
+  if (!runId || connection) return;
+  let worker = parameters.get('worker');
+  let stream = new EventSource(`/__dyno__/stream?run=${encodeURIComponent(runId)}${worker ? '&worker=' + encodeURIComponent(worker) : ''}`);
+  connection = stream;
+  let listen = (kind, receive) => stream.addEventListener(kind, event => {
+    if (connection === stream) receive(event);
+  });
   let observed;
   let accept = (kind, event) => {
     try {
@@ -150,24 +170,26 @@ if (embedded) {
       update({ connection: 'closed', error: error.message });
     }
   };
-  stream.addEventListener('open', () => update({ connection: 'connected' }));
+  listen('open', () => update({ connection: 'connected' }));
   for (let kind of ['view-start', 'view-tests', 'snapshot', 'view-change'])
-    stream.addEventListener(kind, (event) => accept(kind, event));
-  stream.addEventListener('reporter-error', (event) => {
+    listen(kind, (event) => accept(kind, event));
+  listen('reporter-error', (event) => {
     stream.close();
     update({ connection: 'closed', error: JSON.parse(event.data).message });
   });
-  stream.addEventListener('watch', (event) => update({ watch: JSON.parse(event.data) }));
-  stream.addEventListener('host-status', (event) =>
+  listen('watch', (event) => update({ watch: JSON.parse(event.data) }));
+  listen('host-status', (event) =>
     update({ connection: JSON.parse(event.data).connected ? 'connected' : 'closed' })
   );
-  stream.addEventListener('command-result', (event) => acknowledge(JSON.parse(event.data)));
-  stream.addEventListener('replacement', (event) => {
+  listen('replacement', (event) => {
     let url = new URL(location.href);
     url.searchParams.set('run', JSON.parse(event.data).runId);
     location.replace(url);
   });
-  stream.addEventListener('error', () =>
+  listen('error', () =>
     update({ connection: stream.readyState === EventSource.CLOSED ? 'closed' : 'reconnecting' })
   );
-} else update({ phase: 'error', connection: 'closed', error: 'Open a reporter URL from an active Dyno run.' });
+};
+window.addEventListener('pagehide', () => connection?.close(), { once: true });
+if (!runId) update({ phase: 'error', connection: 'closed', error: 'Open a reporter URL from an active Dyno run.' });
+else if (!embedded || !window.frameElement?.hidden) connect();

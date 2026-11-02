@@ -266,7 +266,7 @@ test('browser reload waits for the previous project drain before admitting a new
       await I.assert(()=>JSON.stringify(trace)===JSON.stringify(['queued','drain-start','committed','drained','next']));
     });});`);
   await fetch(new URL('/allow-reload', appURL), {method:'POST',signal:t.signal});
-  await session.waitForEvent('joining', event => event.previousRunId === first.runId);
+  await session.waitForEvent('restarting', event => event.runId === first.runId);
   await fetch(new URL('/drain-entered', appURL), { signal: t.signal });
   let runs = await (await fetch(url + 'results', { signal: t.signal })).json();
   assert.deepEqual(runs.map(run => run.runId), [first.runId], 'No replacement run while old writes are draining.');

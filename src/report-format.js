@@ -85,6 +85,7 @@ function testMarkup(test) {
     <div class="saved-output">
       ${errors(test).map(errorMarkup).join('')}
       ${note ? `<p>${x(note)}</p>` : ''}
+      ${test.workerId !== undefined ? `<p class="output-notice">Worker ${x(test.workerId)}</p>` : ''}
       ${timingMarkup(test.timings)}
       ${test.output.length ? `<h2>Console</h2><pre>${x(consoleText(test))}</pre>` : ''}
       ${test.attachments.map(imageMarkup).join('')}
@@ -105,6 +106,8 @@ export function htmlReport(report, css, { session = false } = {}) {
     <p>${report.summary.passed} passed · ${report.summary.failed} failed · ${report.summary.skipped} skipped · ${report.summary.notRun} not run</p>
     <p>Saved report · ${x(report.runId)}${report.startedAt ? ` · ${x(report.startedAt)}` : ''}</p>
     ${report.schedule?.seed != null ? `<p>Seed: ${x(report.schedule.seed)}</p>` : ''}
+    ${report.coordination ? `<p>${report.coordination.workers.length} ${report.coordination.workers.length === 1 ? 'worker' : 'workers'} · ${x(timingDuration(report.coordination.wallDuration))} wall · ${x(timingDuration(report.coordination.testWorkDuration))} summed test work</p>
+      <details class="run-info"><summary>Worker timings</summary><ul>${report.coordination.workers.map(worker => `<li>Worker ${x(worker.id)}: ${x(timingDuration(worker.executionDuration))} execution · ${x(timingDuration(worker.handoffDuration))} handoff · ${x(timingDuration(worker.queueDuration))} queue to assignment · ${x(timingDuration(worker.unassignedDuration))} unassigned</li>`).join('')}</ul></details>` : ''}
     ${report.error ? errorMarkup(report.error) : ''}
     ${slowestTests(report.tests).length ? `<details class="run-info"><summary>Slowest tests</summary><ol class="slow-test-list">${slowestTests(report.tests).map(test => `<li><a href="#test-${test.index}">${x(testTitle(test))}</a><span>${x(timingDuration(test.duration))}</span></li>`).join('')}</ol></details>` : ''}
     <label>Filter tests<input type="search" id="search" placeholder="Search files, suites, and test output"></label>

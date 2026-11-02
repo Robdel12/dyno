@@ -2,6 +2,7 @@ import { glob } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { join, relative, resolve } from 'node:path';
 import { build } from 'esbuild';
+import { createHash } from 'node:crypto';
 
 let browserEntry = fileURLToPath(new URL('./browser/index.js', import.meta.url));
 let registry = fileURLToPath(new URL('./browser/registry.js', import.meta.url));
@@ -39,20 +40,30 @@ export async function buildSuite(config) {
     build({
       entryPoints: [fileURLToPath(new URL('./browser/bridge.js', import.meta.url))],
       bundle: true,
+      metafile: true,
       write: false,
       format: 'iife',
       platform: 'browser',
       target: 'es2022',
+      absWorkingDir: config.root,
+      sourcemap: 'external',
+      outfile: join(config.root, 'bridge.js'),
       logLevel: 'silent'
     })
   ]);
+  let map = JSON.parse(result.outputFiles.find(file => file.path.endsWith('.map')).text);
+  let bridgeMap = JSON.parse(bridge.outputFiles.find(file => file.path.endsWith('.map')).text);
+  let contents = [map, bridgeMap].flatMap(map => map.sourcesContent.filter((content, index) => map.sources[index] !== 'dyno-entry.js'));
+  let hashes = contents.map(content => createHash('sha256').update(content).digest('hex')).sort();
+  let fingerprint = Object.freeze({ algorithm: 'sha256-source-content-v1', hash: createHash('sha256').update(JSON.stringify(hashes)).digest('hex') });
   return {
+    fingerprint,
     inputs: Object.keys(result.metafile.inputs)
       .filter((file) => file !== 'dyno-entry.js')
       .map((file) => resolve(config.root, file)),
-    bridge: bridge.outputFiles[0].text,
+    bridge: bridge.outputFiles.find(file => file.path.endsWith('.js')).text,
     code: result.outputFiles.find((file) => file.path.endsWith('suite.js')).text,
-    map: JSON.parse(result.outputFiles.find((file) => file.path.endsWith('.map')).text),
+    map,
     files: files.map((file) => relative(config.root, file))
   };
 }

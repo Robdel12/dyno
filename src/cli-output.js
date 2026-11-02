@@ -32,7 +32,11 @@ export function createCLIOutput({ json, stdout = process.stdout, stderr = proces
             line(`${mark} ${check.name}: ${check.message}`);
           }
           break;
-        case 'ready': line(`\nDyno: ${event.url}\nApp: ${event.appURL}\n${event.files.length} test file(s) bundled`); break;
+        case 'ready':
+          line(`\nDyno: ${event.url}\nApp: ${event.appURL}\n${event.files.length} test file(s) bundled`);
+          if (event.workers?.length > 1) line(`${event.workers.length} isolated browser workers`);
+          if (event.replay) line(`Replay: ${event.replay.selected} assigned tests${event.replay.omitted ? `; ${event.replay.omitted} unassigned tests omitted` : ''}`);
+          break;
         case 'capture': if (persistent) line(`Reporter: ${event.reporterURL}`); break;
         case 'start':
           line(`\nRunning ${event.tests.length} browser tests`);
@@ -52,6 +56,8 @@ export function createCLIOutput({ json, stdout = process.stdout, stderr = proces
           break;
         case 'complete':
           line(`\n${event.passed} passed, ${event.failed} failed, ${event.skipped} skipped (${Math.round(event.duration)} ms)`);
+          if (event.coordination?.workers.length > 1)
+            line(`${event.coordination.workers.length} workers · ${timingDuration(event.coordination.wallDuration)} wall · ${timingDuration(event.coordination.testWorkDuration)} summed test work`);
           for (let test of event.performance?.slowestTests.slice(0, 3) ?? []) {
             let work = slowWorkLabel({ entries: test.slowestWork });
             line(`Slow: ${testTitle(test)} · ${timingDuration(test.duration)}${work ? ` · ${work}` : ''}`);

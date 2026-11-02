@@ -6,12 +6,15 @@ import { loadConfig } from './config.js';
 import { buildSuite } from './build.js';
 import { startWebServer } from './process.js';
 import { createGateway } from './server.js';
+import { createCoordinator } from './coordinator.js';
+import { projectWorker } from './project-worker.js';
 import { resolveSession, createBrowserPool } from './browser-session.js';
 import { createCleanup } from './cleanup.js';
 import { defaultViewport } from './browser/viewport.js';
 import { createWatchSession } from './watch-session.js';
 import { createReportWriter } from './reports.js';
 import { createTimings } from './browser/timings.js';
+import { readReplay } from './schedule.js';
 
 async function duringStartup(signal, start) {
   let controller = new AbortController();
@@ -36,19 +39,24 @@ export async function runTests(options, { signal, output }) {
   });
   let measure = (name, work) => sessionTimings.measure('lifecycle', name, work);
   let loaded = await measure('Load config', () => loadConfig(options.config, configOverrides(options)));
-  let config = Object.freeze({ ...loaded, seed: loaded.seed ?? (loaded.random ? randomUUID() : null) });
+  let replay = options.replay ? await measure('Read replay schedule', () => readReplay(options.replay)) : null;
+  if (replay && options.workers !== undefined && options.workers !== replay.workers.length)
+    throw new Error(`Replay requires ${replay.workers.length} workers. Remove --workers or use that count.`);
+  if (options.manual && replay?.workers.length > 1) throw new Error('Multi-worker queue replay requires a managed browser.');
+  if (options.manual && options.workers > 1) throw new Error('Manual URL runs use one worker. Remove --workers or use a managed browser.');
+  let config = Object.freeze({ ...loaded, replay, workers: options.manual ? 1 : replay?.workers.length ?? loaded.workers,
+    seed: replay ? replay.seed : loaded.seed ?? (loaded.random ? randomUUID() : null) });
   let browserPlan = options.manual ? null : await measure('Resolve browser', () => resolveSession(config.browser, { headless: !options.ui }));
   let cleanups = createCleanup();
   let cleanup = (name, work) => cleanups.add(() => sessionTimings.measure('lifecycle', name, work));
   let { promise: finished, resolve: complete, reject: failed } = Promise.withResolvers();
   finished.catch(() => {});
-  let activeRun;
   let endingError;
-  let watcher, gateway;
-  let launchKey;
-  let reporterAddress;
+  let watcher, coordinator;
+  let instances = [];
+  let launchKeys = [];
   let writer = createReportWriter(config.reportDir, {
-    redact: (value) => (launchKey ? value.replaceAll(launchKey, '[private launch]') : value)
+    redact: value => launchKeys.reduce((text, key) => text.replaceAll(key, '[private launch]'), value)
   });
   let savedRuns = 0;
   let saveRun = async (run) => {
@@ -58,13 +66,13 @@ export async function runTests(options, { signal, output }) {
   };
   let persistent = options.ui || options.manual || options.watch;
   let report = (event) => {
-    if (event.type === 'capture')
-      event = { ...event, reporterURL: `${reporterAddress}?run=${encodeURIComponent(event.runId)}` };
-    if (event.type === 'capture' && (event.owned || event.previousRunId === activeRun || (!browserPlan && !activeRun)))
-      activeRun = event.runId;
-    if (event.runId === activeRun) watcher?.observe(event);
+    if (event.type === 'capture') {
+      let gateway = instances.find(instance => instance.id === event.workerId)?.gateway;
+      event = { ...event, reporterURL: `${gateway.origin}/__dyno__/reporter?run=${encodeURIComponent(event.runId)}` };
+    }
+    if (coordinator?.isPrimary(event.runId)) watcher?.observe(event);
     output.event(event, { persistent });
-    if (event.runId === activeRun && !persistent) {
+    if (coordinator?.isPrimary(event.runId) && !persistent) {
       if (event.type === 'complete') complete(event);
       if (event.type === 'fatal') failed(new Error(event.error?.message ?? 'Browser runtime failed.'));
     }
@@ -74,10 +82,12 @@ export async function runTests(options, { signal, output }) {
   if (runSignal.aborted) aborted();
   try {
     let bundle = await measure('Bundle tests', () => buildSuite(config));
+    if (replay && JSON.stringify(bundle.fingerprint) !== JSON.stringify(replay.source))
+      throw new Error('The replay source fingerprint changed. Record a new schedule for these tests.');
     runSignal.throwIfAborted();
     let pool = browserPlan
       ? await measure('Prepare browser', () => createBrowserPool(browserPlan, {
-          signal: runSignal,
+          size: config.workers, signal: runSignal,
           onExit: failed,
           onDiagnostic: (event) => { if (!runSignal.aborted) output.event({ type: 'browser-diagnostic', ...event }); }
         }))
@@ -87,8 +97,6 @@ export async function runTests(options, { signal, output }) {
       browserCleanup = result;
       output.event({ type: 'browser-stopped', sessionId, ...result });
     });
-    let browser = pool ? await pool.createWorker('0', { viewport: config.viewport ?? defaultViewport }) : null;
-    launchKey = browser ? randomUUID() : null;
     let setup;
     if (config.setup) {
       setup = await measure('Project setup', () => duringStartup(runSignal, async (startupSignal) => {
@@ -97,68 +105,110 @@ export async function runTests(options, { signal, output }) {
         return module.default({ config, signal: startupSignal });
       }));
       if (typeof setup?.teardown === 'function') cleanup('Project teardown', setup.teardown);
+      if (setup?.teardown !== undefined && typeof setup.teardown !== 'function')
+        throw new Error('setup.teardown must be a function.');
       if (setup?.drain !== undefined && typeof setup.drain !== 'function')
         throw new Error('setup.drain must be a function.');
     }
     runSignal.throwIfAborted();
-    let appServer;
-    cleanup('Stop app server', () => appServer?.stop());
-    gateway = await measure('Start gateway', () => createGateway(config, bundle, {
-      fixtures: setup?.fixtures,
-      onDrain: setup?.drain ? (context) => sessionTimings.measure('lifecycle',
-        ('Project cleanup: ' + [...context.test.suites, context.test.name].join(' › ')).slice(0, 200),
-        () => setup.drain(context), { signal: context.signal }) : undefined,
-      interactive: Boolean(options.ui || options.manual),
-      onEvent: report,
-      onRun: saveRun,
-      onError: (error) => {
+    if (setup?.createWorker !== undefined && typeof setup.createWorker !== 'function')
+      throw new Error('setup.createWorker must be a function.');
+    if (config.workers > 1 && !setup?.createWorker)
+      throw new Error('Concurrent runs need setup.createWorker to provide isolated project resources.');
+    let projectCleanups = createCleanup();
+    let appCleanups = createCleanup();
+    cleanup('Project worker teardown', async () => {
+      let errors = await projectCleanups.run();
+      if (errors.length) throw new AggregateError(errors, 'Project worker teardown failed.');
+    });
+    cleanup('Stop app server', async () => {
+      let errors = await appCleanups.run();
+      if (errors.length) throw new AggregateError(errors, 'App server cleanup failed.');
+    });
+    let workerIds = Array.from({ length: config.workers }, (_, index) => String(index));
+    coordinator = createCoordinator(config, bundle, {
+      workerIds, onEvent: report, onRun: saveRun,
+      onError: error => {
         output.event({ type: 'error', phase: error.phase ?? 'report', message: error.message });
         failed(error);
       },
-      rebuild: persistent ? () => buildSuite(config) : null
-    }));
-    cleanup('Save reports and close gateway', () => gateway.close({ error: endingError }));
+      rebuild: persistent ? () => buildSuite(config) : null,
+    });
+    cleanup('Save reports and close gateway', async () => {
+      let results = await Promise.allSettled(instances.map(instance => instance.gateway.close({ error: endingError })));
+      let errors = results.filter(result => result.status === 'rejected').map(result => result.reason);
+      if (errors.length) throw new AggregateError(errors, 'Could not finish Dyno reports and cleanup.');
+    });
+    let starting = new AbortController();
+    let startupSignal = AbortSignal.any([runSignal, starting.signal]);
+    let starts = await measure('App server ready', () => Promise.allSettled(workerIds.map(async (id, index) => {
+      try {
+        let descriptor = setup?.createWorker
+          ? await measure(`Project worker ${id} setup`, () => duringStartup(startupSignal, startupSignal =>
+              setup.createWorker({ worker: Object.freeze({ id, index }), config, signal: startupSignal })))
+          : setup ?? {};
+        if (setup?.createWorker && typeof descriptor?.teardown === 'function')
+          projectCleanups.add(descriptor.teardown);
+        let project = projectWorker(config, descriptor, index, setup?.createWorker ? setup : undefined);
+        runSignal.throwIfAborted();
+        let browser = pool ? await pool.createWorker(id, { viewport: config.viewport ?? defaultViewport }) : null;
+        let launchKey = browser ? randomUUID() : null;
+        if (launchKey) launchKeys = [...launchKeys, launchKey];
+        let gateway = await measure(`Start worker ${id} gateway`, () => createGateway(project.config, bundle, {
+          coordinator, workerId: id, fixtures: project.fixtures,
+          onDrain: project.drain ? context => sessionTimings.measure('lifecycle',
+            ('Project cleanup: ' + [...context.test.suites, context.test.name].join(' › ')).slice(0, 200),
+            () => project.drain(context), { signal: context.signal }) : undefined,
+          interactive: Boolean(options.ui || options.manual), onEvent: report,
+        }));
+        let instance = { id, gateway, browser, launchKey, config: project.config };
+        instances = [...instances, instance];
+        if (browser) gateway.attachSession(browser, launchKey);
+        let appServer = await measure(`Worker ${id} app server ready`, () => duringStartup(startupSignal, startupSignal => startWebServer(
+          { ...project.config.webServer, env: { ...project.config.webServer.env, DYNO_URL: gateway.origin } },
+          { signal: startupSignal, onReady: headers => gateway.setDocumentPolicy(headers),
+            output: message => output.diagnostic(`[app] ${message}`) }
+        )));
+        appCleanups.add(appServer.stop);
+        let appExited = () => failed(appServer.failure ?? new Error(`Worker ${id} app server stopped.`));
+        appServer.child?.once('exit', appExited);
+        cleanups.add(async () => appServer.child?.removeListener('exit', appExited));
+        if (appServer.failure) throw appServer.failure;
+        runSignal.throwIfAborted();
+      } catch (error) { starting.abort(error); throw error; }
+    })));
+    let startupFailure = starts.find(result => result.status === 'rejected');
+    if (startupFailure) throw startupFailure.reason;
+    instances.sort((left, right) => Number(left.id) - Number(right.id));
+    let gateway = instances[0].gateway;
     if (options.watch) {
       watcher = createWatchSession({
         config, inputs: bundle.inputs, signal: runSignal,
-        onStatus: (event) => {
+        onStatus: event => {
           output.event({ type: 'watch', ...event });
-          if (activeRun) gateway.notify(activeRun, 'watch', event);
-        },
-        onError: failed,
-        reload: () => {
-          if (!activeRun) return false;
-          gateway.reload(activeRun);
-          return true;
-        }
+          coordinator.notify('watch', event);
+        }, onError: failed,
+        reload: () => coordinator.reload(),
       });
       cleanup('Stop watching', () => watcher.close());
     }
-    reporterAddress = gateway.origin + '/__dyno__/reporter';
-    if (browser) gateway.attachSession(browser, launchKey);
-    appServer = await measure('App server ready', () => duringStartup(runSignal, (startupSignal) => startWebServer(
-      { ...config.webServer, env: { ...config.webServer.env, ...setup?.env, DYNO_URL: gateway.origin } },
-      {
-        signal: startupSignal,
-        onReady: (headers) => gateway.setDocumentPolicy(headers),
-        output: (message) => output.diagnostic(`[app] ${message}`)
-      }
-    )));
-    let appExited = () => failed(appServer.failure ?? new Error('App server stopped.'));
-    appServer.child?.once('exit', appExited);
-    cleanups.add(async () => appServer.child?.removeListener('exit', appExited));
-    if (appServer.failure) throw appServer.failure;
-    runSignal.throwIfAborted();
-    let captureURL = new URL(gateway.url);
-    if (options.test) captureURL.searchParams.set('test', options.test);
-    for (let key of ['id', 'file', 'suite'])
-      for (let value of options[key] ?? []) captureURL.searchParams.append(key, value);
+    let captureURL = instance => {
+      let url = new URL(instance.gateway.url);
+      if (replay) return url;
+      if (options.test) url.searchParams.set('test', options.test);
+      for (let key of ['id', 'file', 'suite'])
+        for (let value of options[key] ?? []) url.searchParams.append(key, value);
+      return url;
+    };
+    let first = instances[0];
     let browserInfo = browserPlan
-      ? { ...browser.identity, path: browserPlan.path, isolated: browserPlan.isolated }
+      ? { ...first.browser.identity, path: browserPlan.path, isolated: browserPlan.isolated }
       : null;
     output.event({
-      type: 'ready', url: captureURL.href, appURL: config.webServer.url,
-      files: bundle.files, browser: browserInfo, seed: config.seed
+      type: 'ready', url: captureURL(first).href, appURL: first.config.webServer.url,
+      workers: instances.map(instance => ({ id: instance.id, url: captureURL(instance).href, appURL: instance.config.webServer.url })),
+      files: bundle.files, browser: browserInfo, seed: config.seed,
+      ...(replay ? { replay: { selected: replay.selected.length, omitted: replay.omitted } } : {}),
     });
     if (['0.0.0.0', '::'].includes(config.host) && !output.json) {
       for (let entries of Object.values(networkInterfaces()))
@@ -170,16 +220,16 @@ export async function runTests(options, { signal, output }) {
     let deadline = persistent ? null : AbortSignal.timeout(config.runTimeout);
     let expired = () => {
       let message = `No complete browser result within ${config.runTimeout} ms. The browser may be disconnected, blocked, or stuck.`;
-      let output = browser?.logs?.trim();
+      let output = instances.map(instance => instance.browser?.logs?.trim()).filter(Boolean).join('\n');
       controller.abort(new Error(output ? `${message}\nBrowser output:\n${output}` : message));
     };
     deadline?.addEventListener('abort', expired, { once: true });
     try {
-      if (browserPlan) {
-        let ownedURL = new URL(captureURL);
-        ownedURL.hash = new URLSearchParams({ launch: launchKey }).toString();
-        await measure('Open browser', () => browser.open(ownedURL.href));
-      }
+      if (browserPlan) await measure('Open browsers', () => Promise.all(instances.map(instance => {
+        let url = captureURL(instance);
+        url.hash = new URLSearchParams({ launch: instance.launchKey }).toString();
+        return instance.browser.open(url.href);
+      })));
       let summary = await sessionTimings.measure('lifecycle', 'Browser results', () => finished, { signal: runSignal });
       exitCode = summary.failed ? 1 : 0;
     } finally {
@@ -187,7 +237,7 @@ export async function runTests(options, { signal, output }) {
     }
   } catch (error) {
     endingError = error instanceof Error ? error : new Error(error?.message ?? String(error));
-    if (launchKey) endingError.message = endingError.message.replaceAll(launchKey, '[private launch]');
+    endingError.message = launchKeys.reduce((message, key) => message.replaceAll(key, '[private launch]'), endingError.message);
   } finally {
     controller.abort(new Error('Dyno is shutting down.'));
     for (let error of await sessionTimings.measure('lifecycle', 'Cleanup', () => cleanups.run())) {

@@ -136,6 +136,7 @@ export function createReporter(actions) {
     let [width, height] = get('viewport').value.split('x').map(Number);
     actions.viewport({ width, height });
   });
+  get('worker').addEventListener('change', event => actions.selectWorker(event.target.value));
   get('show-app').addEventListener('click', actions.showApp);
   get('close-reporter').addEventListener('click', actions.close);
   get('copy-output').addEventListener('click', async () => {
@@ -352,6 +353,15 @@ export function createReporter(actions) {
     let passed = state.tests.filter((test) => test.status === 'passed').length;
     let failed = state.tests.filter((test) => test.status === 'failed').length;
     let total = state.tests.length;
+    let workers = state.workers ?? [];
+    get('worker-setting').hidden = workers.length < 2;
+    let workerOptions = workers.map(worker => ({ value: worker.id, label: `Worker ${worker.id} · ${worker.phase}` }));
+    if (JSON.stringify([...get('worker').options].map(option => ({ value: option.value, label: option.textContent }))) !== JSON.stringify(workerOptions))
+      get('worker').replaceChildren(...workerOptions.map(worker => {
+        let option = element('option', '', worker.label); option.value = worker.value; return option;
+      }));
+    get('worker').value = state.selectedWorker ?? '';
+    get('worker').disabled = state.command?.status === 'pending';
     let href = (patch) => reporterHref({ ...state.route, ...patch });
     for (let id of [
       'rerun',
@@ -433,7 +443,7 @@ export function createReporter(actions) {
     write(
       get('run-meta'),
       state.error ??
-        `${state.files.length} test ${state.files.length === 1 ? 'file' : 'files'} · ${state.appHost || location.host}`
+        `${state.files.length} test ${state.files.length === 1 ? 'file' : 'files'}${workers.length > 1 ? ` · ${workers.length} workers` : ''} · ${state.appHost || location.host}`
     );
     write(get('passed-count'), String(passed));
     write(get('failed-count'), String(failed));
@@ -443,6 +453,15 @@ export function createReporter(actions) {
     get('failed-summary').dataset.failed = String(failed > 0);
     write(get('test-count'), String(total));
     write(get('run-duration'), duration(state.duration));
+    let coordination = state.coordination;
+    get('run-coordination').hidden = !coordination;
+    get('worker-timings').hidden = !coordination;
+    if (coordination) {
+      write(get('run-coordination'), `${duration(coordination.wallDuration)} wall · ${duration(coordination.testWorkDuration)} summed test work`);
+      let lines = coordination.workers.map(worker => `Worker ${worker.id}: ${duration(worker.executionDuration)} execution · ${duration(worker.handoffDuration)} handoff · ${duration(worker.queueDuration)} queue to assignment · ${duration(worker.unassignedDuration)} unassigned`);
+      if (get('worker-timings').textContent !== lines.join(''))
+        get('worker-timings').replaceChildren(...lines.map(line => element('li', '', line)));
+    }
     let slow = slowestTests(state.tests);
     get('slow-tests').hidden = !slow.length;
     let key = JSON.stringify([state.route.query, state.route.filter, slow.map(test => [test.id, test.duration])]);
@@ -595,8 +614,8 @@ export function createReporter(actions) {
     get('run-seed').hidden = state.seed == null;
     write(get('run-seed'), state.seed == null ? '' : `Seed: ${state.seed}`);
     get('standalone-reporter').hidden = !actions.embedded;
-    get('standalone-reporter').href = `/__dyno__/reporter?run=${encodeURIComponent(state.runId)}${location.hash}`;
-    write(get('selected-context'), test ? [test.file, ...test.suites].join(' › ') : '');
+    get('standalone-reporter').href = `/__dyno__/reporter?run=${encodeURIComponent(state.runId)}${state.selectedWorker ? '&worker=' + encodeURIComponent(state.selectedWorker) : ''}${location.hash}`;
+    write(get('selected-context'), test ? [test.file, ...test.suites, ...(workers.length > 1 && test.workerId ? ['Worker ' + test.workerId] : [])].join(' › ') : '');
     write(get('selected-name'), test?.name ?? 'Loading test…');
     write(
       get('selected-status'),

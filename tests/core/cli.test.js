@@ -62,6 +62,9 @@ test('CLI mistakes are structured errors and never partially initialize a projec
     [['init', '--ui'], /unknown option/i],
     [['--ui', '--manual'], /cannot be used/],
     [['--port', ''], /--port/],
+    [['--workers', '0'], /between 1 and 32/],
+    [['--workers', '1.5'], /between 1 and 32/],
+    [['--workers', '33'], /between 1 and 32/],
     [['--browser', 'netscape'], /Allowed choices/],
     [['--manual', '--browser', 'firefox'], /cannot be used/],
     [['--test', '  '], /non-empty/],
@@ -206,7 +209,10 @@ test('config typos and unsafe profile overrides fail before app startup', {
     { webServer: { reuseExistingServer: 'yes' } },
     { webServer: { env: { PORT: 12 } } },
   ]) {
-    let fixture = await project(t, { config });
+    let fixture = await project(t, {
+      config: { ...config, webServer: { command: [process.execPath, 'record-start.js'], ...config.webServer } },
+      files: { 'record-start.js': "import {writeFile} from 'node:fs/promises'; await writeFile('app-started.txt','started');" },
+    });
     let result = await fixture.run().completion;
     assert.equal(result.code, 1, result.stdout + result.stderr);
     assert.equal(
@@ -214,7 +220,7 @@ test('config typos and unsafe profile overrides fail before app startup', {
       false,
     );
     assert.equal(result.events.at(-1).type, 'error');
-    await assert.rejects(fetch(`http://127.0.0.1:${fixture.port}`));
+    await assert.rejects(readFile(join(fixture.directory, 'app-started.txt')), { code: 'ENOENT' });
   }
 });
 

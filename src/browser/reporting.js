@@ -71,7 +71,7 @@ export function runView(view = createExecution({ width: 1280, height: 800 }), ru
     let outcome = outcomes.get(test.id);
     let prior = live.get(test.id);
     if (!outcome && prior && !partial.has(test.id)) return prior;
-    let result = outcome && Object.fromEntries(['status', 'skipReason', 'duration', 'timings', 'error', 'additionalErrors', 'output', 'attachments']
+    let result = outcome && Object.fromEntries(['workerId', 'executionId', 'status', 'skipReason', 'duration', 'timings', 'error', 'additionalErrors', 'output', 'attachments']
       .filter((key) => outcome[key] !== undefined).map((key) => [key, outcome[key]]));
     if (outcome && prior?.status === outcome.status && prior.output === outcome.output) return prior;
     return freeze({ ...test, status: 'pending', output: freeze([]), attachments: freeze([]), ...prior,
@@ -81,7 +81,41 @@ export function runView(view = createExecution({ width: 1280, height: 800 }), ru
     ? { phase: 'completed', duration: run.summary.duration }
     : run.status === 'failed' ? { phase: run.stopped ? 'stopped' : 'error', error: run.error.message } : {};
   return freeze({ ...view, runId: run.runId, seed: run.seed ?? null, ...terminal,
+    ...(run.coordination ? { coordination: run.coordination } : {}),
     ...(['completed', 'failed'].includes(run.status) ? { presentation: view.interactive ? 'reporter' : 'app' } : {}), tests: freeze(tests) });
+}
+
+export function workerView(run, progress, selected = run.workers[0].id, previous) {
+  let owner = progress.find(worker => worker.id === selected) ?? progress[0];
+  let base = owner?.view ?? createExecution({ width: 1280, height: 800 });
+  let selectedRetired = run.workers.find(worker => worker.id === selected)?.status === 'retired';
+  let ownsApp = id => run.assignments.some(assignment => assignment.workerId === id && assignment.status !== 'released' &&
+    !run.tests[assignment.index].skipReason);
+  let assignments = new Map(run.assignments.map(assignment => [assignment.testId, assignment]));
+  let byWorker = new Map(progress.map(worker => [worker.id, new Map((worker.view?.tests ?? []).map(test => [test.id, test]))]));
+  let prior = new Map((previous?.tests ?? []).map(test => [test.id, test]));
+  let outcomes = new Set(run.outcomes.map(outcome => outcome.testId));
+  let tests = run.tests.map(test => {
+    let assignment = assignments.get(test.id);
+    let live = byWorker.get(assignment?.workerId)?.get(test.id);
+    let old = prior.get(test.id);
+    if (old && (outcomes.has(test.id) || !live ||
+      (old.workerId === assignment?.workerId && old.executionId === assignment?.id &&
+        ['status', 'output', 'path'].every(key => old[key] === live[key])))) return old;
+    return live ? freeze({ ...live, workerId: assignment.workerId, executionId: assignment.id })
+      : freeze({ ...test, status: 'pending', output: freeze([]), attachments: freeze([]) });
+  });
+  let workers = run.workers.map(worker => {
+    let view = progress.find(item => item.id === worker.id)?.view;
+    return freeze({ id: worker.id, phase: worker.status === 'retired' ? 'retired' : worker.status === 'finished' ? 'completed' : view?.phase ?? 'connecting',
+      current: view?.current ?? null, hasApp: worker.status !== 'retired' && ownsApp(worker.id) && (view?.hasApp ?? false) });
+  });
+  if (previous?.workers?.length === workers.length && workers.every((worker, index) =>
+    Object.keys(worker).every(key => worker[key] === previous.workers[index][key]))) workers = previous.workers;
+  let phase = base.phase;
+  if (run.paused) phase = workers.some(worker => ['running', 'pausing', 'resuming'].includes(worker.phase)) ? 'pausing' : 'paused';
+  return runView(freeze({ ...base, phase, hasApp: !selectedRetired && ownsApp(selected) && Boolean(base.hasApp), identity: owner?.identity ?? null,
+    capabilities: owner?.capabilities, selectedWorker: selected, workers: freeze(workers), tests: freeze(tests) }), run);
 }
 
 export function applyLiveChange(view, change, run) {

@@ -69,7 +69,6 @@ import { readAppBinding, appController, appRuntime } from './companion.js';
   let inspectButton;
   let presentation = { visible: false, interactive: false, active: true };
   let disconnected;
-  let lastSnapshot;
   let hiddenBodies = new Map();
   let previousFocus;
   let createReporterFrame = () => {
@@ -99,8 +98,7 @@ import { readAppBinding, appController, appRuntime } from './companion.js';
     if (reporter) {
       reporter.hidden = !visible;
       reporter.style.setProperty('display', visible ? 'block' : 'none', 'important');
-      if (opening && lastSnapshot)
-        reporter.contentWindow.postMessage({ ...lastSnapshot, channel: 'dyno-reporter' }, location.origin);
+      reporter.contentWindow?.postMessage({ channel: 'dyno-reporter', kind: 'visibility', runId: binding.runId, visible }, location.origin);
     }
     inspectButton.hidden = !disconnected && (visible || presentation.active || !presentation.interactive);
     inspectButton.style.setProperty('display', inspectButton.hidden ? 'none' : 'block', 'important');
@@ -135,17 +133,11 @@ import { readAppBinding, appController, appRuntime } from './companion.js';
           active: Boolean(message.active)
         };
         present();
-      } else if (!disconnected && ['snapshot', 'focus', 'command-result'].includes(message.kind)) {
-        if (message.kind === 'snapshot') {
-          lastSnapshot = message;
-          if (!presentation.visible) return;
-        }
+      } else if (!disconnected && message.kind === 'focus') {
         reporter?.contentWindow?.postMessage({ ...message, channel: 'dyno-reporter' }, location.origin);
       }
     } else if (message.channel === 'dyno-reporter' && event.source === reporter?.contentWindow) {
       if (!disconnected && message.kind === 'ready' && presentation.visible) {
-        if (lastSnapshot)
-          reporter.contentWindow.postMessage({ ...lastSnapshot, channel: 'dyno-reporter' }, location.origin);
         reporter.contentWindow.postMessage(
           { channel: 'dyno-reporter', kind: 'focus', runId: binding.runId },
           location.origin,
