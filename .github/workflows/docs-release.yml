@@ -1,0 +1,43 @@
+name: Release documentation
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    concurrency:
+      group: dyno-docs-release-${{ github.event.release.tag_name }}
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.release.tag_name }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - run: npm --prefix site ci
+      - name: Build the tagged documentation
+        env:
+          DYNO_DOCS_VERSION: ${{ github.event.release.tag_name }}
+        run: npm --prefix site run build
+      - name: Archive the package and documentation
+        env:
+          DYNO_DOCS_VERSION: ${{ github.event.release.tag_name }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/dyno-release"
+          npm pack --ignore-scripts --pack-destination "$RUNNER_TEMP/dyno-release"
+          node site/scripts/archive.js pack site/dist "$RUNNER_TEMP/dyno-release/dyno-docs-$DYNO_DOCS_VERSION.tar.gz"
+      - name: Attach immutable release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          DYNO_DOCS_VERSION: ${{ github.event.release.tag_name }}
+        run: node site/scripts/releases.js upload "$RUNNER_TEMP/dyno-release" "$DYNO_DOCS_VERSION"

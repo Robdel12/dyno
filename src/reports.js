@@ -1,3 +1,17 @@
+/**
+ * Each browser run saves `.dyno/reports/<run-id>/` with `run.json`, `junit.xml`, `index.html`, `schedule.json`, and `session.json`. Set `reportDir` or pass `--report-dir path` to choose another folder. The CLI prints the HTML path; JSON output includes a `report-saved` event.
+ *
+ * Open `index.html` directly in a browser after Dyno stops. It includes searchable files/suites, failures, source excerpts, console output, timings, and screenshots copied into `images/`. Copy the whole run folder to share it. A source image removed before saving appears as Screenshot unavailable.
+ *
+ * Run JSON uses `schemaVersion: 1`. It contains stable test descriptors, outcomes, summary counts, and relative image paths. A run is `completed` or `interrupted`; a test without an accepted result is `not-run`. Primary and additional failures retain their phase and source context. JUnit includes an error case for interruption, so an unfinished run cannot look green to CI.
+ *
+ * Completed runs save before completion is reported. SIGINT, SIGTERM, browser loss, and app failures save accepted results before shutdown. A force kill or machine failure cannot flush results. Storage failures fail the CLI; partially written run folders never become published reports. Old reports stay until you remove them.
+ *
+ * Reports include your test output and source excerpts. Dyno does not save its config, fixtures, connection keys, or launch tokens in them.
+ *
+ * @guide reports Saved reports
+ */
+
 import { mkdir, mkdtemp, readFile, writeFile, copyFile, rename, rm } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';

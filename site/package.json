@@ -1,0 +1,24 @@
+{
+  "name": "dyno-docs",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/generate.js && astro dev",
+    "build": "node scripts/build.js",
+    "test": "node --test --test-concurrency=1 tests/*.test.js",
+    "generate": "node scripts/generate.js",
+    "archive": "node scripts/archive.js"
+  },
+  "dependencies": {
+    "@astrojs/starlight": "0.42.8",
+    "astro": "7.4.5",
+    "starlight-typedoc": "0.23.2",
+    "tar": "7.5.22",
+    "typedoc": "0.28.20",
+    "typedoc-plugin-markdown": "4.14.1",
+    "typescript": "5.9.3"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}

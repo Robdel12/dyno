@@ -1,3 +1,9 @@
+/**
+ * A stable test ID, file, suite path, name, catalog index and declared resources. Reports and fixture cleanup receive this same descriptor. Reordering definitions does not change stable IDs.
+ *
+ * @api TestDescriptor
+ */
+
 let list = (values) => Object.freeze([...values]);
 let validName = (name) => typeof name === 'string' && name.trim().length > 0;
 let modeOf = (mode) => {

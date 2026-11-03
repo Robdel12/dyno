@@ -1,0 +1,17 @@
+:root {
+  --sl-color-accent-low: #112c26;
+  --sl-color-accent: #53bd9d;
+  --sl-color-accent-high: #b1ebd8;
+  --sl-content-width: 50rem;
+  --sl-text-body: 1rem;
+  --sl-font: ui-sans-serif, system-ui, sans-serif;
+}
+:root[data-theme='light'] {
+  --sl-color-accent-low: #d8f2e8;
+  --sl-color-accent: #176d52;
+  --sl-color-accent-high: #104331;
+}
+.sl-markdown-content { line-height: 1.75; }
+.sl-markdown-content h2 { margin-top: 2.5rem; }
+.sl-markdown-content table { font-size: .875rem; }
+.sl-markdown-content table:has(a[id^="property-"]) td:nth-child(4) { min-width: 16rem; }

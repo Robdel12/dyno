@@ -23,10 +23,12 @@
     "README.md",
     "vision.md",
     "docs/guide.md",
+    "docs/api.md",
     "docs/browsers.md",
     "docs/architecture.md",
     "docs/design.md",
     "docs/ci.md",
+    "docs/documentation.md",
     "types"
   ],
   "scripts": {
