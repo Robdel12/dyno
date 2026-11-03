@@ -5,7 +5,6 @@ import { PNG } from 'pngjs';
 import { validViewport } from './browser/viewport.js';
 import { nativeCapabilities, normalizeNative } from './native.js';
 import { createObserver } from './observer.js';
-import { applyLiveChange, runView } from './browser/reporting.js';
 
 let problem = (status, message) => Object.assign(new Error(message), { status });
 let sameContext = (left, right) =>
@@ -143,17 +142,16 @@ function appImage(bytes, metrics, options) {
   return { bytes: PNG.sync.write(image), ...target, pixelRatio };
 }
 
-export function createBrowserControl({ artifactsDir, onReplaced = () => {}, getRun, onCommand = () => {}, onConnection = () => {} }) {
+export function createBrowserControl({ artifactsDir, workerId = '0', onReplaced = () => {}, getRun, getView, getAttachment, onView, onCommand, onCommandResult, onConnection = () => {} }) {
   let session, launchKey, ownedRun;
   let connections = new Map(),
     contexts = new Map(),
-    views = new Map(),
     viewSequences = new Map(),
     streams = new Map(),
     records = new Map(),
     nativeExecutions = new Map(),
     nativeRequests = new Map(),
-    requests = new Set(),
+    requests = new Map(),
     canceled = new Set();
   let pending = new Set();
   let observerBytes = 0;
@@ -163,6 +161,23 @@ export function createBrowserControl({ artifactsDir, onReplaced = () => {}, getR
     return () => { observerBytes -= bytes; };
   };
   let joins = Promise.resolve();
+  let manual = Object.freeze({ screenshot: false, fullPage: false, hostViewport: false, native: nativeCapabilities() });
+  let rememberRequest = (input, message) => {
+    if (typeof input.requestId !== 'string' || !input.requestId || input.requestId.length > 200)
+      throw problem(400, 'Browser operations need a unique request ID of at most 200 characters.');
+    let key = `${input.runId}:${input.context.executionId}`;
+    let history = requests.get(key) ?? new Set();
+    if (history.has(input.requestId)) throw problem(409, message);
+    if (history.size >= 10000) throw problem(429, 'This execution exceeded 10000 native and screenshot requests.');
+    history.add(input.requestId);
+    requests.set(key, history);
+  };
+  let releaseRequests = (runId, executionId) => {
+    let prefix = `${runId}:${executionId ? executionId + ':' : ''}`;
+    for (let key of requests.keys())
+      if (executionId ? key === `${runId}:${executionId}` : key.startsWith(prefix)) requests.delete(key);
+    for (let key of canceled) if (key.startsWith(prefix)) canceled.delete(key);
+  };
   let closed = false;
   let track = async (work) => {
     pending.add(work);
@@ -192,7 +207,7 @@ export function createBrowserControl({ artifactsDir, onReplaced = () => {}, getR
         response.writableEnded
       )
         continue;
-      if (type === 'snapshot') listener.publish(value);
+      if (type === 'snapshot') listener.publish(getView(runId, listener.workerId));
       else listener.send(type, value);
     }
   };
@@ -230,6 +245,8 @@ export function createBrowserControl({ artifactsDir, onReplaced = () => {}, getR
     !record.controller.signal.aborted &&
     sameContext(contexts.get(record.runId), record.context);
   return Object.freeze({
+    has: (runId) => connections.has(runId),
+    manages: (key) => Boolean(launchKey && key === launchKey),
     attach(browser, key) {
       session = browser;
       launchKey = key;
@@ -246,7 +263,6 @@ export function createBrowserControl({ artifactsDir, onReplaced = () => {}, getR
         if (replaced) {
           invalidate(replaced, true);
           await resetNative(replaced);
-          broadcast(replaced, 'replacement', { runId });
           await onReplaced(replaced);
         }
         if (closed) throw problem(409, 'This browser session is closed.');
@@ -254,6 +270,7 @@ export function createBrowserControl({ artifactsDir, onReplaced = () => {}, getR
           throw problem(409, 'A newer managed browser run replaced this join.');
         let connection = Object.freeze({ key: randomUUID(), owned });
         connections.set(runId, connection);
+        if (replaced) broadcast(replaced, 'replacement', { runId });
         return {
           connectionKey: connection.key,
           owned,
@@ -273,20 +290,15 @@ export function createBrowserControl({ artifactsDir, onReplaced = () => {}, getR
       return joined;
     },
     authorize,
-    view(runId) { return views.get(runId); },
-    recordEvent(event, run) {
-      let view = runView(views.get(run.runId), run);
-      let connection = connections.get(run.runId);
-      if (event.type === 'start') view = Object.freeze({ ...view, phase: 'running' });
-      view = Object.freeze({ ...view,
-        identity: connection?.owned ? session.identity : null,
-        capabilities: connection?.owned ? session.capabilities : {
-          screenshot: false, fullPage: false, hostViewport: false, native: nativeCapabilities(),
-        },
-      });
-      views.set(run.runId, view);
-      broadcast(run.runId, 'snapshot', view);
+    metadata(runId) {
+      let owned = connections.get(runId)?.owned;
+      return { identity: owned ? session.identity : null,
+        capabilities: owned ? session.capabilities : manual };
     },
+    publish(runId) { broadcast(runId, 'snapshot'); },
+    connected: runId => [...(streams.get(runId) ?? [])].some(listener =>
+      listener.role === 'host' && !listener.response.destroyed && !listener.response.writableEnded),
+    sendCommand(input) { broadcast(input.runId, 'command', input); },
     notify(runId, kind, value) {
       broadcast(runId, kind, value);
     },
@@ -302,7 +314,9 @@ export function createBrowserControl({ artifactsDir, onReplaced = () => {}, getR
     async finish(runId) {
       invalidate(runId, true);
       await resetNative(runId);
+      releaseRequests(runId);
     },
+    releaseExecution: releaseRequests,
     attachments(runId, executionId) {
       return [...records.values()]
         .filter(
@@ -326,12 +340,11 @@ export function createBrowserControl({ artifactsDir, onReplaced = () => {}, getR
     drop(runId) {
       invalidate(runId, true);
       connections.delete(runId);
-      views.delete(runId);
       viewSequences.delete(runId);
       for (let record of records.values())
         if (record.runId === runId && record.status === 'accepted') records.delete(record.id);
       for (let key of canceled) if (key.startsWith(`${runId}:`)) canceled.delete(key);
-      for (let key of requests) if (key.startsWith(`${runId}:`)) requests.delete(key);
+      releaseRequests(runId);
       for (let { response } of streams.get(runId) ?? []) response.end();
       streams.delete(runId);
     },
@@ -343,6 +356,9 @@ export function createBrowserControl({ artifactsDir, onReplaced = () => {}, getR
       if (route === 'stream' && request.method === 'GET') {
         let runId = url.searchParams.get('run');
         if (!connections.has(runId)) throw problem(404, 'Unknown browser run.');
+        let selectedWorker = url.searchParams.get('worker') ?? workerId;
+        if (!getRun(runId).workers.some(worker => worker.id === selectedWorker))
+          throw problem(400, 'Unknown reporter worker.');
         if ((streams.get(runId)?.size ?? 0) >= 8 ||
           [...streams.values()].reduce((total, entries) => total + entries.size, 0) >= 64)
           throw problem(429, 'Too many reporter connections. Close a reporter and reconnect.');
@@ -357,11 +373,11 @@ export function createBrowserControl({ artifactsDir, onReplaced = () => {}, getR
         let socket = request.socket;
         let timeout = () => { timedOut = true; };
         if (role === 'host') socket.on('timeout', timeout);
-        let listener = { response, role, ...createObserver(response, reserveObserverBytes) };
+        let listener = { response, role, workerId: selectedWorker, ...createObserver(response, reserveObserverBytes) };
         let listeners = streams.get(runId) ?? new Set();
         listeners.add(listener);
         streams.set(runId, listeners);
-        if (role === 'observer' && views.has(runId)) listener.publish(views.get(runId));
+        if (role === 'observer') listener.publish(getView(runId, selectedWorker));
         let hostConnected = () =>
           [...listeners].some(
             (item) =>
@@ -383,7 +399,9 @@ export function createBrowserControl({ artifactsDir, onReplaced = () => {}, getR
         return true;
       }
       if (route.startsWith('artifacts/') && request.method === 'GET') {
-        let record = records.get(route.slice('artifacts/'.length));
+        let id = route.slice('artifacts/'.length);
+        let attachment = getAttachment(id);
+        let record = records.get(id) ?? (attachment && { status: 'accepted', metadata: attachment, file: attachment.path });
         if (
           !record ||
           !['committed', 'accepted'].includes(record.status) ||
@@ -415,18 +433,6 @@ export function createBrowserControl({ artifactsDir, onReplaced = () => {}, getR
       if (route === 'control') {
         if (!connections.has(input.runId) || !commands.includes(input.command))
           throw problem(400, 'Unknown reporter command or run.');
-        if (
-          ![...(streams.get(input.runId) ?? [])].some(
-            (listener) =>
-              listener.role === 'host' &&
-              !listener.response.destroyed &&
-              !listener.response.writableEnded,
-          )
-        )
-          throw problem(
-            409,
-            'The test browser is disconnected. Reopen its execution URL before sending commands.',
-          );
         if (input.command === 'pause-on-failure' && typeof input.value !== 'boolean')
           throw problem(400, 'Pause on failure must be a boolean.');
         if (input.command === 'viewport' && !validViewport(input.viewport))
@@ -436,9 +442,7 @@ export function createBrowserControl({ artifactsDir, onReplaced = () => {}, getR
           (!Array.isArray(input.ids) || input.ids.some((name) => typeof name !== 'string'))
         )
           throw problem(400, 'Invalid test selection.');
-        onCommand(input);
-        broadcast(input.runId, 'command', { ...input, requestId: input.requestId ?? randomUUID() });
-        send({ accepted: true });
+        send(await onCommand(input));
         return true;
       }
       let connection = authorize(input);
@@ -450,10 +454,7 @@ export function createBrowserControl({ artifactsDir, onReplaced = () => {}, getR
         return true;
       }
       if (route === 'command-result') {
-        broadcast(input.runId, 'command-result', {
-          requestId: input.requestId,
-          error: input.error,
-        });
+        onCommandResult(input);
         send({});
         return true;
       }
@@ -468,17 +469,15 @@ export function createBrowserControl({ artifactsDir, onReplaced = () => {}, getR
           throw problem(409, 'Live progress cannot change a finished run.');
         if (!Number.isSafeInteger(input.sequence) || input.sequence !== (last?.sequence ?? 0) + 1)
           throw problem(409, 'Live reporting sequence is out of order.');
-        let view = applyLiveChange(views.get(input.runId), input.change, getRun(input.runId));
-        views.set(input.runId, view);
+        onView(input.runId, input.change);
         viewSequences.set(input.runId, Object.freeze({ sequence: input.sequence, digest }));
-        broadcast(input.runId, 'snapshot', view);
         send({ sequence: input.sequence });
         return true;
       }
       if (route === 'context') {
         let run = getRun(input.runId);
-        if (input.context && !(run.status === 'captured' && input.context.documentId === null) &&
-          !(['running', 'completed'].includes(run.status) && run.assignments.some((assignment) => assignment.workerId === '0' &&
+        if (input.context && !(run.workers.some(worker => worker.id === workerId && ['pending', 'joined'].includes(worker.status)) && input.context.documentId === null) &&
+          !(['running', 'completed'].includes(run.status) && run.assignments.some((assignment) => assignment.workerId === workerId &&
             assignment.id === input.context.executionId && assignment.status !== 'released' && !run.tests[assignment.index].skipReason)))
           throw problem(409, 'This execution does not own an active test assignment.');
         let previous = contexts.get(input.runId);
@@ -582,11 +581,10 @@ export function createBrowserControl({ artifactsDir, onReplaced = () => {}, getR
           throw problem(409, 'The native input document or viewport is stale.');
         if (typeof input.requestId !== 'string' || !input.requestId || input.requestId.length > 200)
           throw problem(400, 'Native input needs a unique request ID.');
-        let key = `${input.runId}:${input.requestId}`;
         let canceledKey = `${input.runId}:${input.context.executionId}:${input.requestId}`;
-        if (requests.has(key) || canceled.has(canceledKey))
+        if (canceled.has(canceledKey))
           throw problem(409, 'Native input was already requested or cancelled.');
-        requests.add(key);
+        rememberRequest(input, 'Native input was already requested or cancelled.');
         nativeExecutions.set(
           input.runId,
           Object.freeze({ executionId: input.context.executionId }),
@@ -637,9 +635,7 @@ export function createBrowserControl({ artifactsDir, onReplaced = () => {}, getR
         throw problem(409, 'Screenshot document or viewport is stale.');
       if (canceled.has(`${input.runId}:${input.context.executionId}:${input.requestId}`))
         throw problem(409, 'Screenshot request was cancelled.');
-      let key = `${input.runId}:${input.requestId}`;
-      if (requests.has(key)) throw problem(409, 'Duplicate screenshot request.');
-      requests.add(key);
+      rememberRequest(input, 'Duplicate screenshot request.');
       let id = randomUUID();
       let record = Object.freeze({
         id,

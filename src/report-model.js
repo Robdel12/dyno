@@ -1,4 +1,5 @@
 import { testDescriptor } from './suite.js';
+import { createSchedule } from './schedule-model.js';
 import { snapshotTimings, performanceSummary } from './browser/timings.js';
 
 let freeze = (value) => Object.freeze(value);
@@ -23,12 +24,14 @@ let errorSnapshot = (error) =>
 export function createReport(run) {
   let tests = run.tests.map((test) => {
     let outcome = run.outcomes.find((outcome) => outcome.testId === test.id);
+    let assignment = run.assignments?.find(assignment => assignment.testId === test.id);
     let output = outcome?.output ?? run.partial?.find((item) => item.id === test.id)?.output ?? [];
     return freeze({
       ...testDescriptor(test),
       suites: freeze([...test.suites]),
       status: outcome?.status ?? 'not-run',
       duration: outcome?.duration ?? 0,
+      ...(assignment ? { workerId: assignment.workerId, executionId: assignment.id } : {}),
       ...(outcome?.timings ? { timings: snapshotTimings(outcome.timings) } : {}),
       ...(outcome?.skipReason ? { skipReason: outcome.skipReason } : {}),
       ...(outcome?.error ? { error: errorSnapshot(outcome.error) } : {}),
@@ -61,15 +64,7 @@ export function createReport(run) {
     });
   });
   return freeze({
-    schedule: freeze({ version: 1, algorithm: 'sha256-id-rank-v1', seed: run.seed ?? null,
-      selected: freeze(run.tests.map(test => test.id)), priority: freeze([...(run.priority ?? [])]),
-      workers: freeze((run.workers ?? []).map(worker => worker.id)),
-      assignments: freeze((run.assignments ?? []).map(assignment => freeze({
-        executionId: assignment.id, workerId: assignment.workerId, testId: assignment.testId,
-        status: assignment.status,
-      }))),
-      completion: freeze(run.outcomes.map(outcome => outcome.testId)),
-    }),
+    schedule: createSchedule(run),
     schemaVersion: 1,
     runId: run.runId,
     status: run.status === 'completed' ? 'completed' : 'interrupted',
@@ -80,10 +75,11 @@ export function createReport(run) {
       failed: tests.filter((test) => test.status === 'failed').length,
       skipped: tests.filter((test) => test.status === 'skipped').length,
       notRun: tests.filter((test) => test.status === 'not-run').length,
-      duration: run.summary?.duration ?? tests.reduce((sum, test) => sum + test.duration, 0)
+      duration: run.summary?.duration ?? run.coordination?.wallDuration ?? tests.reduce((sum, test) => sum + test.duration, 0)
     }),
     ...(run.error ? { error: errorSnapshot(run.error) } : {}),
-    performance: performanceSummary(tests, run.summary?.duration),
+    ...(run.coordination ? { coordination: run.coordination } : {}),
+    performance: performanceSummary(tests, run.summary?.duration, { workers: run.workers?.length ?? 1 }),
     tests: freeze(tests)
   });
 }

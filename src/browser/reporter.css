@@ -213,3 +213,7 @@ kbd { color: #717c86; font-size: 12px; }
   .timings-table th, .timings-table td { padding-left:8px; font-size:11px; }
   .timing-phases { gap:16px 24px; }
 }
+
+.worker-setting { display: flex; align-items: center; gap: .75rem; margin-block: 1rem; color: var(--muted); font-size: .875rem; }
+.worker-setting[hidden] { display: none; }
+.worker-setting select { max-width: 100%; }

@@ -36,6 +36,7 @@ export function normalizeConfig(input, file, overrides = {}) {
       'reportDir',
       'seed',
       'random',
+      'workers',
     ],
     'config',
   );
@@ -149,6 +150,7 @@ export function normalizeConfig(input, file, overrides = {}) {
   let config = {
     root,
     file,
+    workers: overrides.workers ?? input.workers ?? 1,
     seed: overrides.random ? null : overrides.seed ?? input.seed ?? null,
     random: overrides.random ?? input.random ?? false,
     forbidOnly: input.forbidOnly ?? Boolean(process.env.CI),
@@ -189,6 +191,8 @@ export function normalizeConfig(input, file, overrides = {}) {
   };
   if (config.seed !== null && (typeof config.seed !== 'string' || !config.seed.trim() || config.seed.length > 256))
     throw new Error('seed must be a non-empty string of at most 256 characters.');
+  if (!Number.isSafeInteger(config.workers) || config.workers < 1 || config.workers > 32)
+    throw new Error('workers must be a whole number between 1 and 32.');
   for (let [key, value] of Object.entries({
     timeout: config.timeout,
     cleanupTimeout: config.cleanupTimeout,

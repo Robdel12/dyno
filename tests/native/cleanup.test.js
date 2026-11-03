@@ -79,7 +79,7 @@ test(
   'native cleanup failure still delivers and saves the terminal failure',
   { timeout: 90000 },
   async (suite) => {
-    for (let terminalType of ['fatal', 'complete'])
+    for (let terminalType of ['fatal', 'complete', 'restart'])
       await suite.test(terminalType, async (t) => {
         let fixture = await project(t, {
           config: { browser, timeout: 60000 },
@@ -154,7 +154,11 @@ describe('Native cleanup failure', () => {
           // Crash the real owned provider without allowing browser unload JS.
           // Cleanup still crosses IPC to a stopped worker, with no fake session.
           await crashOwnedProvider();
-          let response = await post(
+          let response = terminalType === 'restart'
+            ? await fetch(gateway.url + 'control', {
+                method: 'POST', body: JSON.stringify({ runId: credentials.runId, command: 'rerun', ids: [] }), signal: t.signal,
+              })
+            : await post(
             terminalType === 'fatal'
               ? { type: 'fatal', error: { message: 'Browser ended while native state was active.' } }
               : { type: 'complete', duration: 1 },
@@ -162,8 +166,9 @@ describe('Native cleanup failure', () => {
           assert.equal(response.status, 200, await response.text());
           let [terminal] = await observed;
           assert.equal(terminal.type, 'fatal');
-          let expected =
-            terminalType === 'fatal'
+          let expected = terminalType === 'restart'
+            ? /closed|disconnect|IPC|channel/i
+            : terminalType === 'fatal'
               ? /Browser ended while native state was active\. Native cleanup:/
               : /Native browser cleanup failed:/;
           assert.match(terminal.error.message, expected);

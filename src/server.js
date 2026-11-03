@@ -1,14 +1,11 @@
 import http from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { once } from 'node:events';
-import { randomUUID, createHash } from 'node:crypto';
 import { networkInterfaces } from 'node:os';
 import { proxyRequest, proxyUpgrade } from './proxy.js';
-import { mapStack, sourceContext } from './stack.js';
-import { createRun, acceptEvent, claimTest, releaseTest, reportedExecution, retainExecution, pauseRun } from './run.js';
+import { createCoordinator } from './coordinator.js';
 import { defaultViewport } from './browser/viewport.js';
 import { createBrowserControl } from './browser-control.js';
-import { partialOutput, validOutput } from './browser/reporting.js';
 
 let prefix = '/__dyno__/';
 let page = (title, body, script, stylesheet = 'runtime.css') =>
@@ -45,6 +42,8 @@ export async function createGateway(
     onDrain,
     rebuild,
     interactive = false,
+    coordinator,
+    workerId = '0',
   } = {},
 ) {
   let shell = page(
@@ -66,123 +65,26 @@ export async function createGateway(
     'reporter.css',
   );
   let documentPolicy = Object.freeze({});
-  let runs = new Map();
-  let eventQueues = new Map();
-  let receipts = new Map();
-  let serializeEvent = (runId, work) => {
-    let queued = (eventQueues.get(runId) ?? Promise.resolve()).catch(() => {}).then(work);
-    eventQueues.set(runId, queued);
-    let clear = () => { if (eventQueues.get(runId) === queued) eventQueues.delete(runId); };
-    queued.then(clear, clear);
-    return queued;
-  };
-  let remember = (runId, key, digest, reply) => {
-    let history = new Map(receipts.get(runId));
-    history.set(key, { digest, reply });
-    while (history.size > 64 || [...history.values()].reduce((total, item) => total + Buffer.byteLength(item.reply), 0) > 1_000_000)
-      history.delete(history.keys().next().value);
-    receipts.set(runId, history);
-  };
-  let bundles = new Map();
+  coordinator ??= createCoordinator(config, bundle, { onEvent, onRun, onError, rebuild });
   let sockets = new Set();
   let stopping = false;
   let requireOpen = () => {
+    coordinator.requireOpen();
     if (stopping) throw Object.assign(new Error('Dyno is shutting down.'), { status: 503 });
   };
-  let pendingReports = new Set();
-  let persist = (run) => {
-    let work = Promise.resolve().then(() => onRun(run));
-    pendingReports.add(work);
-    work.then(
-      () => pendingReports.delete(work),
-      () => pendingReports.delete(work),
-    );
-    return work.catch((error) => {
-      onError(error);
-      throw error;
-    });
-  };
-  let projectDrains = new Map();
-  let drainProject = (context) => {
-    if (!onDrain) return Promise.resolve();
-    let scopes = projectDrains.get(context.runId) ?? new Map();
-    if (scopes.has(context.executionId)) return scopes.get(context.executionId);
-    let work = Promise.resolve().then(async () => {
-      let signal = AbortSignal.timeout(config.cleanupTimeout);
-      let expired = Promise.withResolvers();
-      let abort = () => expired.reject(new Error(`Project execution cleanup exceeded ${config.cleanupTimeout} ms.`));
-      signal.addEventListener('abort', abort, { once: true });
-      try { await Promise.race([onDrain({ ...context, signal }), expired.promise]); }
-      finally { signal.removeEventListener('abort', abort); }
-    });
-    scopes.set(context.executionId, work);
-    projectDrains.set(context.runId, scopes);
-    return work;
-  };
   let control = createBrowserControl({
+    workerId,
     artifactsDir: config.artifactsDir,
-    onConnection: (event) => { if (!stopping) onEvent({ type: 'browser-connection', ...event }); },
-    getRun: (runId) => runs.get(runId),
-    onReplaced: (runId) => {
-      return serializeEvent(runId, async () => {
-        let previous = runs.get(runId);
-        if (previous && !['completed', 'failed'].includes(previous.status)) {
-          let { run, event } = acceptEvent(previous, {
-            runId,
-            type: 'fatal',
-            partial: partialOutput(control.view(runId), previous),
-            error: { message: 'Browser left the test run before completion.' },
-          });
-          ({ event } = await commitTerminal(previous, { run, event }));
-          onEvent(event);
-        }
-      });
-    },
-    onCommand(input) {
-      let run = runs.get(input.runId);
-      if (!run || ['completed', 'failed'].includes(run.status)) return;
-      if (['pause', 'continue', 'stop'].includes(input.command))
-        runs.set(run.runId, pauseRun(run, input.command === 'pause' ? !run.paused : input.command === 'stop'));
-    },
+    onConnection: event => { if (!stopping) coordinator.connection(workerId, event); },
+    getRun: coordinator.get,
+    getView: coordinator.view,
+    getAttachment: coordinator.attachment,
+    onView: (runId, change) => coordinator.progress(workerId, runId, change),
+    onReplaced: coordinator.replaced,
+    onCommand: input => coordinator.command(input, workerId),
+    onCommandResult: input => coordinator.commandResult(workerId, input),
   });
-  let commitTerminal = async (previous, candidate) => {
-    let { run, event } = candidate;
-    let failures = [];
-    let draining = previous.assignments.filter((assignment) => !previous.tests[assignment.index].skipReason);
-    let cleanup = await Promise.allSettled([
-      control.finish(run.runId),
-      ...draining.map((assignment) => drainProject({
-        runId: run.runId, executionId: assignment.id, workerId: assignment.workerId, test: previous.tests[assignment.index],
-      })),
-    ]);
-    for (let [index, result] of cleanup.entries()) {
-      if (result.status !== 'rejected') continue;
-      let error = result.reason;
-      stopping = true;
-      failures.push(`${index === 0 ? (event.error ? 'Native cleanup' : 'Native browser cleanup failed') : 'Project execution cleanup failed'}: ${error.message}`);
-      if (index > 0) onError(Object.assign(error, { phase: 'cleanup' }));
-    }
-    if (failures.length) {
-      let message = [event.error?.message, ...failures.filter((message) => !event.error?.message?.includes(message))].filter(Boolean).join(' ');
-      ({ run, event } = acceptEvent(previous, {
-        runId: run.runId, type: 'fatal', partial: run.partial ?? partialOutput(control.view(run.runId), previous),
-        error: { ...event.error, message, phase: 'cleanup' },
-      }));
-    }
-    try { await persist(run); }
-    catch (error) {
-      stopping = true;
-      let failed = Object.freeze({ ...previous, status: 'failed',
-        error: Object.freeze({ phase: 'runtime', message: error.message }),
-        partial: run.partial ?? partialOutput(control.view(run.runId), previous) });
-      runs.set(run.runId, failed);
-      control.recordEvent({ type: 'fatal' }, failed);
-      throw Object.assign(error, { status: 503 });
-    }
-    runs.set(run.runId, run);
-    control.recordEvent(event, run);
-    return { run, event };
-  };
+  coordinator.register(workerId, control, onDrain);
   let origin;
   let allowedHosts;
   let settings = {
@@ -257,7 +159,7 @@ export async function createGateway(
           if (!input || typeof input !== 'object' || Array.isArray(input))
             throw new Error('Browser commands must be objects.');
           if (['view', 'control'].includes(route)) {
-            await serializeEvent(input.runId, () => {
+            await coordinator.serialize(input.runId, () => {
               requireOpen();
               return control.handle(route, url, request, response, input);
             });
@@ -305,7 +207,7 @@ export async function createGateway(
           );
         if (['suite.js', 'suite.js.map'].includes(route)) {
           let run = url.searchParams.get('run');
-          let snapshot = bundles.get(run);
+          let snapshot = coordinator.bundle(run);
           if (!snapshot) throw new Error('Unknown test bundle. Reload the capture URL.');
           response.setHeader('Cache-Control', 'private, max-age=31536000, immutable');
           return route.endsWith('.map')
@@ -322,11 +224,11 @@ export async function createGateway(
             'application/json',
             JSON.stringify({
               ...settings,
-              files: bundles.get(url.searchParams.get('run'))?.files ?? bundle.files,
+              files: coordinator.bundle(url.searchParams.get('run'))?.files ?? bundle.files,
             }),
           );
         if (route === 'results' && request.method === 'GET')
-          return send('application/json', JSON.stringify([...runs.values()]));
+          return send('application/json', JSON.stringify(coordinator.values()));
         if (['assignment', 'released'].includes(route) && request.method === 'POST') {
           if (request.headers.origin && request.headers.origin !== `http://${request.headers.host}`)
             throw new Error('Assignments must be same-origin.');
@@ -334,203 +236,28 @@ export async function createGateway(
           if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('Invalid assignment request.');
           if (typeof input.requestId !== 'string' || !input.requestId || input.requestId.length > 256)
             throw new Error('Assignments require a request ID.');
-          let key = route + ':' + input.requestId;
-          let digest = createHash('sha256').update(JSON.stringify(input)).digest('hex');
-          let replay = () => {
-            let receipt = receipts.get(input.runId)?.get(key);
-            if (receipt && receipt.digest !== digest)
-              throw Object.assign(new Error('Changed assignment replay.'), { status: 409 });
-            return receipt?.reply;
-          };
-          let prepared = await serializeEvent(input.runId, () => {
-            requireOpen();
-            control.authorize(input);
-            let reply = replay();
-            if (reply) return { reply };
-            let previous = runs.get(input.runId);
-            if (route === 'released') {
-              let assignment = reportedExecution(previous, { workerId: '0', executionId: input.executionId });
-              return { assignment: { ...assignment, test: previous.tests[assignment.index] }, skipped: Boolean(previous.tests[assignment.index].skipReason) };
-            }
-            let claimed = claimTest(previous, { workerId: '0', executionId: randomUUID(), now: performance.now() });
-            runs.set(previous.runId, claimed.run);
-            control.recordEvent({ type: route }, claimed.run);
-            reply = JSON.stringify({ assignment: claimed.assignment, done: claimed.done, paused: claimed.run.paused });
-            remember(previous.runId, key, digest, reply);
-            return { reply };
-          });
-          if (prepared.reply) return send('application/json', prepared.reply);
+          let controller = new AbortController();
+          let disconnected = () => { if (!response.writableEnded) controller.abort(new Error('Assignment connection closed.')); };
+          response.once('close', disconnected);
           try {
-            if (!prepared.skipped) await drainProject({ runId: input.runId, executionId: input.executionId, workerId: prepared.assignment.workerId, test: prepared.assignment.test });
-          } catch (error) {
-            await serializeEvent(input.runId, async () => {
-              let previous = runs.get(input.runId);
-              if (['completed', 'failed'].includes(previous.status)) return;
-              let terminal = await commitTerminal(previous, acceptEvent(previous, {
-                runId: previous.runId, type: 'fatal', partial: partialOutput(control.view(previous.runId), previous),
-                error: { phase: 'cleanup', message: `Project execution cleanup failed: ${error.message}` },
-              }));
-              onEvent(terminal.event);
-            });
-            throw error;
-          }
-          await serializeEvent(input.runId, () => {
-            requireOpen();
-            control.authorize(input);
-            let reply = replay();
-            if (!reply) {
-              let run = releaseTest(runs.get(input.runId), { workerId: '0', executionId: input.executionId, now: performance.now() });
-              runs.set(run.runId, run);
-              control.recordEvent({ type: route }, run);
-              reply = '{}';
-              remember(run.runId, key, digest, reply);
-            }
+            let reply = route === 'assignment'
+              ? await coordinator.assignment(workerId, input, controller.signal)
+              : await coordinator.release(workerId, input);
             send('application/json', reply);
-          });
+          } finally { response.removeListener('close', disconnected); }
           return;
         }
         if (['capture', 'events'].includes(route) && request.method === 'POST') {
           if (request.headers.origin && request.headers.origin !== `http://${request.headers.host}`)
             throw new Error('Reporter requests must be same-origin.');
-          if (route === 'capture') {
-            let joining = await reporterInput(request);
-            if (!joining || typeof joining !== 'object' || Array.isArray(joining))
-              throw new Error('Browser join must be an object.');
-            requireOpen();
-            let snapshot = rebuild ? await rebuild() : bundle;
-            requireOpen();
-            while (runs.size >= 20) {
-              let finished = [...runs.values()].find((run) =>
-                ['completed', 'failed'].includes(run.status) && !eventQueues.has(run.runId),
-              );
-              if (!finished) {
-                send(
-                  'text/plain',
-                  'Dyno already has 20 active browser runs. Finish or close one before joining again.',
-                  429,
-                );
-                return;
-              }
-              control.drop(finished.runId);
-              runs.delete(finished.runId);
-              receipts.delete(finished.runId);
-              projectDrains.delete(finished.runId);
-              bundles.delete(finished.runId);
-            }
-            let runId = randomUUID();
-            onEvent({ type: 'joining', runId, previousRunId: typeof joining.previous?.runId === 'string' ? joining.previous.runId : null });
-            let joined = await control.join(runId, joining.launchKey, joining.previous);
-            try {
-              requireOpen();
-            } catch (error) {
-              control.drop(runId);
-              throw error;
-            }
-            runs.set(
-              runId,
-              Object.freeze({ ...createRun(runId, { seed: config.seed }), startedAt: new Date().toISOString() }),
-            );
-            bundles.set(runId, snapshot);
-            onEvent({
-              type: 'capture',
-              runId,
-              owned: joined.owned,
-              previousRunId: joined.previousRunId,
-            });
-            return send('application/json', JSON.stringify({ runId, ...joined }));
-          }
           let input = await reporterInput(request);
           if (!input || typeof input !== 'object' || Array.isArray(input))
             throw new Error('Reporter event must be an object.');
-          await serializeEvent(input.runId, async () => {
-            requireOpen();
-            control.authorize(input);
-            let receiptKey = input.type === 'test' ? 'test:' + input.testId : input.type;
-            let digest = createHash('sha256').update(JSON.stringify(input)).digest('hex');
-            let receipt = receipts.get(input.runId)?.get(receiptKey);
-            if (receipt) {
-              if (receipt.digest !== digest) throw Object.assign(new Error('Changed replay of an accepted event.'), { status: 409 });
-              send('application/json', receipt.reply);
-              return;
-            }
-            let { connectionKey, ...eventInput } = input;
-            if (input.type === 'start') eventInput = { ...eventInput, seed: runs.get(input.runId).seed };
-            if (input.type === 'test')
-              eventInput = {
-                ...eventInput,
-                attachments: control.attachments(input.runId, input.executionId),
-              };
-            let mapFailure = (error) => {
-              let stack =
-                typeof error?.stack === 'string'
-                  ? mapStack(error.stack, bundles.get(input.runId)?.map, config.root)
-                  : undefined;
-              let declaration =
-                typeof error?.declaration === 'string'
-                  ? mapStack(error.declaration, bundles.get(input.runId)?.map, config.root)
-                  : undefined;
-              if (declaration && !stack?.includes(config.testDir))
-                stack = `${stack ?? error.message}\nDeclared at:\n${declaration}`;
-              let mapped = {
-                ...error,
-                ...(stack ? { stack } : {}),
-                ...(declaration ? { declaration } : {}),
-              };
-              return {
-                ...mapped,
-                source: sourceContext(mapped, bundles.get(input.runId), config.root),
-              };
-            };
-            if (input.error) eventInput = { ...eventInput, error: mapFailure(input.error) };
-            if (Array.isArray(input.additionalErrors))
-              eventInput = {
-                ...eventInput,
-                additionalErrors: input.additionalErrors.map(mapFailure),
-              };
-            let previous = runs.get(input.runId);
-            if (input.type === 'fatal') {
-              let partial = new Map(partialOutput(control.view(input.runId), previous).map((test) => [test.id, test]));
-              if (input.partial !== undefined) {
-                if (!Array.isArray(input.partial) || input.partial.length > previous.tests.length ||
-                  new Set(input.partial.map((test) => test?.id)).size !== input.partial.length ||
-                  input.partial.some((test) => !test || !previous.tests.some((item) => item.id === test.id) || !validOutput(test.output)))
-                  throw new Error('Invalid interrupted test output.');
-                for (let test of input.partial) {
-                  if (previous.outcomes.some((outcome) => outcome.testId === test.id)) continue;
-                  partial.set(test.id, test);
-                }
-              }
-              eventInput = { ...eventInput, partial: [...partial.values()] };
-            }
-            // Terminal reports can retain the final app for inspection. This
-            // candidate is published only after native/project draining and save.
-            let proposed = previous;
-            if (input.type === 'complete')
-              for (let assignment of previous.assignments.filter(assignment => assignment.status === 'reported'))
-                proposed = retainExecution(proposed, { workerId: assignment.workerId, executionId: assignment.id });
-            let { run, event } = acceptEvent(proposed, eventInput);
-            if (!['complete', 'fatal'].includes(event.type)) {
-              runs.set(run.runId, run);
-              control.recordEvent(event, run);
-            }
-            if (event.type === 'test') control.acceptAttachments(event.runId, event.executionId);
-            // Browser-side post-capture checks have finished before a test reports.
-            // Publish only attachments that survived those checks and persistence.
-            for (let attachment of event.attachments ?? [])
-              onEvent({
-                type: 'attachment',
-                runId: run.runId,
-                executionId: event.executionId,
-                attachment,
-              });
-            if (['complete', 'fatal'].includes(event.type))
-              ({ run, event } = await commitTerminal(previous, { run, event }));
-            let reply = JSON.stringify({ error: event.error, additionalErrors: event.additionalErrors, attachments: event.attachments, remaining: run.tests.length - run.outcomes.length,
-              workRemaining: run.tests.filter(test => !test.skipReason && !run.outcomes.some(outcome => outcome.testId === test.id)).length });
-            remember(run.runId, receiptKey, digest, reply);
-            send('application/json', reply);
-            onEvent(event);
-          });
+          if (route === 'capture') {
+            let joined = await coordinator.capture(workerId, input);
+            return send('application/json', JSON.stringify(joined));
+          }
+          send('application/json', await coordinator.event(workerId, input));
           return;
         }
         send('text/plain', 'Unknown browser test route', 404);
@@ -596,7 +323,7 @@ export async function createGateway(
     url: origin + prefix,
     setDocumentPolicy(headers) {
       requireOpen();
-      if (runs.size) throw new Error('App document policy must be known before a browser joins.');
+      if (coordinator.values().length) throw new Error('App document policy must be known before a browser joins.');
       let names = [
         'cross-origin-opener-policy',
         'cross-origin-embedder-policy',
@@ -608,38 +335,28 @@ export async function createGateway(
         ),
       );
     },
-    attachSession: control.attach,
+    attachSession(browser, key) {
+      control.attach(browser, key);
+      coordinator.lifecycle(workerId, {
+        async retire() {
+          try { await browser.retire(origin + prefix + 'blank'); }
+          catch (error) { await browser.stop(); throw error; }
+        },
+        open() {
+          let url = new URL(origin + prefix);
+          url.hash = new URLSearchParams({ launch: key }).toString();
+          return browser.open(url.href);
+        },
+      });
+    },
     reload: control.reload,
     notify: control.notify,
     close({ error } = {}) {
       stopping = true;
       closing ??= (async () => {
         let failures = [];
-        await Promise.allSettled([...eventQueues.values()]);
-        for (let previous of runs.values()) {
-          if (['completed', 'failed'].includes(previous.status)) continue;
-          let candidate = acceptEvent(previous, {
-            runId: previous.runId,
-            type: 'fatal',
-            partial: partialOutput(control.view(previous.runId), previous),
-            error: {
-              phase: 'runtime',
-              message: `Dyno stopped before the browser run completed.${error ? ' ' + error.message : ''}`,
-              ...(error?.stack ? { stack: error.stack } : {}),
-            },
-          });
-          try {
-            await commitTerminal(previous, candidate);
-          } catch (error) {
-            failures.push(error);
-          }
-        }
-        let pending = await Promise.allSettled([...pendingReports]);
-        failures.push(
-          ...pending
-            .filter((result) => result.status === 'rejected')
-            .map((result) => result.reason),
-        );
+        try { await coordinator.close({ error }); }
+        catch (error) { failures.push(error); }
         try {
           await control.close();
         } catch (error) {

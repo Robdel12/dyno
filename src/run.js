@@ -39,17 +39,43 @@ let worker = (run, id) => {
 };
 let text = (value) => typeof value === 'string' && value.trim() && value.length <= 256;
 
-export function createRun(runId, { workers = ['0'], seed = null } = {}) {
+export function createRun(runId, { workers = ['0'], seed = null, replay = null } = {}) {
   if (!Array.isArray(workers) || !workers.length || workers.length > 32 ||
     workers.some((id) => !text(id)) || new Set(workers).size !== workers.length)
     throw new Error('A run needs between 1 and 32 unique worker IDs.');
   if (seed !== null && !text(seed)) throw new Error('Seed must be a non-empty string of at most 256 characters.');
+  if (replay) {
+    if (JSON.stringify(workers) !== JSON.stringify(replay.workers)) throw new Error('Replay worker slots do not match this run.');
+    replay = freeze({ ...replay, source: freeze({ ...replay.source }), workers: list(replay.workers), selected: list(replay.selected),
+      priority: list(replay.priority), catalog: list(replay.catalog.map(test => freeze({ ...testDescriptor(test), suites: list(test.suites) }))),
+      queues: freeze(Object.fromEntries(workers.map(id => [id, list(replay.queues[id])]))),
+    });
+  }
   return freeze({ runId, status: 'captured', tests: list([]), outcomes: list([]),
-    workers: list(workers.map((id) => freeze({ id, ready: false }))),
-    seed, priority: list([]), assignments: list([]), paused: false });
+    workers: list(workers.map((id) => freeze({ id, status: 'pending' }))),
+    seed, replay, priority: list([]), assignments: list([]), paused: false });
 }
 
-export function claimTest(run, { workerId = '0', executionId, now = 0 }) {
+export function joinWorker(run, workerId) {
+  let owner = worker(run, workerId);
+  if (finished(run) || owner.status !== 'pending') throw new Error('Worker already joined this run.');
+  return freeze({ ...run, workers: list(run.workers.map(item => item === owner ? freeze({ ...item, status: 'joined' }) : item)) });
+}
+
+export function finishWorker(run, workerId) {
+  let owner = worker(run, workerId);
+  if (finished(run) || owner.status !== 'ready') throw new Error('Unknown or finished worker.');
+  if (run.outcomes.length !== run.tests.length) throw new Error('Run completed before all tests reported.');
+  for (let assignment of run.assignments.filter(item => item.workerId === workerId && item.status === 'reported'))
+    run = retainExecution(run, { workerId, executionId: assignment.id });
+  return freeze({ ...run, workers: list(run.workers.map(item => item.id === workerId ? freeze({ ...item, status: 'finished' }) : item)) });
+}
+
+export function retireWorkers(run) {
+  return freeze({ ...run, workers: list(run.workers.map(worker => freeze({ ...worker, status: 'retired' }))) });
+}
+
+export function claimTest(run, { workerId = '0', executionId, now = 0, requestedAt = now }) {
   let owner = worker(run, workerId);
   if (finished(run) || (run.tests.length && run.outcomes.length === run.tests.length))
     return freeze({ run, assignment: null, done: true });
@@ -57,19 +83,22 @@ export function claimTest(run, { workerId = '0', executionId, now = 0 }) {
   if (!text(executionId) || run.assignments.some((assignment) => assignment.id === executionId))
     throw new Error('Executions need unique IDs.');
   if (!Number.isFinite(now) || now < 0) throw new Error('Invalid assignment time.');
+  if (!Number.isFinite(requestedAt) || requestedAt < 0 || requestedAt > now) throw new Error('Invalid assignment request time.');
   let attempted = new Set(run.assignments.map((assignment) => assignment.testId));
   let reserved = new Set(run.assignments.filter(active).flatMap((assignment) => assignment.resources));
-  let next = run.priority.map((id) => run.tests.find((test) => test.id === id))
+  let queued = run.replay?.queues[workerId].find(id => !attempted.has(id));
+  let priority = run.replay ? (queued ? [queued] : []) : run.priority;
+  let next = priority.map((id) => run.tests.find((test) => test.id === id))
     .find((test) => !attempted.has(test.id) && (test.skipReason || test.resources.every((name) => !reserved.has(name))));
   let owned = run.assignments.filter(assignment => assignment.workerId === owner.id && active(assignment));
   // Skips enter no browser document. Record trailing skips while the reported
   // real app stays reserved for inspection, but never overlap running work.
   if (!run.paused && (owned.some(assignment => assignment.status === 'running') || (!next?.skipReason && owned.length)))
     throw new Error('Release the previous execution before requesting another test.');
-  if (!next || run.paused || run.workers.some((worker) => !worker.ready))
+  if (!next || run.paused || run.workers.some((worker) => worker.status !== 'ready'))
     return freeze({ run, assignment: null, done: run.outcomes.length === run.tests.length });
   let assignment = freeze({ id: executionId, workerId, testId: next.id,
-    index: run.tests.indexOf(next), status: 'running', assignedAt: now,
+    index: run.tests.indexOf(next), status: 'running', requestedAt, assignedAt: now,
     resources: next.skipReason ? list([]) : next.resources });
   return freeze({ run: freeze({ ...run, assignments: list([...run.assignments, assignment]) }), assignment: freeze({ ...assignment, test: next }), done: false });
 }
@@ -101,7 +130,7 @@ export function pauseRun(run, paused) {
   return freeze({ ...run, paused });
 }
 
-export function acceptEvent(run, input) {
+export function acceptEvent(run, input, { receivedAt } = {}) {
   if (!run || input.runId !== run.runId || ['completed', 'failed'].includes(run.status))
     throw new Error('Unknown or finished run.');
   if (
@@ -127,7 +156,7 @@ export function acceptEvent(run, input) {
     let workerId = input.workerId ?? '0';
     let owner = worker(run, workerId);
     if (
-      owner.ready ||
+      !['pending', 'joined'].includes(owner.status) ||
       !Array.isArray(input.tests) ||
       !input.tests.length ||
       input.tests.some(
@@ -150,6 +179,8 @@ export function acceptEvent(run, input) {
     )
       throw new Error('Invalid run start.');
     let event = snapshotEvent(input);
+    if (run.replay && JSON.stringify(run.replay.catalog) !== JSON.stringify(event.tests))
+      throw new Error('The replay catalog changed. Record a new schedule for these tests.');
     if (run.tests.length && JSON.stringify(run.tests) !== JSON.stringify(event.tests))
       throw new Error('Workers registered different test catalogs.');
     let priority = run.priority;
@@ -161,6 +192,7 @@ export function acceptEvent(run, input) {
         let a = ranks.get(left), b = ranks.get(right);
         return a < b ? -1 : a > b ? 1 : left < right ? -1 : left > right ? 1 : 0;
       });
+      if (run.replay) priority = run.replay.priority;
     }
     return {
       run: Object.freeze({
@@ -168,7 +200,7 @@ export function acceptEvent(run, input) {
         status: 'running',
         tests: run.tests.length ? run.tests : event.tests,
         priority: list(priority),
-        workers: list(run.workers.map((item) => item === owner ? freeze({ ...item, ready: true }) : item)),
+        workers: list(run.workers.map((item) => item === owner ? freeze({ ...item, status: 'ready' }) : item)),
         ...(typeof input.userAgent === 'string' ? { userAgent: input.userAgent } : {})
       }),
       event: run.tests.length ? null : event
@@ -195,9 +227,12 @@ export function acceptEvent(run, input) {
     if (input.status === 'failed' && !input.error) throw new Error('A failed test requires an error.');
     if (input.status === 'skipped' && (typeof input.skipReason !== 'string' || !input.skipReason.trim()))
       throw new Error('A skipped test requires a reason.');
+    if (receivedAt !== undefined && (!Number.isFinite(receivedAt) || receivedAt < assignment.assignedAt))
+      throw new Error('Invalid result receipt time.');
     let event = snapshotEvent({ ...input, workerId: assignment.workerId, executionId: assignment.id, output: input.output ?? [], file: run.tests[input.index].file, suites: run.tests[input.index].suites });
     return { run: Object.freeze({ ...run, outcomes: Object.freeze([...run.outcomes, event]),
-      assignments: list(run.assignments.map((item) => item === assignment ? freeze({ ...item, status: 'reported' }) : item)) }), event };
+      assignments: list(run.assignments.map((item) => item === assignment ? freeze({ ...item, status: 'reported',
+        ...(receivedAt === undefined ? {} : { reportedAt: receivedAt }) }) : item)) }), event };
   }
   if (input.type === 'complete') {
     if (run.status !== 'running' || run.outcomes.length !== run.tests.length ||
@@ -205,7 +240,7 @@ export function acceptEvent(run, input) {
       throw new Error('Run completed before all tests reported.');
     let failed = run.outcomes.filter((outcome) => outcome.status === 'failed').length;
     let skipped = run.outcomes.filter((outcome) => outcome.status === 'skipped').length;
-    let event = snapshotEvent({ ...input, failed, skipped, passed: run.outcomes.length - failed - skipped, performance: performanceSummary(run.outcomes, input.duration) });
+    let event = snapshotEvent({ ...input, failed, skipped, passed: run.outcomes.length - failed - skipped, performance: performanceSummary(run.outcomes, input.duration, { workers: run.workers.length }) });
     return { run: Object.freeze({ ...run, status: 'completed', summary: event }), event };
   }
   if (input.type === 'fatal') {

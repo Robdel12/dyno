@@ -9,7 +9,7 @@
 | Core | `npm run test:core` | CLI errors, immutable state, cleanup, and proxy transforms on Linux Node 24/26 and macOS Node 24; no browser needed |
 | Package | `npm run test:package` | Fresh tarball and checkout installs, init, and a real Chromium test on Node 26 |
 | Browser | `npm run test:browser -- firefox` | Real app, gateway, viewport, and process workflows in Chromium, Firefox, and WebKit on Linux and macOS, using Node 24 |
-| Execution | `npm run test:execution -- firefox` | Assignment, seeded order, suite hooks, cleanup, pause, watch and replacement workflows in all three engines on Linux and macOS |
+| Execution | `npm run test:execution -- firefox` | Native concurrency, ownership, queue replay, seeded order, suite hooks, cleanup, pause, watch and replacement workflows in all three engines on Linux and macOS |
 | Reporter | `npm run test:reporter -- firefox` | Inspection, output, timings, reruns, and portable saved reports in all three engines on Linux and macOS |
 | Native | `npm run test:native -- firefox` | Native defaults, capabilities, state restoration, dialogs, diagnostics, and cancellation in all three engines on Linux and macOS |
 | Capture | `npm run test:capture` | Actual pixels and capture lifecycle in Chromium, Firefox, and WebKit on Linux and macOS, using Node 24 |

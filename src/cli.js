@@ -13,6 +13,11 @@ function port(value) {
     throw new InvalidArgumentError('must be a whole number between 0 and 65535; use 0 to choose an available port');
   return Number(value);
 }
+function workers(value) {
+  if (!/^\d+$/.test(value) || Number(value) < 1 || Number(value) > 32)
+    throw new InvalidArgumentError('must be a whole number between 1 and 32');
+  return Number(value);
+}
 function appOptions(command) {
   return command
     .addOption(valueOption('-c, --config <path>', 'Configuration file (dyno.config.js)'))
@@ -51,6 +56,8 @@ Tests, actions, and assertions execute in the browser. Use --manual for Safari a
         .map(([key, value]) => [key, Array.isArray(value) ? Object.freeze([...value]) : value])));
     });
   appOptions(command('run', 'Run tests (the default command)', { isDefault: true }))
+    .addOption(new Option('--workers <number>', 'Isolated browser workers (1); concurrent runs require project worker setup').argParser(workers))
+    .addOption(valueOption('--replay <path>', 'Replay recorded worker queues from schedule.json').conflicts(['seed', 'random', 'test', 'id', 'file', 'suite', 'watch']))
     .addOption(valueOption('--seed <value>', 'Run in a repeatable randomized order'))
     .addOption(new Option('--random', 'Generate and print a seed for this run').conflicts('seed'))
     .option('--watch', 'Rerun when tests or imported helpers change')
@@ -90,7 +97,7 @@ Examples:
 
 export function configOverrides(options) {
   return {
-    port: options.port, host: options.host, browser: options.browser,
+    workers: options.workers, port: options.port, host: options.host, browser: options.browser,
     browserPath: options.browserPath, reportDir: options.reportDir, seed: options.seed, random: options.random
   };
 }

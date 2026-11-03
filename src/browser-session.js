@@ -114,7 +114,7 @@ export async function createBrowserPool(plan, { size = 1, signal, onExit = () =>
     requests.set(id, request);
     let deadline = AbortSignal.any([
       AbortSignal.timeout(['initialize', 'create', 'open'].includes(method) ? 35000 : method === 'stop' ? 3000 : method === 'retire' ? 20000 : 15000),
-      ...(signal && !['stop', 'resetNative', 'dispose'].includes(method) ? [signal] : []),
+      ...(signal && !['stop', 'resetNative', 'dispose', 'retire'].includes(method) ? [signal] : []),
       ...(operationSignal ? [operationSignal] : []),
     ]);
     let sendFailed = (error) => request.reject(new Error(`Browser IPC ${method} failed: ${error.message}`, { cause: error }));

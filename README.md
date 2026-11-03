@@ -44,6 +44,8 @@ describe('Contacts', () => {
 
 Run `npx dyno` for a headless run, `npx dyno --ui` to inspect the app, or `npx dyno --manual` to open the URL yourself. Each test gets a fresh runtime and app document. Storage and database cleanup stay explicit. Use `--watch` to rerun test and helper edits. Each run also saves an HTML report you can open after Dyno stops.
 
+Use `--workers 4` with [project worker setup](docs/guide.md#concurrent-runs) for isolated concurrent execution. `--random` prints a seed; `--replay path/to/schedule.json` restores recorded worker queues.
+
 ## Screenshots
 
 `await app.screenshot('dashboard', { fullPage: true })` saves the full app page. Managed runs also support `await app.setViewport({ width: 390, height: 844 })`. Manual runs use the actual window size and cannot capture screenshots. [Browser setup](docs/browsers.md) covers the available targets.

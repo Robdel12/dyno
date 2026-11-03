@@ -44,7 +44,8 @@ let post = async (route, input = {}, signal) => {
     } else await flushViews();
   }
   let body = JSON.stringify({ runId, connectionKey, ...input });
-  let requestSignal = AbortSignal.any([AbortSignal.timeout(20000), ...(signal ? [signal] : [])]);
+  let requestSignal = route === 'assignment' ? signal ?? controller.signal
+    : AbortSignal.any([AbortSignal.timeout(Math.max(20000, settings?.cleanupTimeout ?? 0)), ...(signal ? [signal] : [])]);
   for (let attempt = 0; ; attempt++) {
     try {
       let response = await fetch(root + route, {
@@ -97,7 +98,6 @@ let publish = () => {
     identity: settings?.identity,
     capabilities: settings?.capabilities,
   };
-  if (reporterVisible) overlay('snapshot', { view });
   latestView = view;
   if (!publishScheduled) {
     publishScheduled = true;
@@ -378,6 +378,12 @@ function command(input) {
   }
 }
 let dispatchCommand = async (input) => {
+  if (['rerun', 'reload'].includes(input.command)) {
+    try {
+      if (input.requestId) await post('command-result', { requestId: input.requestId }, AbortSignal.timeout(8000));
+    } catch (error) { console.error(error); return; }
+    return command(input);
+  }
   let error;
   try {
     await command(input);
@@ -385,7 +391,6 @@ let dispatchCommand = async (input) => {
     error = serialized(failure);
   }
   let result = { requestId: input.requestId, error };
-  overlay('command-result', result);
   if (input.requestId) await post('command-result', result).catch(() => {});
 };
 window.addEventListener('message', (event) => {
@@ -429,7 +434,9 @@ window.addEventListener('pagehide', () => {
       JSON.stringify({
         runId,
         connectionKey,
-        type: 'fatal',
+        type: 'departed',
+        partial: state.tests.filter(test => !['passed', 'failed', 'skipped'].includes(test.status) && test.output.length)
+          .map(({ id, output }) => ({ id, output })),
         error: { message: 'Browser left the test run before completion.' },
       }),
     );
@@ -579,13 +586,10 @@ async function runtime(mode, timeout, index, testId, executionId = id()) {
   execution.append(frame);
   return current;
 }
-async function parkApp(executionId) {
-  resource?.remove();
-  resource = undefined;
-  window.__dynoAppRuntime = null;
+async function parkDocument(executionId, timeout) {
   let requestId = id();
   let pending = Promise.withResolvers();
-  let deadline = AbortSignal.any([controller.signal, AbortSignal.timeout(settings.cleanupTimeout)]);
+  let deadline = AbortSignal.any([controller.signal, AbortSignal.timeout(timeout)]);
   let receive = (event) => {
     let message = event.data;
     if (event.origin === location.origin && event.source === appWindow && message?.channel === 'dyno-park' &&
@@ -602,11 +606,18 @@ async function parkApp(executionId) {
       runId, executionId, appName: 'park-' + requestId });
     appWindow.location.replace(root + 'park?request=' + encodeURIComponent(requestId));
     await pending.promise;
-    await post('released', { requestId, executionId }, controller.signal);
   } finally {
     window.removeEventListener('message', receive);
     deadline.removeEventListener('abort', abort);
   }
+}
+
+async function parkApp(executionId) {
+  resource?.remove();
+  resource = undefined;
+  window.__dynoAppRuntime = null;
+  await parkDocument(executionId, settings.cleanupTimeout);
+  await post('released', { requestId: id(), executionId }, controller.signal);
 }
 
 async function paused() {
@@ -642,7 +653,17 @@ try {
     launchKey = sessionStorage.getItem('dyno:launch');
     previous = JSON.parse(sessionStorage.getItem('dyno:previous') ?? 'null');
   } catch {}
-  let joined = await post('capture', { launchKey, previous }, controller.signal);
+  if (previous?.runId && previous?.connectionKey) {
+    runId = previous.runId;
+    window.__dynoController = Object.freeze({ runId });
+    try {
+      let initial = await fetch(root + 'settings', { signal: controller.signal }).then(response => response.json());
+      await parkDocument('restart-' + id(), initial.cleanupTimeout);
+    } finally { runId = undefined; }
+  }
+  let parameters = new URLSearchParams(location.search);
+  let selected = { ids: parameters.getAll('id'), names: parameters.getAll('test'), files: parameters.getAll('file'), suites: parameters.getAll('suite') };
+  let joined = await post('capture', { launchKey, previous, selection: selected }, controller.signal);
   ({ runId, connectionKey } = joined);
   window.__dynoController = Object.freeze({ runId });
   try {
@@ -703,14 +724,8 @@ try {
     discovery.remove();
     resource = undefined;
   }
-  let selection = new URLSearchParams(location.search);
   if (!tests.length) throw new Error('No tests registered. Use test(name, async ({ app }) => …).');
-  tests = selectTests(tests, {
-    ids: selection.getAll('id'),
-    names: selection.getAll('test'),
-    files: selection.getAll('file'),
-    suites: selection.getAll('suite'),
-  });
+  tests = selectTests(tests, settings.selection);
   await post('events', { type: 'start', tests, userAgent: navigator.userAgent });
   update({ type: 'started', tests });
   let started = performance.now();

@@ -145,11 +145,11 @@ export function slowestWork(timings, limit = 5) {
     .slice(0, limit);
 }
 
-export function performanceSummary(tests, duration) {
-  let testDuration = tests.reduce((sum, test) => sum + (test.duration ?? 0), 0);
+export function performanceSummary(tests, duration, { workers = 1 } = {}) {
+  let testDuration = tests.reduce((sum, test) => sum + (test.status === 'skipped' ? 0 : test.duration ?? 0), 0);
   return freeze({
     testDuration,
-    ...(finite(duration) ? { outsideTestsDuration: Math.max(0, duration - testDuration) } : {}),
+    ...(finite(duration) && workers === 1 ? { outsideTestsDuration: Math.max(0, duration - testDuration) } : {}),
     slowestTests: freeze(
       slowestTests(tests).map((test) =>
         freeze({
