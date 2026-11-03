@@ -32,7 +32,7 @@ A URL-only browser can't capture screenshots or resize its own tab. Required scr
 
 ## Managed runs
 
-Dyno owns a fresh browser server and an isolated context for the run. Playwright keeps the original app page for capture and sizing, even when the companion is active. Closing the app interrupts its run. Shutdown closes contexts, then the browser server. The parent retains the SDK shutdown handle even if the IPC worker crashes.
+Dyno owns one browser server per run, with a private context for each managed worker. Workers share the run and reporter, with separate app windows and project resources. Playwright keeps the original app page for capture and sizing, even when the companion is active. Closing the app interrupts its run. Shutdown closes contexts, then the browser server. The parent retains the SDK shutdown handle even if the IPC worker crashes.
 
 Screenshots are PNGs of the original app page with the reporter hidden. `fullPage: true` preserves the app viewport and captures the whole page. Masks change only the PNG. Animation suppression and caret hiding are prepared in the browser and restored afterward. See the [screenshot API](guide.md#screenshots).
 
@@ -73,6 +73,6 @@ Custom builds may be incompatible with Playwright. Extra arguments go directly t
 
 CI exercises Chromium, Firefox, and WebKit on Linux and macOS. Windows and companion behavior on phones, iOS, and TVs still need verification. Manual execution is available there, but popup and background-tab policies can affect it. Dyno doesn't ship extensions or a separate native or WebDriver launcher.
 
-On this macOS 27 machine, the downloaded Firefox build exits with `Could not find profile folder` before tests start. [Mozilla tracks this command-line startup problem](https://bugzilla.mozilla.org/show_bug.cgi?id=2060476). Use a working environment or open the URL manually; Dyno does not change OS privacy settings.
+If a browser fails before the app loads, check `dyno browsers`, run `dyno doctor` with that browser, and include the launch diagnostic when reporting the issue. A launch failure is an error, never a passing test or an automatic fallback to a different browser. Manual mode can run the URL in an installed browser without managed capabilities.
 
 See [CI setup](ci.md) for the suites and saved results.

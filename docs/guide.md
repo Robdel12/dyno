@@ -63,13 +63,13 @@ With `--json`, stdout contains one JSON event per line. Project `console` messag
 
 Idle event streams send small keepalive comments through the same bounded writer as results. They keep the browser connection active during inspection; they do not create progress snapshots or change test state.
 
-Open the start URL at `/__dyno__/`. Dyno opens a companion window for test execution, then loads the app in the original window. If the popup is blocked, click **Start**. Keep both windows open: tests stay in the companion while the app navigates normally.
+Open the start URL at `/__dyno__/`. Dyno opens a companion window for test execution, then loads the app in the original window. If the popup is blocked, click **Start tests**. Keep both windows open: tests stay in the companion while the app navigates normally.
 
 Press **Ctrl+Shift+D** in the app to request inspection. Dyno finishes the current test before opening the reporter iframe over the app. The app keeps its full viewport underneath.
 
 The overview groups files and suites, with search and status filters saved in its URL. Run one test, a suite, a file, or failed tests. Stable test links still point to the same test after definitions are reordered. Connection and command states stay visible; failed commands offer Try again. Open a test's Output route for failures, source excerpts, console messages, and screenshots. Its Application route lets you return to the actual app and choose a viewport. Reporter navigation never moves or scales the app.
 
-**Run options** includes Pause on failure. Continue closes the overlay before starting the next test. Stop ends execution and leaves the last app inspectable. Only that last app is retained; rerun an earlier test to inspect it again. Pausing doesn't freeze the app's timers or requests. Closing or reloading the companion interrupts execution; start a fresh run rather than trying to resume it.
+**Run options** includes Pause on failure. Continue closes the overlay before starting the next test. A completed interactive run keeps each worker's last app available; rerun an earlier test to inspect it again. Stop cancels execution and begins cleanup. Managed runs retire their documents before draining project work, so use Pause when you want to inspect the current app. Pausing doesn't freeze the app's timers or requests. Closing or reloading the companion interrupts execution; start a fresh run rather than trying to resume it.
 
 The CLI also prints a separate reporter URL. Open it in another tab to observe and control the run without covering the app. Reruns rebuild tests; separate reporters follow the new run. Back/forward navigation only changes reporter routes.
 
@@ -229,7 +229,7 @@ describe('Authentication', () => {
 });
 ```
 
-Runs are sequential. Named suites make ownership explicit for future scheduling; they don't isolate storage or backend data. Keep that cleanup in your project.
+One worker runs tests sequentially. [Concurrent runs](#concurrent-runs) assign tests across private workers; suite names organize hooks and reports without creating shared storage or backend isolation. Keep that cleanup in your project.
 
 Names must be unique within a suite; different files and suites can reuse a short name. Each test has a stable ID based on its file, suite path, and name. Adding another test doesn't change that ID.
 
@@ -326,12 +326,6 @@ Worker values override setup defaults for the server, environment and fixtures. 
 
 Declare resources such as `{ resources: ['clipboard'] }` when tests share a browser or external capability. Dyno reserves the whole set before dispatch and holds it through document retirement and project draining. Other eligible tests can continue. Global Pause stops admission and waits at test boundaries; `app.pause()` holds only its worker. The reporter shows one combined run and lets you choose a worker to inspect. Stop or worker loss preserves accepted outcomes and images, then drains and closes the run. There are no automatic worker restarts or test retries.
 
-### Queue replay
-
-`dyno --replay .dyno/reports/<run>/schedule.json` restores each worker's recorded queue and count. An explicit `--workers` must match. The test bundle fingerprint and catalog must match too; changed sources or malformed schedules fail plainly. Replay cannot combine with selection flags, seeds or `--watch`.
-
-A completed schedule replays the full recorded selection. An interrupted schedule replays attempted tests, including the unfinished assignment, and reports how many unassigned tests it omitted. It does not claim those omitted tests passed. Queue replay preserves worker order, not network or timer interleaving. App code outside the test bundle, backend data and application randomness remain your project's responsibility.
-
 Declare shared resources before execution when a test uses something such as the OS clipboard:
 
 ```js
@@ -341,6 +335,12 @@ test('copies a token', async ({ I }) => {
 ```
 
 Dyno reserves all named resources together. They stay held until the execution's documents and project work are finished. More browser tabs alone do not isolate your app's database or storage.
+
+### Queue replay
+
+`dyno --replay .dyno/reports/<run>/schedule.json` restores each worker's recorded queue and count. An explicit `--workers` must match. The test bundle fingerprint and catalog must match too; changed sources or malformed schedules fail plainly. Replay cannot combine with selection flags, seeds or `--watch`.
+
+A completed schedule replays the full recorded selection. An interrupted schedule replays attempted tests, including the unfinished assignment, and reports how many unassigned tests it omitted. It does not claim those omitted tests passed. Queue replay preserves worker order, not network or timer interleaving. App code outside the test bundle, backend data and application randomness remain your project's responsibility.
 
 ## Find slow work
 
@@ -364,7 +364,7 @@ describe('Contacts', () => {
 
 `step(name, callback)` returns the callback’s value and preserves its error. Use it in hooks too. Await it before finishing a test or hook. Interactor still owns interaction and convergence; timings do not wrap its polling loop or change assertion behavior.
 
-For agents, `--json` test events and saved `run.json` tests include `timings: { duration, entries, truncated }`. Each entry has `id`, `kind`, `name`, `start`, `duration`, and `status` (`passed`, `failed`, or `cancelled`), with `phase` on operations and steps. All numbers are milliseconds from that test runtime’s monotonic clock. `performance.slowestTests` ranks up to five tests and their slowest work. `outsideTestsDuration` measures browser-run time outside accepted test runtimes, including frame startup, reporting, and any between-test inspection.
+For agents, `--json` test events and saved `run.json` tests include `timings: { duration, entries, truncated }`. Each entry has `id`, `kind`, `name`, `start`, `duration`, and `status` (`passed`, `failed`, or `cancelled`), with `phase` on operations and steps. All numbers are milliseconds from that test runtime’s monotonic clock. `performance.slowestTests` ranks up to five tests and their slowest work. Single-worker summaries include `outsideTestsDuration` when a run duration is available. It measures time outside accepted test runtimes, including frame startup, reporting, and between-test inspection. Concurrent summaries use `coordination` instead.
 
 Each saved run also has `session.json`. It measures CLI config, bundling, project setup, app-server readiness, browser startup/results, and cleanup on a separate clock. Cleanup includes separate intervals for stopping the app, saving reports, project teardown, and stopping the browser. Its status is `running` until the CLI closes its resources; shutdown atomically finalizes it and emits a `session-timing` JSON event. Watch and manual runs share one session across their browser runs. The final report write itself is outside the measured wall time. These fields are separate from the browser-run duration. Managed runs also record `browserCleanup.graceful` and emit a `browser-stopped` event, so forced process cleanup is visible.
 
@@ -448,6 +448,8 @@ The setup module exports an async function receiving `{ config, signal }`. Retur
 
 Optional `drain({ runId, executionId, workerId, test, signal })` joins the project work an execution started. Before another test body, Dyno first removes the old runtime and app document, preserving the controller and browser storage. It then awaits `drain`. The callback also runs for the last non-skipped execution before terminal persistence, if it has not already drained; skipped tests do not invoke it. Each non-skipped execution drains once. Its named duration is included in CLI session timings. Honor the signal and keep this callback within `cleanupTimeout`. A failure or deadline ends the session, saves accepted results and leaves remaining tests unassigned.
 
+Keep scenario setup in project-owned factories: create fresh committed records, establish a real session and return only the IDs and paths the test needs. Exercise the UI, API or job itself when that behavior is under test. Reuse immutable fixture inputs rather than shared mutable records.
+
 Navigation does not cancel server writes or service workers. Your project must close old admission, release fixture gates, join its requests/jobs and return resources ready for reuse. Keep database, queues, storage and session policy in the app. Use `teardown` to release the entire setup, including after failed draining.
 
 `cleanupTimeout` bounds Dyno's wait. A callback that ignores its signal can keep running in Node, so drains must stop touching project resources when aborted, and teardown must be safe after a drain timeout.
@@ -468,4 +470,4 @@ Ordinary Interactor actions use DOM methods and synthetic events. Use explicit n
 
 The gateway uses HTTP. Secure cookies and secure-context-only features may need a different test origin. Cooperating HTML routes, including test fixtures, need the same opener and agent-cluster isolation headers as the app; changing them can sever the companion even on the same origin. The app and test contexts share an origin and aren't a security sandbox. An infinite loop can freeze the browser; the Node deadline can stop a browser it owns but can't recover a manual browser's event loop.
 
-The gateway rejects unknown Host headers and foreign WebSocket origins. Events and commands are limited to 1 MB, observer snapshots to 8 MB, and active browser runs to 20. New joins fail at capacity; finished runs can be removed to make room.
+The gateway rejects unknown Host headers and foreign WebSocket origins. Event and command requests are limited to 1 MB. Observers stream large views in bounded records; a slow reader can be disconnected without losing accepted results or saved output. Active browser runs are limited to 20. New joins fail at capacity; finished runs can be removed to make room.
