@@ -75,7 +75,7 @@ The parent owns the public SDK server handle, including forced shutdown after IP
 
 Retirement closes companion/test pages and navigates the original app tab to the gateway blank document. Keeping that tab preserves session storage along with origin cookies, local storage and IndexedDB. Failed retirement or native restoration closes the pool before reuse. This stops document JavaScript; service workers and backend work still need project-owned draining. Interactive inspection must finish before retirement releases an execution.
 
-Each launched browser has a private launch token. Each browser that joins gets its own run. Manual visitors can't use another run's controller. Reruns replace the old run and notify its observers.
+Each managed worker has a private launch token and joins the group's shared run. Manual visitors get independent runs and can't use another run's controller. Reruns replace the old run and notify its observers.
 
 The worker retains the original app page. The companion becoming active cannot redirect capture or sizing to the wrong window.
 
@@ -88,6 +88,8 @@ The worker retains the original app page. The companion becoming active cannot r
 `app.pause()` uses a browser message, without a driver. It suspends the execution deadline and host watchdog while retaining the test and app. Continue hides the reporter before resuming the remaining budget. Cleanup cannot pause, and headless runs reject the call.
 
 ## Saving a screenshot
+
+The app stays in the top-level window because nested iframe captures can have the right image dimensions while clipping content below the iframe viewport. Enlarging the iframe changes the layout under test. Capturing the original page preserves its viewport and real browser rendering; capture tests check offscreen pixels as well as dimensions.
 
 1. The provider activates its owned app tab; the runtime prepares animations and caret state, waits for app fonts and sends execution, document, and request IDs with capture options.
 2. The controller checks ownership, the hidden reporter, viewport revision, dimensions, and pixel ratio.

@@ -26,6 +26,10 @@ test('native workers overlap real saves with private apps and one canonical repo
           let paused=app.pause('Inspect the worker');
           let reporter;
           await I.assert(()=>!!(reporter=app.document.querySelector('#__dynoReporter'))?.contentDocument?.querySelector('#worker')&&!reporter.hidden);
+          await new Promise(resolve=>{
+            if(reporter.contentDocument.readyState==='complete')resolve();
+            else reporter.addEventListener('load',resolve,{once:true});
+          });
           let UI=I.scope(()=>reporter.contentDocument.body);
           let reporterDocument=reporter.contentDocument;
           await UI.find('$(#worker)').value(fixtures.worker);

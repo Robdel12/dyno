@@ -16,7 +16,7 @@ node bin/dyno.js install
 node bin/dyno.js --config examples/demo/dyno.config.js --ui
 ```
 
-The app fills the original browser window. If the browser blocks the companion window, click **Start**. Keep both windows open. Press **Ctrl+Shift+D** to inspect results over the app, or open the printed reporter URL separately.
+The app fills the original browser window. If the browser blocks the companion window, click **Start tests**. Keep both windows open. Press **Ctrl+Shift+D** to inspect results over the app, or open the printed reporter URL separately.
 
 ## Use it in an app
 
@@ -27,7 +27,7 @@ npx dyno install
 npx dyno doctor
 ```
 
-Set your app's command and URL in `dyno.config.js`, then write a test:
+Commit your lockfile and use `npm ci` in CI to keep the tested Dyno revision. Set your app's command and URL in `dyno.config.js`, then write a test:
 
 ```js
 import { describe, test } from 'dyno';
@@ -55,3 +55,5 @@ Use `--workers 4` with [project worker setup](docs/guide.md#concurrent-runs) for
 Run `npm test` after downloading Chromium with `node bin/dyno.js install`. [CI setup](docs/ci.md) lists the individual suites. The macOS process-cleanup test also needs `cc`. The optional `npm run test:vizzly` integration needs a Vizzly checkout, its built frontend, and Docker; the main suite doesn't need any of those.
 
 Start with [the vision](vision.md). The [guide](docs/guide.md) covers the API and configuration; [architecture](docs/architecture.md) explains execution and capture. The [design guide](docs/design.md) covers the reporter.
+
+MIT licensed. See [LICENSE](LICENSE).
