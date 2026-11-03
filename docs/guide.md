@@ -2,6 +2,8 @@
 
 Dyno starts your app, bundles tests, and serves a URL. Tests and Interactor.js execute in that browser. The CLI reports results and stops the processes it owns.
 
+Use the [API reference](api.md) for signatures and the public surface.
+
 You'll need Node 24+. Playwright Core is included; Chromium is the default browser. Dyno is early and isn't published to npm yet.
 
 ## Add it to an app
@@ -97,7 +99,7 @@ declare module 'dyno' {
 
 ## Browser API
 
-Import `describe`, `test`, `beforeEach`, and `afterEach` from `dyno`. Tests and hooks receive `{ app, I, fixtures, signal }`. `I` is an [Interactor.js](https://github.com/wwilsman/interactor.js) instance rooted in the current app document.
+Import `describe`, `test`, `beforeEach`, and `afterEach` from `dyno`. Tests and hooks receive `{ app, I, fixtures, signal, test, step }`. `I` is an [Interactor.js](https://github.com/wwilsman/interactor.js) instance rooted in the current app document.
 
 ```js
 await I.type('Robert').into('$(input[name=name])');
@@ -444,11 +446,15 @@ Paths are relative to the config file unless noted. See `dyno --help` for CLI ov
 
 ### Node setup
 
-The setup module exports an async function receiving `{ config, signal }`. Return `{ env, fixtures, drain, teardown }`: `env` adds app environment values, `fixtures` provides JSON-safe browser data, and `teardown` releases the setup. Optional `drain` joins work between executions. Honor the signal during long work, and keep real credentials out of browser fixtures. Console messages go to stderr. If setup throws before returning, it must clean up resources it already created.
+The setup module exports an async function receiving `{ config, signal }`. Return `{ webServer, env, fixtures, drain, teardown }`: `webServer` can override the app configuration, `env` adds app environment values, `fixtures` provides JSON-safe browser data, and `teardown` releases the setup. Optional `drain` joins work between executions. Honor the signal during long work, and keep production secrets out of browser fixtures. Console messages go to stderr. If setup throws before returning, it must clean up resources it already created.
 
 Optional `drain({ runId, executionId, workerId, test, signal })` joins the project work an execution started. Before another test body, Dyno first removes the old runtime and app document, preserving the controller and browser storage. It then awaits `drain`. The callback also runs for the last non-skipped execution before terminal persistence, if it has not already drained; skipped tests do not invoke it. Each non-skipped execution drains once. Its named duration is included in CLI session timings. Honor the signal and keep this callback within `cleanupTimeout`. A failure or deadline ends the session, saves accepted results and leaves remaining tests unassigned.
 
 Keep scenario setup in project-owned factories: create fresh committed records, establish a real session and return only the IDs and paths the test needs. Exercise the UI, API or job itself when that behavior is under test. Reuse immutable fixture inputs rather than shared mutable records.
+
+Setup owns run-wide resources; `createWorker` owns private app resources; suite hooks prepare each scenario. Browser tests cannot import Node factories. When a scenario needs Node work, expose a finite, authenticated test-only API in your app server and call it through `app.request`; keep those endpoints out of the production server. There is no built-in Node task API.
+
+For apps with an API, web server and background workers, use one project command that starts the real stack and handles shutdown. Use real application states, held requests or external HTTP fixtures for failure paths. Keep map/image readiness in project Interactors, and publish captured PNGs to your visual service from Node. Dyno doesn't replace your factory, auth, queue or visual-comparison libraries.
 
 Navigation does not cancel server writes or service workers. Your project must close old admission, release fixture gates, join its requests/jobs and return resources ready for reuse. Keep database, queues, storage and session policy in the app. Use `teardown` to release the entire setup, including after failed draining.
 
@@ -463,6 +469,8 @@ Run `npm run test:vizzly`, or append `-- --ui` to inspect it. Setup creates its 
 This example is optional. `npm test` uses the self-contained fixture app.
 
 ## Current limits
+
+Dyno tests web UI. Native iOS and macOS interfaces keep their platform UI tests.
 
 The runner uses ES2022 syntax and modern APIs, including `AbortSignal.timeout`, `AbortSignal.any`, `Promise.withResolvers`, `crypto.getRandomValues`, and `EventSource`. Older browsers, including historical WebOS builds, need compatibility work. See [browser setup](browsers.md#known-limits) for verification gaps.
 

@@ -54,6 +54,6 @@ Use `--workers 4` with [project worker setup](docs/guide.md#concurrent-runs) for
 
 Run `npm test` after downloading Chromium with `node bin/dyno.js install`. [CI setup](docs/ci.md) lists the individual suites. The macOS process-cleanup test also needs `cc`. The optional `npm run test:vizzly` integration needs a Vizzly checkout, its built frontend, and Docker; the main suite doesn't need any of those.
 
-Start with [the vision](vision.md). The [guide](docs/guide.md) covers the API and configuration; [architecture](docs/architecture.md) explains execution and capture. The [design guide](docs/design.md) covers the reporter.
+Start with [the vision](vision.md). The [guide](docs/guide.md) covers setup and workflows; the [API reference](docs/api.md) lists methods and hooks. Read [architecture](docs/architecture.md) for execution and the [design guide](docs/design.md) for the reporter.
 
 MIT licensed. See [LICENSE](LICENSE).
