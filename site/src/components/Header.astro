@@ -1,0 +1,50 @@
+---
+import Header from '@astrojs/starlight/components/Header.astro';
+import { settings } from '../../scripts/settings.js';
+let { version, path, base } = settings();
+---
+<div class="docs-header">
+  <Header {...Astro.props} />
+  <div class="version-control">
+    <label for="docs-version">Version</label>
+    <select id="docs-version" data-index={import.meta.env.DEV ? undefined : `${path}versions.json`} data-base={base}>
+      <option value={base} selected>{version === 'next' ? 'Next (unreleased)' : version}</option>
+    </select>
+    <span id="version-status" role="status"></span>
+    <noscript><a href={path}>All versions</a></noscript>
+  </div>
+</div>
+<script>
+  let select = document.querySelector('#docs-version');
+  let status = document.querySelector('#version-status');
+  if (select instanceof HTMLSelectElement && status instanceof HTMLElement) {
+    let current = select.dataset.base;
+    select.addEventListener('change', () => {
+      // Each version has its own homepage and search index. A removed API page
+      // in an older release must not turn a version change into a 404.
+      location.assign(select.value);
+    });
+    if (select.dataset.index) try {
+      let response = await fetch(select.dataset.index);
+      if (!response.ok) throw new Error('Version index unavailable');
+      let index = await response.json();
+      for (let entry of index.versions) {
+        if (entry.path === current) continue;
+        let url = new URL(entry.path, location.origin);
+        if (url.origin !== location.origin || !url.pathname.startsWith(new URL(select.dataset.index, location.origin).pathname.replace(/versions\.json$/, ''))) continue;
+        select.add(new Option(entry.version === 'next' ? 'Next (unreleased)' : entry.version, url.pathname));
+      }
+    } catch {
+      status.textContent = 'Other versions unavailable';
+    }
+  }
+</script>
+<style>
+  .docs-header { display: flex; align-items: center; gap: 1rem; height: 100%; }
+  .docs-header :global(.header) { flex: 1; min-width: 0; }
+  .version-control { display: flex; align-items: center; gap: .5rem; font-size: .8125rem; }
+  select { padding: .35rem; max-width: 12rem; background: var(--sl-color-bg); color: var(--sl-color-white); border: 1px solid var(--sl-color-gray-4); border-radius: .25rem; }
+  label { color: var(--sl-color-gray-2); }
+  #version-status { font-size: .75rem; }
+  @media (max-width: 50rem) { label { display: none; } #version-status { position: absolute; top: 100%; right: 0; padding: .25rem .5rem; background: var(--sl-color-bg); } select { max-width: 9.5rem; } }
+</style>

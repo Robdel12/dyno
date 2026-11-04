@@ -7,3 +7,5 @@ Use plain JavaScript ES modules, prefer `let`, and keep functions small. Prefer 
 Tests should run the CLI and real browser/app workflows. Don't mock Dyno internals or add arbitrary sleeps. Run `npm test`; use `npm run test:vizzly` for app integration changes when the Vizzly checkout is available. Interactor.js owns convergence and DOM interaction. [docs/ci.md](docs/ci.md) lists the test suites and CI setup.
 
 Write docs and UI copy in plain, conversational language. Keep it brief, explain what happens, and be candid about limits. Commits start with a gitmoji. Never add co-author or AI attribution.
+
+Source JSDoc owns guides and API copy. Read [docs/documentation.md](docs/documentation.md) before editing docs tooling. Regenerate the GitHub Markdown after guide edits; run the site build and tests for documentation changes.

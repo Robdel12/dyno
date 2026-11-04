@@ -1,3 +1,62 @@
+/**
+ * Define typed Node configuration. Paths resolve relative to the config file. A plain default-exported object works too; this helper gives JavaScript editors the same type hints.
+ *
+ * @api defineConfig
+ */
+
+/**
+ * The project configuration. Supply a web-server origin and optionally its startup command. The configuration guide lists defaults, setup ownership and CLI overrides.
+ *
+ * @api Config
+ */
+
+/**
+ * Paths are relative to the config file unless noted. See `dyno --help` for CLI overrides and [browser setup](browsers.md) for executable selection.
+ *
+ * | Option | Default | Purpose |
+ * | --- | --- | --- |
+ * | `testDir` | `tests/browser` | Test directory |
+ * | `testMatch` | `**\/*.test.{js,jsx,ts,tsx}` | File pattern |
+ * | `timeout` | `10000` | Test deadline, including runtime startup and hooks |
+ * | `cleanupTimeout` | `5000` | Total budget for cleanup after execution ends |
+ * | `expectTimeout` | `min(2000, timeout / 2)`, rounded down | Interactor assertion timeout |
+ * | `runTimeout` | `60000` | Headless browser opening and results deadline, after app readiness |
+ * | `host`, `port` | `127.0.0.1`, `7357` | Gateway address; port 0 chooses a free port |
+ * | `browser.name`, `path`, `args` | `chromium`, Playwright build, `[]` | Managed target, optional executable, and launch arguments |
+ * | `browser.deviceScaleFactor` | `1` | Playwright pixel ratio: 1, 2, or 3 |
+ * | `viewport` | Browser size; managed: 1280 × 800 | Required app viewport dimensions |
+ * | `reportDir` | `.dyno/reports` | Saved JSON, JUnit, HTML, and copied images per browser run |
+ * | `artifactsDir` | `.dyno/artifacts` | PNG output directory |
+ * | `webServer.url` | Required | HTTP(S) origin without a path |
+ * | `webServer.command` | None | App startup command |
+ * | `webServer.cwd`, `env` | Config directory, inherited env | App process settings |
+ * | `webServer.ready` | Any process output | Ready-message string or RegExp |
+ * | `webServer.timeout` | `30000` | App startup deadline |
+ * | `webServer.reuseExistingServer` | `false` | Reuse a responding server |
+ * | `setup` | None | Node setup module |
+ * | `seed`, `random` | None, `false` | Repeatable randomized priority or a generated seed |
+ * | `workers` | `1` | Managed worker count, from 1 to 32; concurrent runs need project worker setup |
+ * | `forbidOnly` | Whether `CI` is set | Reject focused test/suite definitions |
+ *
+ * ### Node setup
+ *
+ * The setup module exports an async function receiving `{ config, signal }`. Return `{ webServer, env, fixtures, drain, teardown }`: `webServer` can override the app configuration, `env` adds app environment values, `fixtures` provides JSON-safe browser data, and `teardown` releases the setup. Optional `drain` joins work between executions. Honor the signal during long work, and keep production secrets out of browser fixtures. Console messages go to stderr. If setup throws before returning, it must clean up resources it already created.
+ *
+ * Optional `drain({ runId, executionId, workerId, test, signal })` joins the project work an execution started. Before another test body, Dyno first removes the old runtime and app document, preserving the controller and browser storage. It then awaits `drain`. The callback also runs for the last non-skipped execution before terminal persistence, if it has not already drained; skipped tests do not invoke it. Each non-skipped execution drains once. Its named duration is included in CLI session timings. Honor the signal and keep this callback within `cleanupTimeout`. A failure or deadline ends the session, saves accepted results and leaves remaining tests unassigned.
+ *
+ * Keep scenario setup in project-owned factories: create fresh committed records, establish a real session and return only the IDs and paths the test needs. Exercise the UI, API or job itself when that behavior is under test. Reuse immutable fixture inputs rather than shared mutable records.
+ *
+ * Setup owns run-wide resources; `createWorker` owns private app resources; suite hooks prepare each scenario. Browser tests cannot import Node factories. When a scenario needs Node work, expose a finite, authenticated test-only API in your app server and call it through `app.request`; keep those endpoints out of the production server. There is no built-in Node task API.
+ *
+ * For apps with an API, web server and background workers, use one project command that starts the real stack and handles shutdown. Use real application states, held requests or external HTTP fixtures for failure paths. Keep map/image readiness in project Interactors, and publish captured PNGs to your visual service from Node. Dyno doesn't replace your factory, auth, queue or visual-comparison libraries.
+ *
+ * Navigation does not cancel server writes or service workers. Your project must close old admission, release fixture gates, join its requests/jobs and return resources ready for reuse. Keep database, queues, storage and session policy in the app. Use `teardown` to release the entire setup, including after failed draining.
+ *
+ * `cleanupTimeout` bounds Dyno's wait. A callback that ignores its signal can keep running in Node, so drains must stop touching project resources when aborted, and teardown must be safe after a drain timeout.
+ *
+ * @guide configuration Configuration
+ */
+
 import { access } from 'node:fs/promises';
 import { resolve, dirname, isAbsolute } from 'node:path';
 import { pathToFileURL } from 'node:url';

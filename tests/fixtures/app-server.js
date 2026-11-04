@@ -141,6 +141,11 @@ let server = http.createServer(async (request, response) => {
     response.end('<!doctype html><style>p{width:179px;font:20px/1.5 system-ui}#large{height:200vh}#hidden{visibility:hidden}#cover{position:fixed;inset:0;background:white;pointer-events:none;display:none}</style><p>Start here with a <a href="/other">Create an account to document history</a></p><section id="large">A large section</section><button id="hidden">Hidden</button>');
     return;
   }
+  if (request.url === '/select-navigation') {
+    response.writeHead(200, { 'Content-Type': 'text/html' });
+    response.end('<!doctype html><h1>Documentation</h1><label>Version<select onchange="location.assign(this.value)"><option>Choose version</option><option value="/other">Released docs</option></select></label>');
+    return;
+  }
   if (request.url === '/controlled-select') {
     response.writeHead(200, { 'Content-Type': 'text/html' });
     response.end(`<!doctype html><meta charset="utf-8"><h1>Project settings</h1>

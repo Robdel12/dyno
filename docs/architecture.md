@@ -16,6 +16,8 @@ The exported `Interactor` and each test's `I` use the same app-aware class. Its 
 
 `defineInteractor({ actions, assertions })` registers native extensions on a private subclass with its own assertion class. Its returned function binds that definition to an existing Interactor and optional selector. Definitions never register methods on `I` or siblings. Binding and `scope()` share one context-copy path; neither caches app elements. The small subclass isolates native registration rather than introducing another interaction engine.
 
+## App and test windows
+
 ```text
 Original app window
 └─ reporter iframe: inspection overlay
@@ -33,9 +35,13 @@ The gateway forwards app requests and WebSocket upgrades to the app server. Its 
 
 ## Test definitions
 
-The bundled entry loads test modules sequentially through the registration boundary. Each file gets its own registration boundary, including when module evaluation awaits an import. Tests and hooks must belong to a named describe; file-level declarations fail. `describe` callbacks register synchronously. [suite.js](../src/suite.js) builds immutable trees and compiles inherited hooks, focus/skip decisions, and stable file/suite/name IDs into an execution plan. Only serializable test descriptors, including declared resources, cross into the host and gateway; callbacks remain in the test runtime. Named suite paths and hook scopes are explicit in the plan. `run.js` owns one immutable catalog, priority, workers, assignments and accepted outcomes. Hosts request an execution ID before starting a test; outcomes must match that worker, execution and stable test ID. Results can arrive out of order while reports retain catalog order. Every worker must register the same catalog before dispatch. The CLI uses one coordinator for one or many workers. Each worker has a private browser context, gateway and project resources.
+The bundled entry loads test modules sequentially through the registration boundary. Each file gets its own registration boundary, including when module evaluation awaits an import. Tests and hooks must belong to a named describe; file-level declarations fail. `describe` callbacks register synchronously.
 
-Resource names belong to test descriptors. Dispatch reserves the complete set together, and an accepted result does not release it. Before taking another assignment, the host removes the old runtime, replaces the app document with a small parked document, then waits for project draining. The persistent controller and project-owned storage survive. A failed or timed-out project drain ends admission without changing accepted results. The terminal candidate explicitly marks the final assignment as retained, so reports do not claim its document was released. The final app can stay available for inspection; terminal cleanup still drains its project work before saving.
+[suite.js](../src/suite.js) builds immutable trees and compiles inherited hooks, focus/skip decisions, and stable file/suite/name IDs into an execution plan. Only serializable test descriptors, including declared resources, cross into the host and gateway; callbacks remain in the test runtime. Named suite paths and hook scopes are explicit in the plan.
+
+`run.js` owns one immutable catalog, priority, workers, assignments and accepted outcomes. Hosts request an execution ID before starting a test; outcomes must match that worker, execution and stable test ID. Results can arrive out of order while reports retain catalog order. Every worker must register the same catalog before dispatch. The CLI uses one coordinator for one or many workers. Each worker has a private browser context, gateway and project resources.
+
+Resource names belong to test descriptors. Dispatch reserves the complete set together, and an accepted result does not release it. Before taking another assignment, the host removes the old runtime, replaces the app document with a small parked document, then waits for project draining. The persistent controller and project-owned storage survive. A failed or timed-out project drain stops new assignments without changing accepted results. The final assignment stays marked as retained, so reports do not claim its document was released. The final app can stay available for inspection; terminal cleanup still drains its project work before saving.
 
 ## State and windows
 
@@ -45,15 +51,19 @@ The app owns its full, unscaled browser viewport. Manual runs use its actual dim
 
 Before each test, default sizing runs only when configured, actual, or observed geometry differs. Public sizing calls retain their validation and revision changes. Run-specific bundle bytes can be cached; every execution still registers the complete suite in fresh globals.
 
+## Reporter updates
+
 The reporter owns its route, search, and filter. Its iframe is created on first inspection and retained on close, preserving its route. Closed reporters do not render snapshots; reopening receives current state through the existing ready and presentation messages. Command acknowledgements still arrive while closed. Separate reporter URLs receive server events and send HTTP commands. Both use the same UI.
 
-Each worker publishes changed fields and new output through one ordered publisher. The coordinator merges progress by owned assignment, while accepted outcomes remain canonical. Embedded and standalone reporters consume the same bounded event stream; hidden embedded reporters disconnect and reopen with a fresh snapshot. Reporter commands await acknowledgements in their HTTP response, so closing the overlay cannot lose a pending reply.
+Each worker publishes changed fields and new output through one ordered publisher. The coordinator merges progress by owned assignment, while accepted outcomes remain the final result. Embedded and standalone reporters consume the same bounded event stream; hidden embedded reporters disconnect and reopen with a fresh snapshot. Reporter commands await acknowledgements in their HTTP response, so closing the overlay cannot lose a pending reply.
 
 The gateway validates each whole change before applying it. Accepted events own final test data; progress cannot finish a run or overwrite an accepted outcome. Fatal results retain unfinished console output without pretending the test completed. Pure reporting helpers create immutable views from those sources.
 
 Standalone observers receive sequenced batches of changed test records. They commit a batch only after its final marker; a reconnect starts a new snapshot. Slow readers retain one in-flight batch and one latest view, with backpressure between records. Each encoded record is limited to 8 MB, with a shared 32 MB reservation for its string and encoded buffer. Object/transport overhead is separate. Command queues and connection counts are bounded too. Exceeding a delivery limit closes that reporter with an explanation; results and saved reports continue independently.
 
 Rendering coalesces through a message turn, so a suspended background animation clock cannot stall the reporter. Route, command and terminal changes render immediately.
+
+## Window ownership
 
 A private `window.name` binds the original app window across navigation and survives project calls to `sessionStorage.clear()`. Names route the bootstrap; they do not authenticate messages. Origin, exact source window, run, execution, and current document are checked before accepting messages or operation results. Old unload messages cannot invalidate a newer document.
 
@@ -107,9 +117,9 @@ The real browser workflows in [tests](../tests) cover image pixels, resizing, na
 
 The gateway owns accepted run snapshots. On completion or interruption, a pure report model selects public result fields; formatters produce versioned JSON, JUnit, and standalone HTML. The writer copies accepted images into a temporary run folder and renames it into place after all files finish. Missing source images become explicit unavailable attachments.
 
-Shutdown closes admission before waiting for pending writes. Joins already rebundling must recheck admission before creating a run. The CLI waits for report persistence before releasing the gateway. Saved HTML needs neither a driver nor a running server.
+Shutdown stops accepting new runs before waiting for pending writes. A join already rebuilding tests checks again before creating a run. The CLI waits for report persistence before releasing the gateway. Saved HTML needs neither a driver nor a running server.
 
-Normal completion, browser replacement and shutdown share terminal cleanup and persistence. Final state becomes visible after the write succeeds. A failed save reports an infrastructure error while preserving accepted outcomes. Event delivery uses bounded exact-replay receipts; live delivery retains its last sequence digest. The browser can repeat one outstanding reporting request after a network failure, without repeating test callbacks, actions or native operations. Changed replays and sequence gaps fail plainly.
+Normal completion, browser replacement and shutdown share terminal cleanup and persistence. Final state becomes visible after the write succeeds. A failed save reports an infrastructure error while preserving accepted outcomes. The gateway keeps a small cache of accepted messages and the last live sequence hash. The browser can repeat one outstanding reporting request after a network failure, without repeating test callbacks, actions or native operations. Changed replays and sequence gaps fail plainly.
 
 ## Timings
 
@@ -129,14 +139,16 @@ Element screenshots extend the existing capture path with a document-coordinate 
 
 ## Execution order
 
-Declared order is the default. An explicit or generated seed ranks stable test IDs with versioned SHA-256 ordering; filtering preserves their relative priority. It does not replace application randomness. The CLI, live reporter and saved report expose the seed. `schedule.json` records selected IDs, priority, actual assignments and completion order. Version 2 schedules include the source-content fingerprint and catalog. `--replay` validates those inputs and restores each recorded worker queue; an interrupted prefix explicitly omits unassigned tests. Replay constrains queue heads even when a later queued test could bypass a resource. It reproduces queues, not asynchronous interleaving.
+Declared order is the default. An explicit or generated seed ranks stable test IDs with versioned SHA-256 ordering; filtering preserves their relative priority. It does not replace application randomness.
+
+The CLI, live reporter and saved report expose the seed. `schedule.json` records selected IDs, priority, actual assignments and completion order. Version 2 schedules include the source-content fingerprint and catalog. `--replay` validates those inputs and restores each recorded worker queue; an interrupted prefix explicitly omits unassigned tests. Replay constrains queue heads even when a later queued test could bypass a resource. It reproduces queues, not asynchronous interleaving.
 
 ## Shared coordination
 
-`coordinator.js` owns run snapshots, serialized acceptance, bounded replay receipts, assignment waiting, draining and terminal persistence. `run.js` contains pure ownership/resource transitions. Private gateways bind requests to their worker ID; posted worker IDs cannot borrow a peer execution. Cross-gateway image reads resolve accepted UUIDs from the same canonical outcomes.
+`coordinator.js` owns run snapshots, processes results in order, and coordinates assignment waiting, message replays, draining and final saves. `run.js` contains pure ownership/resource transitions. Private gateways bind requests to their worker ID; posted worker IDs cannot borrow a peer execution. Cross-gateway image reads resolve accepted UUIDs from the same canonical outcomes.
 
 Project setup runs once and optionally returns `createWorker`. The factory supplies private server/env/fixtures/drain/teardown descriptors. Startup joins every worker task before cleanup, including on partial failure. Cleanup finishes the coordinator and gateways before stopping app servers, worker projects and shared setup. Browser shutdown follows.
 
-Managed rerun and watch retire all old documents, drain the previous run, rebuild once and reopen one new group. Manual refresh parks its old app through browser APIs before joining. A missing controller has a bounded reconnection window; a lost managed worker ends the shared run without retrying it. Browser document retirement precedes project draining on failure. Cooperative project callback cancellation cannot force arbitrary Node code to stop.
+Managed rerun and watch retire all old documents, drain the previous run, rebuild once and reopen one new group. Manual refresh parks its old app through browser APIs before joining. A missing controller has a bounded reconnection window; a lost managed worker ends the shared run without retrying it. Browser document retirement precedes project draining on failure. Project callbacks must honor cancellation; Dyno cannot force arbitrary Node code to stop.
 
 `run-timings.js` derives wall, execution, handoff, queue and unassigned intervals from the coordinator clock. Browser intervals keep their own clocks. Saved JSON and live/offline reports distinguish elapsed wall from summed test work; project cleanup is a measured part of handoff.

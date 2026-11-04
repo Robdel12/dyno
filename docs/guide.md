@@ -1,8 +1,9 @@
+<!-- Generated from source JSDoc. Run npm --prefix site run generate -- --write-markdown. -->
 # Using Dyno
 
-Dyno starts your app, bundles tests, and serves a URL. Tests and Interactor.js execute in that browser. The CLI reports results and stops the processes it owns.
+Dyno starts your app, bundles tests, and serves a URL. Tests and Interactor.js run in that browser. The CLI reports results and stops the processes it owns.
 
-You'll need Node 24+. Playwright Core is included; Chromium is the default browser. Dyno is early and isn't published to npm yet.
+You'll need Node 24+. Playwright Core is included. Dyno isn't published to npm yet; install it from GitHub.
 
 ## Add it to an app
 
@@ -41,6 +42,8 @@ describe('Contacts', () => {
 
 Run `npx dyno`, or add `"test:browser": "dyno"` to your package scripts. Tests can use browser APIs and browser-compatible npm packages. JavaScript, JSX, TypeScript, and TSX are supported; TypeScript is transpiled without type checking. Filesystem and database setup belongs in the Node setup hook.
 
+Use the [API reference](api.md) to look up methods and the [custom interactor guide](guide.md#custom-interactors) to share component workflows.
+
 ## Run and inspect
 
 ```sh
@@ -59,9 +62,7 @@ Exit codes are 0 for passing tests, 1 for failures, 130 for SIGINT, and 143 for 
 
 With `--json`, stdout contains one JSON event per line. Project `console` messages from config, setup, and teardown go to stderr, as does app-server output. Project code that writes directly to a stream should use `process.stderr`. Errors remain available as JSON events and stderr diagnostics. Use the process exit code for the final CLI outcome; a failure can emit an error after `session-timing`.
 
-`browser-connection` events show the controller stream connecting or closing, including its duration and whether the socket timed out. Managed `browser-diagnostic` events include stream request failures from the browser. These are connection diagnostics, not test outcomes.
-
-Idle event streams send small keepalive comments through the same bounded writer as results. They keep the browser connection active during inspection; they do not create progress snapshots or change test state.
+Connection diagnostics appear as `browser-connection` and `browser-diagnostic` events, separately from test outcomes. Idle streams send keepalive comments so inspection can stay open.
 
 Open the start URL at `/__dyno__/`. Dyno opens a companion window for test execution, then loads the app in the original window. If the popup is blocked, click **Start tests**. Keep both windows open: tests stay in the companion while the app navigates normally.
 
@@ -95,9 +96,9 @@ declare module 'dyno' {
 }
 ```
 
-## Browser API
+## Interact with the app
 
-Import `describe`, `test`, `beforeEach`, and `afterEach` from `dyno`. Tests and hooks receive `{ app, I, fixtures, signal }`. `I` is an [Interactor.js](https://github.com/wwilsman/interactor.js) instance rooted in the current app document.
+Import `describe`, `test`, `beforeEach`, and `afterEach` from `dyno`. Tests and hooks receive `{ app, I, fixtures, signal, test, step }`. `I` is an [Interactor.js](https://github.com/wwilsman/interactor.js) instance rooted in the current app document.
 
 ```js
 await I.type('Robert').into('$(input[name=name])');
@@ -110,7 +111,7 @@ await I.assert(
 );
 ```
 
-Text selectors find visible text, placeholders, and related label controls. `$(...)` selects with CSS. Interactor owns selector resolution, actions, assertion retries, and error messages. `expectTimeout` sets its assertion timeout. Wait for the result of an action; a passing assertion doesn't mean all background work is idle.
+Text selectors match text, placeholders and related label controls. Strings match the whole text; use a regular expression for a partial match. `$(...)` selects with CSS. Interactor owns actions, retries and errors; `expectTimeout` sets its assertion deadline. Wait for the result you care about rather than assuming all background work is idle.
 
 - `app.goto('/path')` waits for the app's bridge and document readiness. Use Interactor to wait for rendered UI.
 - `app.setViewport({ width, height })` asks a managed provider to resize the actual app viewport and waits for layout. Each dimension must be 1–8192 CSS pixels. Manual runs require the requested size to already match.
@@ -122,11 +123,9 @@ Each test gets fresh test and app documents and globals. Queries use the current
 
 Fresh documents don't reset cookies, localStorage, IndexedDB, service workers, or database records. Use hooks to reset sessions and fixtures. Node setup teardown should clean up shared resources even if a browser test times out before `afterEach` finishes. Dyno's private window binding survives `sessionStorage.clear()`; avoid changing `window.name` during a run.
 
-Dyno exports its app-aware `Interactor` class. `I` uses that same class; custom actions and assertions registered on it work in tests and scopes. Its adapter creates events and files in the app's window without modifying browser globals or Interactor.js.
+Dyno exports the same `Interactor` class that provides `I`. Custom actions and assertions work in tests and scopes.
 
 ```js
-import { Interactor } from 'dyno';
-
 let contact = I.scope('$(form)');
 await contact.find('Email').then.fill('rob@example.com');
 await contact.find('Photos').then.upload({ name: 'note.txt', bytes: 'Storm notes', type: 'text/plain' });
@@ -135,13 +134,13 @@ await contact.find('Saved').rendered();
 
 `scope(selector)` returns another Interactor rooted in that element. Scopes resolve against the current app document, even after navigation, and retain the assertion settings and cancellation signal. Nest them for page objects. A missing scope fails instead of searching elsewhere. Create scopes before chaining: use `I.scope(selector)`, not `I.find(selector).then.scope()`. Pending chains cannot bind scopes or custom interactors; Dyno rejects them before they can target the wrong element.
 
-Use built-in assertions on `find()` results, such as `I.find('Status').contains('Saved')`. For a custom DOM predicate, bind a scope and call its assertion: `I.scope('$([role=status])').assert(({ $ }) => $.textContent.includes('Saved'))`. Reusable assertions belong in a custom interactor.
+Use built-in assertions such as `I.find('$([role=status])').text('Saved')`. `contains(selector)` checks for a descendant, not a text substring. For a custom DOM predicate, bind a scope and call its assertion: `I.scope('$([role=status])').assert(({ $ }) => $.textContent.includes('Saved'))`. Reusable assertions belong in a custom interactor.
 
 `fill(value)` waits for an editable input or textarea, replaces its value, and sends input/change events. Empty strings and number inputs work too. Use upstream `type()` and `press()` when individual keys matter. `upload(...files)` sets a file input's selection and sends input/change events; each file needs `name` and `bytes`, with an optional MIME `type`. Pass no files to clear it. Load fixture bytes through your project's setup or `app.request`.
 
 `rendered()` checks that content has layout and is displayed, including below the fold. Transparent parents count as hidden. It doesn't scroll or require viewport visibility; use `visible()` for that. Both keep Interactor's normal retries and stability settings. Upstream text/CSS selectors, `find(...).times(count)`, `not.overflows('x')`, option clicks, and custom selector functions work directly. Keep page objects focused on your app's workflows.
 
-### Native browser behavior
+## Native browser behavior
 
 Use native input when the browser's default behavior is the thing being tested. Keep ordinary clicks, fields, and assertions in Interactor.
 
@@ -163,7 +162,7 @@ These actions compose with scopes and custom interactors. `nativePress` sends a 
 
 `app.native.capabilities` describes this browser's support. Required calls fail when unavailable; there is no synthetic fallback. Keyboard, pointer, and media use managed Playwright browsers. Virtual authenticators and app network offline require Chromium. Clipboard permission support varies by engine. Manual URL runs don't have native capabilities. Chromium offline keeps companion HTTP working, but its browser online-state signal can also change in the companion. See [browser limits](browsers.md).
 
-### Custom interactors
+## Custom interactors
 
 Define and export custom interactors at module scope in your app's test support, or beside the components they exercise. Tests import those definitions and bind them to their own `I`. `defineInteractor` uses Interactor's native custom actions and assertions, without changing the test's `I` or other definitions.
 
@@ -212,7 +211,9 @@ Keep navigation, fixture I/O, screenshots, and named steps in workflow functions
 
 ## Suites and selection
 
-Every test and hook must be inside a named `describe(name, callback)`, including skipped and focused tests. File-level declarations fail with guidance to move them into a suite. You can have several top-level suites in a file. Callbacks register synchronously; put async work in hooks or tests. Nested `beforeEach` hooks run from the outer suite inward, and `afterEach` hooks run from the inner suite outward.
+Every test and hook must be inside a named `describe(name, callback)`, including skipped and focused tests. You can have several top-level suites in a file. Callbacks register synchronously; put async work in hooks or tests.
+
+Nested `beforeEach` hooks run from the outer suite inward, and `afterEach` hooks run from the inner suite outward.
 
 ```js
 import { describe, test, beforeEach } from 'dyno';
@@ -322,9 +323,9 @@ export default async function setup({ signal }) {
 
 Those helpers belong to your project. `worker` contains its string `id` and numeric `index`. Each call returns `{ webServer, env, fixtures, drain, teardown }`. Use private databases, queues, files and mutable app state; share immutable build output. A deliberately stateless app can share a server. If setup starts the server itself, return its URL with `command: undefined` and `reuseExistingServer: true`.
 
-Worker values override setup defaults for the server, environment and fixtures. A worker can override the setup's `drain`. Worker teardown releases that worker; setup teardown runs once afterward. Failed setup must clean up anything it acquired before returning. One worker uses this same path. Manual URL runs always use one worker.
+Worker values override setup defaults for the server, environment and fixtures. A worker can override the setup's `drain`. Worker teardown releases that worker; setup teardown runs once afterward. Failed setup must clean up anything it acquired before returning. One worker uses this same path.
 
-Declare resources such as `{ resources: ['clipboard'] }` when tests share a browser or external capability. Dyno reserves the whole set before dispatch and holds it through document retirement and project draining. Other eligible tests can continue. Global Pause stops admission and waits at test boundaries; `app.pause()` holds only its worker. The reporter shows one combined run and lets you choose a worker to inspect. Stop or worker loss preserves accepted outcomes and images, then drains and closes the run. There are no automatic worker restarts or test retries.
+Global Pause stops new assignments and waits at test boundaries; `app.pause()` holds only its worker. The reporter shows one combined run and lets you choose a worker to inspect. Stop or worker loss preserves accepted outcomes and images, then drains and closes the run. There are no automatic worker restarts or test retries.
 
 Declare shared resources before execution when a test uses something such as the OS clipboard:
 
@@ -334,7 +335,7 @@ test('copies a token', async ({ I }) => {
 }, { resources: ['clipboard'] });
 ```
 
-Dyno reserves all named resources together. They stay held until the execution's documents and project work are finished. More browser tabs alone do not isolate your app's database or storage.
+Dyno reserves a test's named resources together and holds them through document retirement and project draining. Other eligible tests can continue. Browser tabs alone do not isolate your app's database or storage.
 
 ### Queue replay
 
@@ -444,11 +445,15 @@ Paths are relative to the config file unless noted. See `dyno --help` for CLI ov
 
 ### Node setup
 
-The setup module exports an async function receiving `{ config, signal }`. Return `{ env, fixtures, drain, teardown }`: `env` adds app environment values, `fixtures` provides JSON-safe browser data, and `teardown` releases the setup. Optional `drain` joins work between executions. Honor the signal during long work, and keep real credentials out of browser fixtures. Console messages go to stderr. If setup throws before returning, it must clean up resources it already created.
+The setup module exports an async function receiving `{ config, signal }`. Return `{ webServer, env, fixtures, drain, teardown }`: `webServer` can override the app configuration, `env` adds app environment values, `fixtures` provides JSON-safe browser data, and `teardown` releases the setup. Optional `drain` joins work between executions. Honor the signal during long work, and keep production secrets out of browser fixtures. Console messages go to stderr. If setup throws before returning, it must clean up resources it already created.
 
 Optional `drain({ runId, executionId, workerId, test, signal })` joins the project work an execution started. Before another test body, Dyno first removes the old runtime and app document, preserving the controller and browser storage. It then awaits `drain`. The callback also runs for the last non-skipped execution before terminal persistence, if it has not already drained; skipped tests do not invoke it. Each non-skipped execution drains once. Its named duration is included in CLI session timings. Honor the signal and keep this callback within `cleanupTimeout`. A failure or deadline ends the session, saves accepted results and leaves remaining tests unassigned.
 
 Keep scenario setup in project-owned factories: create fresh committed records, establish a real session and return only the IDs and paths the test needs. Exercise the UI, API or job itself when that behavior is under test. Reuse immutable fixture inputs rather than shared mutable records.
+
+Setup owns run-wide resources; `createWorker` owns private app resources; suite hooks prepare each scenario. Browser tests cannot import Node factories. When a scenario needs Node work, expose a finite, authenticated test-only API in your app server and call it through `app.request`; keep those endpoints out of the production server. There is no built-in Node task API.
+
+For apps with an API, web server and background workers, use one project command that starts the real stack and handles shutdown. Use real application states, held requests or external HTTP fixtures for failure paths. Keep map/image readiness in project Interactors, and publish captured PNGs to your visual service from Node. Dyno doesn't replace your factory, auth, queue or visual-comparison libraries.
 
 Navigation does not cancel server writes or service workers. Your project must close old admission, release fixture gates, join its requests/jobs and return resources ready for reuse. Keep database, queues, storage and session policy in the app. Use `teardown` to release the entire setup, including after failed draining.
 
@@ -463,6 +468,8 @@ Run `npm run test:vizzly`, or append `-- --ui` to inspect it. Setup creates its 
 This example is optional. `npm test` uses the self-contained fixture app.
 
 ## Current limits
+
+Dyno tests web UI. Native iOS and macOS interfaces keep their platform UI tests.
 
 The runner uses ES2022 syntax and modern APIs, including `AbortSignal.timeout`, `AbortSignal.any`, `Promise.withResolvers`, `crypto.getRandomValues`, and `EventSource`. Older browsers, including historical WebOS builds, need compatibility work. See [browser setup](browsers.md#known-limits) for verification gaps.
 

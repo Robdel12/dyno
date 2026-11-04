@@ -57,6 +57,21 @@ test('controlled selects keep the chosen value through UI updates and save it to
   assert.equal(result.summary.passed, 2);
 });
 
+test('select changes can navigate without resolving the retired document', { timeout: 90000 }, async t => {
+  let fixture = await project(t, { source: `
+    describe('Documentation', () => {
+      test('open released docs', async ({ app, I }) => {
+        await app.goto('/select-navigation');
+        let selected = await I.click('Released docs');
+        await I.find('$(h1)').text('Other page');
+        await I.assert(() => selected.localName === 'select', 'Selection returns its original control');
+      });
+    });` });
+  let result = await fixture.run().completion;
+  assert.equal(result.code, 0, result.stdout + result.stderr);
+  assert.equal(result.summary.passed, 1);
+});
+
 test('pending chains cannot bind scopes or custom interactors and change the wrong contact', { timeout: 90000 }, async t => {
   let fixture = await project(t, { source: `
     import { defineInteractor } from 'dyno';

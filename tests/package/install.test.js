@@ -17,6 +17,8 @@ test('the packaged artifact installs and runs the documented first-test workflow
   assert.ok(pack.files.some((file) => file.path === 'src/browsers.js'));
   assert.ok(pack.files.some((file) => file.path === 'docs/browsers.md'));
   assert.ok(pack.files.some((file) => file.path === 'docs/architecture.md'));
+  assert.ok(pack.files.some((file) => file.path === 'docs/documentation.md'));
+  assert.equal(pack.files.some((file) => file.path.startsWith('site/')), false);
   assert.equal(
     pack.files.some((file) => file.path.startsWith('tests/')),
     false,
@@ -73,6 +75,9 @@ test('installed package opens the app', async ({app,I}) => { await app.goto('/')
     await readFile(join(fixture.directory, 'node_modules/dyno/package.json'), 'utf8'),
   );
   assert.ok(installed.dependencies['playwright-core']);
+  assert.equal(installed.dependencies.astro, undefined);
+  assert.equal(installed.scripts.prepare, undefined);
+  assert.equal(installed.scripts.postinstall, undefined);
   assert.equal(installed.peerDependencies?.['playwright-core'], undefined);
   await assert.rejects(fetch(`http://127.0.0.1:${fixture.port}`));
 });

@@ -4,3 +4,8 @@ test-results/
 *.tgz
 .DS_Store
 docs/tmp-*.md
+site/.astro/
+site/.generated/
+site/dist/
+site/published/
+site/src/content/docs/
