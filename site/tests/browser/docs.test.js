@@ -35,12 +35,12 @@ describe('Documentation', () => {
   test('can read and navigate on a phone viewport', async ({ app, I }) => {
     await app.setViewport({ width: 390, height: 844 });
     await app.goto('/dyno/next/guides/getting-started/');
-    await I.find('$(h1)').text('Add it to an app');
+    await I.find('$(h1)').text('Write your first test');
     await I.find('$(#docs-version)').visible();
     await app.screenshot('docs-mobile-content');
     await I.assert(() => app.document.documentElement.scrollWidth <= app.window.innerWidth, 'Expected the page to fit the viewport');
     await I.click('$(button[popovertarget="starlight__sidebar"])');
-    await I.find('Write and run tests').visible();
+    await I.find('Write tests').visible();
     await app.screenshot('docs-mobile');
   });
 });

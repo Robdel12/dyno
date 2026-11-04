@@ -1,19 +1,16 @@
 /**
- * The current app window and the operations Dyno owns. Tests run in a separate context and read the app DOM directly. Fresh documents do not reset browser storage or backend data.
- *
  * @api Application
+ * Navigate and inspect your app from a test. Tests have their own context and read the app DOM directly. Fresh documents don't reset browser storage or backend data.
  */
 
 /**
- * Navigate to a same-origin app path and wait for its document bridge. Use Interactor to wait for the UI you care about after navigation.
- *
  * @api Application.goto
+ * Navigate to a same-origin app path and wait for its document bridge. Then use Interactor to wait for the UI you care about.
  */
 
 /**
- * Make a same-origin fetch with the browser session and test cancellation signal. Returns a standard Response. Call your app’s test-only fixture endpoints here; Dyno does not own database factories.
- *
  * @api Application.request
+ * Fetch a same-origin URL using the browser session and test cancellation signal. Returns a standard Response. Use this for your app's test-only fixture endpoints; keep database factories in your project.
  */
 
 /**
@@ -47,9 +44,8 @@
  */
 
 /**
- * Explicit managed browser capabilities. Unsupported required operations fail clearly; there is no synthetic fallback.
- *
  * @api Application.native
+ * Use managed browser features such as native input and permissions. Required operations fail when unsupported.
  */
 
 /**
@@ -95,66 +91,88 @@
  */
 
 /**
- * Managed runs include screenshots and window sizing through Playwright Core. [Download a browser build](browsers.md) once with `dyno install`; no extra dependency is needed. Manual URL-only runs have neither capability.
- *
- * ```js
- * export default {
- *   browser: { name: 'chromium' },
- *   viewport: { width: 1280, height: 800 },
- *   artifactsDir: '.dyno/artifacts',
- *   webServer: {
- *     command: 'npm run dev',
- *     url: 'http://127.0.0.1:3000'
- *   }
- * };
- * ```
+ * @guide screenshots Screenshots
+ * Wait for the UI you care about, then capture it:
  *
  * ```js
  * await I.find('Dashboard').visible();
- * let image = await app.screenshot('dashboard', {
- *   fullPage: true,
- *   mask: [...app.document.querySelectorAll('[data-private]')],
- *   animations: 'disabled',
- *   caret: 'hide'
- * });
- * // image.path, image.url, image.width, image.height, image.pixelRatio
+ * let image = await app.screenshot('dashboard', { fullPage: true });
  * ```
  *
- * Dyno captures the original app window with the reporter hidden. By default it captures the viewport; `fullPage: true` captures the whole page without enlarging the viewport. It waits for fonts, checks the document and dimensions, and saves the PNG before resolving. Navigation, Stop, resize, or lost ownership invalidates pending captures. Screenshot and viewport requests run in order; finishing a test or hook with unfinished operations fails clearly. Await both APIs.
+ * Managed browsers capture the original app page with the reporter hidden. The default is a viewport image; `fullPage: true` captures the whole page without changing its viewport. The result includes `path`, `url`, dimensions, and pixel ratio. Images appear in live and [saved reports](guide.md#saved-reports).
  *
- * In a manual run, required capture fails. Use `await app.screenshot('dashboard', { optional: true })` only when the functional test is useful without an image. It returns and reports a skipped image when capture is unavailable. Provider and storage errors still fail.
+ * ## Choose what to capture
  *
- * Reported images remain on disk after cleanup. Interrupted runs discard images that weren't reported. JSON attachment events and test results include the path, browser/provider/version, viewport, and pixel ratio. The reporter links to the PNG while the gateway is running.
+ * ```js
+ * await app.screenshot('dashboard', {
+ *   mask: [...app.document.querySelectorAll('[data-private]')],
+ *   maskColor: '#ff00ff',
+ *   animations: 'disabled',
+ *   caret: 'hide',
+ * });
  *
- * For one element, use `app.screenshot('card', { element: await I.find('$(.card)') })`. It captures the element's document bounds, including content below the fold, without scrolling or resizing. Fractional edges round outward. Element capture cannot combine `fullPage` or `mask`.
+ * await app.screenshot('card', {
+ *   element: await I.find('$(.card)'),
+ * });
+ * ```
  *
- * Capture options are `fullPage` (default `false`), `mask` (an array of app `Element` objects), `animations` (`'allow'` or `'disabled'`, default `'allow'`), and `caret` (`'initial'` or `'hide'`, default `'initial'`). `maskColor` accepts an opaque `#RRGGBB` color (default `#ff00ff`). Masks cover those elements in the PNG; pass current elements from the app document. All managed targets support full-page capture.
+ * Masks cover current app elements in the PNG. `maskColor` takes an opaque `#RRGGBB` color. Element capture uses the element's document bounds, including content below the fold, without scrolling or resizing. Fractional edges round outward; element capture can't combine with `fullPage` or masks.
  *
- * Screenshots are attachments, without baseline comparison. They record a rendered frame during the request; they don't freeze other app work. Animation suppression finishes finite animations and suspends infinite ones before measuring the document and masks. Temporary styles are removed and suspended animations restart afterward. Use Interactor to wait for the state you want first.
+ * Animations and carets stay unchanged by default. With suppression enabled, finite animations finish, infinite animations pause, and temporary styles are removed afterward. Dyno waits for fonts and checks the document and dimensions, but other app work can continue. Use Interactor to choose the state first.
  *
- * @guide screenshots Screenshots
+ * Always await captures and viewport changes. They run in order; navigation, Stop, resize, or lost ownership invalidates pending captures. Leaving operations unfinished fails the test or hook.
+ *
+ * ## Manual browsers
+ *
+ * URL-only runs can't take screenshots. Required captures fail. Use `{ optional: true }` only when the functional test is useful without an image; Dyno returns and reports a skipped image. Provider and storage errors still fail.
+ *
+ * Reported PNGs stay on disk after cleanup; interrupted runs discard unreported images. Capture metadata includes the browser/provider/version, viewport, and pixel ratio. Dyno saves attachments; your visual-comparison service owns baselines and diffs.
  */
 
 /**
- * Manual runs use the app window's actual viewport. Managed runs default to 1280 × 800 CSS pixels. Set `viewport` in config for fixed dimensions, or await `app.setViewport({ width: 390, height: 844 })` within a managed test. The next test restores its default size.
- *
- * A browser page cannot reliably resize its own tab. Without a managed provider, a matching `app.setViewport` call is a no-op and any different size fails clearly. A fixed config size must also match the actual window. Resize it yourself or use a managed run; Dyno does not fake a viewport with an app iframe.
- *
- * These are layout dimensions, not phone emulation. They don't set touch input, OS orientation, or physical screen size. A mobile-sized desktop viewport does not prove real-device behavior.
- *
  * @guide viewport Viewport sizing
+ * Managed runs start at 1280 × 800 CSS pixels. Set `viewport` in config or change it during a test:
+ *
+ * ```js
+ * await app.setViewport({ width: 390, height: 844 });
+ * ```
+ *
+ * The next test restores its default size. These dimensions change desktop layout; they don't emulate touch input, a phone's OS, or its physical screen.
+ *
+ * Manual runs use the actual window. A browser can't reliably resize its own tab, so a matching `app.setViewport` request succeeds and a different size fails. Fixed config dimensions must match too. Resize the window yourself or use a managed browser.
  */
 
 /**
- * `dyno doctor` checks config, bundles tests, checks the selected Playwright build or executable, and checks the app URL without launching anything. It validates headless mode by default; add `--ui` for a visible browser or `--manual` for a URL-only setup. It cannot prove that a configured server command starts successfully; the run checks its output and HTTP readiness.
+ * @guide debugging Editing and debugging
+ * Keep the app and browser running while you change tests:
  *
- * `--watch` keeps the app server and browser session alive. It watches test files and imported project helpers using filesystem events. Edits during a run queue one rebuild of the latest files. Build errors leave the previous results available; fixing the file runs again. Config and Node setup changes need a CLI restart. App code keeps its own hot reload.
+ * ```sh
+ * dyno --ui --watch
+ * ```
  *
- * Use `await app.pause('Inspect this contact')` within a test or setup hook with `--ui` or `--manual`. It opens the reporter immediately, retains the current app and test, and suspends the test deadline. Continue hides the reporter and resumes the remaining budget. It does not freeze application timers or network requests. Cleanup has its own deadline and cannot pause. Headless pause calls fail clearly.
+ * Edits to tests or imported helpers queue a rebuild. If a run is active, Dyno waits for it before running the latest code. A build error leaves the previous results available; fix the file to run again.
  *
- * The package includes types for tests, hooks, config, fixtures, and app APIs. Browser tests use TypeScript's `moduleResolution: "Bundler"`; Interactor.js currently has extensionless declaration imports that do not support strict NodeNext checking. Config types work independently of those browser declarations. TypeScript is still transpiled during a run; use your project's `tsc --noEmit` for type checking. JavaScript editors get the same declarations.
+ * Your app keeps its own hot reload. Restart Dyno after changing config or Node setup.
  *
- * Extend `Fixtures` in your project to type values returned by Node setup:
+ * ## Stop where the problem is
+ *
+ * ```js
+ * await app.pause('Inspect this contact');
+ * ```
+ *
+ * Use this in a test or setup hook with `--ui` or `--manual`. It opens the reporter immediately and suspends the test deadline. Continue hides the reporter and resumes the remaining budget.
+ *
+ * The app's timers and requests keep running. Cleanup cannot pause, and headless runs reject the call. For failures anywhere in a suite, use **Pause on failure** in the reporter.
+ *
+ * ## Check the setup first
+ *
+ * Run `dyno doctor` to check config, bundling, browser prerequisites and the app URL without launching anything. Add `--ui` or `--manual` to check that mode. The actual run still needs to start the server successfully.
+ *
+ * ## Type-check your tests
+ *
+ * Dyno transpiles TypeScript without checking it. Run your project's `tsc --noEmit`, using `moduleResolution: "Bundler"` for browser tests; Interactor's declarations don't currently support strict NodeNext checking. JavaScript editors use the same included types.
+ *
+ * To type values from Node setup, extend `Fixtures` in your project:
  *
  * ```ts
  * import 'dyno';
@@ -164,7 +182,7 @@
  * }
  * ```
  *
- * @guide debugging Editing and debugging
+ * Config types work independently of the browser declarations.
  */
 
 import { createNative } from './native.js';

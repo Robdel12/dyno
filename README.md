@@ -1,33 +1,22 @@
 # Dyno
 
-Browser tests that run in the browser. Dyno starts your app, serves a test URL, and reports the results. [Interactor.js](https://github.com/wwilsman/interactor.js) handles DOM interaction and assertions in the same browser as your app.
+Write browser tests that run in the browser. Dyno starts your app, serves a test URL, and reports results. [Interactor.js](https://github.com/wwilsman/interactor.js) handles DOM interaction and waiting for the UI.
 
-Open the URL to run tests without a driver or extension. Dyno keeps the app in the main window and runs tests in a companion window. Managed runs use the included Playwright Core for launch, screenshots, and window sizing. Other devices remain a goal; popup and background-tab behavior still need real-device checks.
+The app gets the full window, with tests in a companion window and a reporter you can open over the app. The included Playwright Core handles managed launch, screenshots, and viewport sizing. Manual runs just need the URL and a supported browser.
 
-Dyno is early and isn't published to npm yet. You'll need Node 24+. Chromium is the default; download its browser build once with `dyno install`.
+[Read the docs](https://robdel12.github.io/dyno/) or [write your first test](https://robdel12.github.io/dyno/next/guides/getting-started/).
 
-## Try it
+## Try it in your app
 
-```sh
-git clone https://github.com/Robdel12/dyno.git
-cd dyno
-npm ci
-node bin/dyno.js install
-node bin/dyno.js --config examples/demo/dyno.config.js --ui
-```
-
-The app fills the original browser window. If the browser blocks the companion window, click **Start tests**. Keep both windows open. Press **Ctrl+Shift+D** to inspect results over the app, or open the printed reporter URL separately.
-
-## Use it in an app
+Dyno is early and isn't published to npm yet. You'll need Node 24+.
 
 ```sh
 npm install --save-dev github:Robdel12/dyno
 npx dyno init
 npx dyno install
-npx dyno doctor
 ```
 
-Commit your lockfile and use `npm ci` in CI to keep the tested Dyno revision. Set your app's command and URL in `dyno.config.js`, then write a test:
+Set your app's command and URL in `dyno.config.js`, then write a test:
 
 ```js
 import { describe, test } from 'dyno';
@@ -35,27 +24,19 @@ import { describe, test } from 'dyno';
 describe('Contacts', () => {
   test('saves a contact', async ({ app, I }) => {
     await app.goto('/contacts/new');
-    await I.type('Robert').into('$(input[name=name])');
+    await I.find('Name').then.fill('Robert');
     await I.click('Save');
     await I.find('$([role=status])').text('Contact saved');
   });
 });
 ```
 
-Run `npx dyno` for a headless run, `npx dyno --ui` to inspect the app, or `npx dyno --manual` to open the URL yourself. Each test gets a fresh runtime and app document. Storage and database cleanup stay explicit. Use `--watch` to rerun test and helper edits. Each run also saves an HTML report you can open after Dyno stops.
-
-Use `--workers 4` with [project worker setup](docs/guide.md#concurrent-runs) for isolated concurrent execution. `--random` prints a seed; `--replay path/to/schedule.json` restores recorded worker queues.
-
-## Screenshots
-
-`await app.screenshot('dashboard', { fullPage: true })` saves the full app page. Managed runs also support `await app.setViewport({ width: 390, height: 844 })`. Manual runs use the actual window size and cannot capture screenshots. [Browser setup](docs/browsers.md) covers the available targets.
+Run `npx dyno` for headless tests or `npx dyno --ui` to inspect the app. Add `--watch` to rerun edits. Commit your lockfile to keep the tested Dyno revision. Each test gets fresh documents; your project owns storage and database cleanup.
 
 ## Work on Dyno
 
-Run `npm test` after downloading Chromium with `node bin/dyno.js install`. [CI setup](docs/ci.md) lists the individual suites. The macOS process-cleanup test also needs `cc`. The optional `npm run test:vizzly` integration needs a Vizzly checkout, its built frontend, and Docker; the main suite doesn't need any of those.
+Clone this repo, run `npm ci`, and download Chromium with `node bin/dyno.js install`. Run the demo with `node bin/dyno.js --config examples/demo/dyno.config.js --ui` and the framework suite with `npm test`.
 
-Start with [the vision](vision.md). The [guide](docs/guide.md) covers setup and workflows; the [API reference](docs/api.md) lists methods and hooks. Read [architecture](docs/architecture.md) for execution and the [design guide](docs/design.md) for the reporter.
+Start with [the vision](vision.md). [Architecture](docs/architecture.md), [CI setup](docs/ci.md), and [the documentation guide](docs/documentation.md) cover contributing. The portable [guide](docs/guide.md) and [API reference](docs/api.md) are generated from source.
 
 MIT licensed. See [LICENSE](LICENSE).
-
-The [documentation guide](docs/documentation.md) covers source JSDoc, the Astro site and versioned releases.

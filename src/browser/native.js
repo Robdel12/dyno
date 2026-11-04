@@ -1,5 +1,6 @@
 /**
- * Use native input when the browser's default behavior is the thing being tested. Keep ordinary clicks, fields, and assertions in Interactor.
+ * @guide native Native browser actions
+ * Use native input when you're testing the browser's default behavior, such as Tab navigation or CSS hover. Keep ordinary clicks, fields, and assertions in Interactor.
  *
  * ```js
  * await I.find('Name').then.focus();
@@ -9,17 +10,32 @@
  * await I.nativeMove({ x: 0, y: 0 });
  * ```
  *
- * These actions compose with scopes and custom interactors. `nativePress` sends a real key to the app's focused element; it doesn't focus a selector for you. Follow navigation-producing input with an Interactor assertion on the destination. Hover scrolls the element into view and uses a visible point that receives pointer input. A stale or covered target fails.
+ * These work with scopes and custom interactors. `nativePress` uses the focused element; it doesn't focus a selector for you. Hover scrolls to a visible point that receives pointer input. Stale or covered targets fail. After an action navigates, assert on the destination with Interactor.
  *
- * `app.native.withDialog({ action: 'accept', message: 'Delete this note?' }, async () => { await I.click('Delete'); })` handles a real browser dialog around that action. It checks the optional exact message and preserves the callback result; `dismiss` and prompt `text` are supported too. Await the scope, including when its callback navigates.
+ * ## Handle a dialog
  *
- * `app.native.consoleMessages()` reads up to 100 recent browser console entries, including browser-generated warnings. Each has an increasing `id`, `type`, and `text` (up to 4,000 characters). Record the highest ID before a workflow to inspect only newer messages. These entries aren't automatically copied to reports.
+ * ```js
+ * await app.native.withDialog({
+ *   action: 'accept',
+ *   message: 'Delete this note?',
+ * }, async () => {
+ *   await I.click('Delete');
+ * });
+ * ```
  *
- * `app.native` also provides `grantPermissions([...])`, `enableVirtualAuthenticator()`, `disableVirtualAuthenticator()`, `setOffline(boolean)`, and `setReducedMotion('reduce' | 'no-preference')`. Settings can run in setup before `app.goto`. Permissions, authenticators, network state, and media changes reset before the next test, including after failure. Failed cleanup ends the managed browser session. Each call appears in the timing report.
+ * The optional message must match exactly. You can also dismiss a dialog or supply prompt `text`. Await the scope, including when the callback navigates; it returns the callback's result.
  *
- * `app.native.capabilities` describes this browser's support. Required calls fail when unavailable; there is no synthetic fallback. Keyboard, pointer, and media use managed Playwright browsers. Virtual authenticators and app network offline require Chromium. Clipboard permission support varies by engine. Manual URL runs don't have native capabilities. Chromium offline keeps companion HTTP working, but its browser online-state signal can also change in the companion. See [browser limits](browsers.md).
+ * ## Choose supported features
  *
- * @guide native Native browser behavior
+ * `app.native.capabilities` tells you what this browser supports. Required calls fail when unavailable. Manual runs have no native capabilities; managed support varies by engine. See the [browser support table](browsers.md#native-capabilities).
+ *
+ * Use `grantPermissions([...])`, `enableVirtualAuthenticator()`, `disableVirtualAuthenticator()`, `setOffline(boolean)`, or `setReducedMotion('reduce' | 'no-preference')` before or after navigation. State resets before the next test, including after failure. Failed cleanup ends the managed session, and each operation appears in timings.
+ *
+ * Virtual authenticators and app offline require Chromium. Your app still performs real passkey registration and validation. Offline keeps companion HTTP connected, but Chromium can change its `navigator.onLine` too; this isn't fully isolated offline state.
+ *
+ * ## Read browser console messages
+ *
+ * `app.native.consoleMessages()` returns up to 100 recent entries with increasing `id`, `type`, and `text` (up to 4,000 characters). Save the highest ID before a workflow to find newer messages. Browser-generated warnings are included; these entries aren't automatically copied to reports.
  */
 
 /**
@@ -89,9 +105,8 @@
  */
 
 /**
- * Arm an accept/dismiss response, await the callback that opens the dialog, then disarm it. An optional message checks the dialog text; `text` supplies a prompt response.
- *
  * @api NativeBrowser.withDialog
+ * Handle a dialog opened by the callback, then remove the handler. Optionally check its exact message or supply prompt `text`. Returns the callback result.
  */
 
 /**

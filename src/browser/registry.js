@@ -63,9 +63,8 @@
  */
 
 /**
- * Every test and hook must be inside a named `describe(name, callback)`, including skipped and focused tests. You can have several top-level suites in a file. Callbacks register synchronously; put async work in hooks or tests.
- *
- * Nested `beforeEach` hooks run from the outer suite inward, and `afterEach` hooks run from the inner suite outward.
+ * @guide suites Suites and selection
+ * Give each group of workflows a name with `describe`. Keep its setup and cleanup there too:
  *
  * ```js
  * import { describe, test, beforeEach } from 'dyno';
@@ -82,11 +81,15 @@
  * });
  * ```
  *
- * One worker runs tests sequentially. [Concurrent runs](#concurrent-runs) assign tests across private workers; suite names organize hooks and reports without creating shared storage or backend isolation. Keep that cleanup in your project.
+ * Every test and hook belongs inside a `describe`. You can nest suites or have several at the top level. Suite definitions are synchronous; put async work in hooks or tests.
  *
- * Names must be unique within a suite; different files and suites can reuse a short name. Each test has a stable ID based on its file, suite path, and name. Adding another test doesn't change that ID.
+ * ## Set up and clean up
  *
- * `test.skip('later')` and `describe.skip` report skipped tests without executing their hooks or bodies. `test.only` and `describe.only` select focused tests locally. `forbidOnly` defaults to true when `CI` is set, so committed focus markers fail clearly.
+ * `beforeEach` runs from the outer suite inward. `afterEach` runs from the inner suite outward, including after failure for suites the test entered. Cleanup gets fresh APIs and its own budget, so one failed assertion doesn't use up the cleanup time.
+ *
+ * Each test starts with fresh app and test documents. Cookies, browser storage, service workers and backend records persist. Reset those through your app's fixtures and hooks; use Node teardown for resources that outlive a test. [Configuration](guide.md#configure-your-project) covers that setup.
+ *
+ * ## Run just what you're editing
  *
  * ```sh
  * dyno --suite Authentication
@@ -95,9 +98,11 @@
  * dyno --id '<ID from test discovery/results>'
  * ```
  *
- * File, suite, and ID selectors can repeat; different selector kinds narrow each other. A short `--test` name that matches multiple tests explains how to disambiguate it. Reporter reruns use stable IDs and rebuild before execution. JSON start events include descriptors with `id`, `file`, `suites`, `name`, and the index within that bundle; outcomes include `testId`.
+ * File, suite and ID flags can repeat. Different kinds narrow the selection together. If a short test name is ambiguous, Dyno tells you how to pick one.
  *
- * @guide suites Suites and selection
+ * Use `test.only` or `describe.only` for local focus. CI rejects them by default. `test.skip('later')` and `describe.skip` report skipped tests without running their hooks or bodies.
+ *
+ * Names must be unique within a suite. Stable IDs use the file, suite path and test name, so adding or reordering other tests doesn't change them. The reporter uses those IDs for reruns.
  */
 
 import { createSuite, addSuite, addTest, addHook, compileSuite } from '../suite.js';

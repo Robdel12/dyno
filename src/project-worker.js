@@ -23,9 +23,8 @@
  */
 
 /**
- * Join work started by this execution after Dyno retires its documents. Honor cancellation. Failed draining ends the run and preserves accepted results; teardown must remain safe afterward.
- *
  * @api ProjectWorker.drain
+ * Wait for work this execution started after Dyno removes its documents. Honor cancellation. Failed draining ends the run and saves accepted results; teardown must remain safe afterward.
  */
 
 /**
@@ -47,20 +46,14 @@
  */
 
 /**
- * Tests use declared order by default. Randomize them with a recorded seed:
+ * @guide concurrency Concurrent runs
+ * Start with one worker, the default. Once your app has isolated test resources, try `dyno --workers 4` and compare [run times](guide.md#understand-where-time-goes). More tabs don't make a shared database safe.
  *
- * ```sh
- * dyno --random
- * dyno --seed issue-184
- * ```
+ * Dyno uses one managed browser with private worker contexts, gateways, and app resources. Tests keep their hooks and fresh documents; the reporter combines results in catalog order. Manual runs use one worker; explicitly combining `--manual --workers 4` fails.
  *
- * Dyno prints the seed and includes it in live run info and saved reports. The same seed preserves priority for the same test IDs, including when filtering. It does not control app randomness or asynchronous timing. `schedule.json` records the actual assignments and completion order. A final retained assignment keeps its app available until session shutdown; browser shutdown is recorded in `session.json`.
+ * ## Give each worker its own resources
  *
- * ### Concurrent runs
- *
- * `dyno --workers 4` uses one browser with private contexts, app gateways and project resources. The default is one worker. Manual URL runs use one worker regardless of the configured managed count; an explicit `--manual --workers 4` fails with an explanation. Every worker registers the same catalog before dispatch. Tests keep their suite hooks and fresh documents, and results stay in catalog order.
- *
- * Concurrent projects must return `createWorker` from Node setup:
+ * Return `createWorker` from Node setup:
  *
  * ```js
  * import { prepareBuild, startTestProject } from './support/project.js';
@@ -74,13 +67,13 @@
  * }
  * ```
  *
- * Those helpers belong to your project. `worker` contains its string `id` and numeric `index`. Each call returns `{ webServer, env, fixtures, drain, teardown }`. Use private databases, queues, files and mutable app state; share immutable build output. A deliberately stateless app can share a server. If setup starts the server itself, return its URL with `command: undefined` and `reuseExistingServer: true`.
+ * These helpers belong to your project. `worker` has a string `id` and numeric `index`. Each call returns `{ webServer, env, fixtures, drain, teardown }`, overriding setup defaults. Share immutable build output; keep databases, queues, files, and mutable app state private. A deliberately stateless app can share a server.
  *
- * Worker values override setup defaults for the server, environment and fixtures. A worker can override the setup's `drain`. Worker teardown releases that worker; setup teardown runs once afterward. Failed setup must clean up anything it acquired before returning. One worker uses this same path.
+ * If setup starts the server, return its URL with `command: undefined` and `reuseExistingServer: true`. Worker teardown runs before shared setup teardown. Clean up partial setup if it throws. The same setup path works with one worker.
  *
- * Global Pause stops new assignments and waits at test boundaries; `app.pause()` holds only its worker. The reporter shows one combined run and lets you choose a worker to inspect. Stop or worker loss preserves accepted outcomes and images, then drains and closes the run. There are no automatic worker restarts or test retries.
+ * ## Protect shared resources
  *
- * Declare shared resources before execution when a test uses something such as the OS clipboard:
+ * Declare resources such as the OS clipboard before execution:
  *
  * ```js
  * test('copies a token', async ({ I }) => {
@@ -88,15 +81,26 @@
  * }, { resources: ['clipboard'] });
  * ```
  *
- * Dyno reserves a test's named resources together and holds them through document retirement and project draining. Other eligible tests can continue. Browser tabs alone do not isolate your app's database or storage.
+ * Dyno reserves the names together until document retirement and project draining finish. Other eligible tests continue. Global Pause stops new assignments at test boundaries; `app.pause()` holds only its worker. Stop or worker loss saves accepted outcomes and images, drains, and closes the run. Tests and workers aren't automatically retried.
  *
- * ### Queue replay
+ * ## Randomize order
  *
- * `dyno --replay .dyno/reports/<run>/schedule.json` restores each worker's recorded queue and count. An explicit `--workers` must match. The test bundle fingerprint and catalog must match too; changed sources or malformed schedules fail plainly. Replay cannot combine with selection flags, seeds or `--watch`.
+ * ```sh
+ * dyno --random
+ * dyno --seed issue-184
+ * ```
  *
- * A completed schedule replays the full recorded selection. An interrupted schedule replays attempted tests, including the unfinished assignment, and reports how many unassigned tests it omitted. It does not claim those omitted tests passed. Queue replay preserves worker order, not network or timer interleaving. App code outside the test bundle, backend data and application randomness remain your project's responsibility.
+ * The seed appears in CLI output, Run info, and saved reports. It preserves priority for the same test IDs, including when filtering. It doesn't control app randomness or asynchronous timing.
  *
- * @guide concurrency Execution order
+ * ## Replay worker queues
+ *
+ * ```sh
+ * dyno --replay .dyno/reports/<run-id>/schedule.json
+ * ```
+ *
+ * `schedule.json` records assignments and completion order. Replay restores worker queues and count, not network or timer interleaving. The bundle fingerprint and catalog must match; an explicit `--workers` must match too. Selection flags, seeds, and `--watch` can't combine with replay.
+ *
+ * A completed schedule replays its full selection. An interrupted one replays attempted tests, including the unfinished assignment, and reports omitted unassigned tests. Those tests never count as passed. App code outside the test bundle, backend data, and application randomness remain yours to control. The last app stays available until shutdown, which is recorded in `session.json`.
  */
 
 import { normalizeConfig } from './config.js';

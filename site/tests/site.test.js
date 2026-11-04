@@ -40,7 +40,7 @@ test('builds exact-tag docs, preserves them through source edits, and reads both
   let archives = join(directory, 'archives');
   await run(process.execPath, ['site/scripts/archive.js', 'pack', 'site/dist', join(archives, `dyno-docs-${tag}.tar.gz`)]);
   let source = join(checkout, 'src/browser/index.js');
-  await writeFile(source, (await readFile(source, 'utf8')).replace('The app gets its full viewport.', 'Next-only documentation marker. The app gets its full viewport.'));
+  await writeFile(source, (await readFile(source, 'utf8')).replace('The app keeps its full viewport while you inspect it.', 'Next-only documentation marker. The app keeps its full viewport while you inspect it.'));
   await assert.rejects(run(process.execPath, ['site/scripts/build.js'], { env: environment }), /Release docs require a clean checkout/);
   await run(process.execPath, ['site/scripts/build.js'], { env: { ...process.env, DYNO_DOCS_VERSION: 'next' } });
   let published = join(directory, 'published');

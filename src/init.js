@@ -1,12 +1,22 @@
 /**
+ * @guide getting-started Write your first test
+ * Start with a workflow you care about. We'll use saving a contact here; swap in your app's route, labels and expected result.
+ *
+ * ## Install Dyno
+ *
+ * You'll need Node 24+. Install from GitHub for now, then download Chromium once:
+ *
  * ```sh
  * npm install --save-dev github:Robdel12/dyno
  * npx dyno init
  * npx dyno install
- * npx dyno doctor
  * ```
  *
- * `init` creates `dyno.config.js` and one example test. It checks both paths before writing and leaves existing files alone. Update the command, URL, and assertion for your app.
+ * `init` adds a config and an example test without overwriting existing files. Commit your lockfile so local runs and CI use the same Dyno revision.
+ *
+ * ## Point it at your app
+ *
+ * In `dyno.config.js`, set the command that starts your app and the URL it serves:
  *
  * ```js
  * export default {
@@ -14,10 +24,16 @@
  *   webServer: {
  *     command: 'npm run dev',
  *     url: 'http://127.0.0.1:3000',
- *     reuseExistingServer: !process.env.CI
- *   }
+ *     reuseExistingServer: !process.env.CI,
+ *   },
  * };
  * ```
+ *
+ * Dyno starts that command for you. Locally, `reuseExistingServer` lets you use an app that's already running; Dyno leaves that server alone when it stops.
+ *
+ * ## Test the result
+ *
+ * Replace the example test in `tests/browser`:
  *
  * ```js
  * import { describe, test } from 'dyno';
@@ -25,18 +41,25 @@
  * describe('Contacts', () => {
  *   test('saves a contact', async ({ app, I }) => {
  *     await app.goto('/contacts/new');
- *     await I.type('Robert').into('$(input[name=name])');
+ *     await I.find('Name').then.fill('Robert');
  *     await I.click('Save');
  *     await I.find('$([role=status])').text('Contact saved');
  *   });
  * });
  * ```
  *
- * Run `npx dyno`, or add `"test:browser": "dyno"` to your package scripts. Tests can use browser APIs and browser-compatible npm packages. JavaScript, JSX, TypeScript, and TSX are supported; TypeScript is transpiled without type checking. Filesystem and database setup belongs in the Node setup hook.
+ * Interactor waits for the expected UI. Await each action and assertion, and keep tests inside a named `describe`.
  *
- * Use the [API reference](api.md) to look up methods and the [custom interactor guide](guide.md#custom-interactors) to share component workflows.
+ * ## Run it
  *
- * @guide getting-started Add it to an app
+ * ```sh
+ * npx dyno doctor
+ * npx dyno --ui
+ * ```
+ *
+ * `doctor` checks your config, test bundle and browser setup. `--ui` runs the test with the app visible. Use `npx dyno` for a headless run.
+ *
+ * Next, [learn the interaction basics](guide.md#interact-with-the-app) or [share workflows with custom interactors](guide.md#custom-interactors). JavaScript, JSX, TypeScript and TSX work; run your own type checker for TypeScript.
  */
 
 import { access, mkdir, unlink, writeFile, readFile } from 'node:fs/promises';

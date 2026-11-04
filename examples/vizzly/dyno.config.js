@@ -1,11 +1,10 @@
 /**
- * `examples/vizzly` demonstrates login and navigation against a real app and database. It needs a Vizzly checkout with built `dist` assets and Docker. Set `VIZZLY_ROOT` if the checkout isn't the sibling `vizzly` directory.
+ * @guide vizzly Real app example: Vizzly
+ * `examples/vizzly` runs login and navigation against the real app and database. You'll need a Vizzly checkout with built `dist` assets and Docker. Set `VIZZLY_ROOT` if it isn't the sibling `vizzly` directory.
  *
- * Run `npm run test:vizzly`, or append `-- --ui` to inspect it. Setup creates its own PostgreSQL and Redis containers, runs migrations and seeds, and supplies a disposable account. The app uses port 3017 and the gateway uses 7359. Cleanup removes only that run's containers and volumes.
+ * Run `npm run test:vizzly`, or add `-- --ui` to inspect it. Setup creates private PostgreSQL and Redis containers, runs migrations and seeds, and provides a disposable account. The app uses port 3017; the gateway uses 7359. Cleanup removes only that run's containers and volumes.
  *
- * This example is optional. `npm test` uses the self-contained fixture app.
- *
- * @guide vizzly Vizzly example
+ * This integration is optional. `npm test` uses a self-contained fixture app.
  */
 
 import { fileURLToPath } from 'node:url';

@@ -1,23 +1,37 @@
 /**
- * Dyno serves the start page at `/__dyno__/`, keeps its controller in a companion window, and forwards app paths to `webServer.url`, including WebSocket upgrades. The app keeps its normal routes, relative assets, and API calls. Its own server still handles hot reload.
+ * @guide app-server Connect your app server
+ * Give Dyno the command you already use to start your app and its URL. Your server still handles routes, assets, API calls, and hot reload.
  *
- * The gateway rewrites redirects to the upstream app back to its own origin. It translates same-origin Origin/Referer headers and matching cookie domains while preserving cookie security attributes and unrelated external redirects. Foreign origins remain foreign.
+ * ```js
+ * webServer: {
+ *   command: 'npm run dev',
+ *   url: 'http://127.0.0.1:3000',
+ *   ready: 'Listening on',
+ *   reuseExistingServer: !process.env.CI,
+ * }
+ * ```
  *
- * A small script inserted before executable app scripts reports errors and document readiness and hosts the reporter iframe. The test bundle loads only in the companion's hidden runtime and reads the top-level app DOM directly. The app doesn't need test imports or source changes.
+ * The server must log after it starts listening. `ready` can be a string or RegExp matching that message. Output triggers an HTTP HEAD check; any response, including a 401 or 404, confirms the server is up. There's no fixed startup sleep.
  *
- * CSP and app isolation headers stay in place. Dyno uses the opener/embedder policies from the startup HTTP response on its own pages, keeping strict same-origin apps connected to the companion. The script uses an existing app nonce when available. If the app blocks that script, the reporter iframe, or same-origin window access, give it an explicit test configuration. Cross-origin navigation and policy changes that sever the companion relationship during a run are unsupported. The gateway supports UTF-8 HTML with gzip, deflate, and Brotli compression, up to 10 MB decoded.
+ * ## Start and stop
  *
- * ### Starting and stopping the server
+ * Dyno reuses a responding server only with `reuseExistingServer: true` and leaves it running afterward. Otherwise, it starts `command` in `cwd` with `env`. Use a shell string or an argv array such as `['node', 'server.js']`.
  *
- * If the app URL already returns an HTTP response, Dyno reuses it only with `reuseExistingServer: true` and leaves it running afterward. Otherwise, Dyno starts `command` in `cwd` with `env`. Commands can be shell strings or argv arrays such as `['node', 'server.js']`.
+ * When a run ends or fails, Dyno stops the processes it started, including descendants. A bounded grace period comes before forceful termination. Reused servers and manually opened browsers remain yours.
  *
- * The server must log after it starts listening. Set `webServer.ready` to match that message. Process output triggers an HTTP HEAD check; even a 404 or 401 confirms a responding server. There is no fixed startup sleep or timed polling loop.
+ * ## How the app reaches the browser
  *
- * The app receives `DYNO_URL`, the gateway origin. Use it for the app’s public URL setting when testing OAuth or WebAuthn. The gateway forwards the upstream Host and rewrites its own Origin header, while browser credentials contain the gateway origin. Root-relative URLs are easiest to use.
+ * The browser loads Dyno's gateway, which forwards app requests and WebSockets to `webServer.url`. The app fills the main window. Tests load in a companion window and read the app's DOM directly; a small injected script reports readiness and errors and hosts the reporter iframe. Your app needs no test imports.
  *
- * App exit, startup failure, browser exit, signals, and completed headless runs go through cleanup. Dyno stops its own processes and descendants, with a bounded grace period before forceful termination. Reused servers and manually opened browsers remain yours.
+ * Redirects to the app are rewritten to the gateway origin. Dyno translates same-origin Origin/Referer headers and matching cookie domains, preserving cookie security attributes. External redirects stay external.
  *
- * @guide app-server App server integration
+ * The app receives `DYNO_URL`, the gateway origin. Use it as your public URL for OAuth or WebAuthn: browser credentials contain that origin, while the upstream receives its own Host. Root-relative URLs work best.
+ *
+ * ## If the app blocks the runner
+ *
+ * Dyno preserves CSP and isolation headers and uses an existing script nonce when available. Give your app an explicit test configuration if it blocks injection, the reporter iframe, or same-origin window access. Changing isolation policy or navigating cross-origin can disconnect the companion and is unsupported.
+ *
+ * The gateway accepts UTF-8 HTML, including gzip, deflate, and Brotli, up to 10 MB decoded. See [current limits](guide.md#current-limits) for origin and browser requirements.
  */
 
 import http from 'node:http';
