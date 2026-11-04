@@ -1,78 +1,57 @@
 # Browser setup
 
-Playwright Core ships with Dyno. It handles managed browser launch, screenshots, and viewport sizing. Tests and Interactor still execute in the browser. Explicit native operations use that same managed session.
-
-Download a browser build once, then run:
+Playwright Core comes with Dyno. Download a browser once, then run your tests:
 
 ```sh
 npx dyno install                      # Chromium, the default
+npx dyno --ui
 npx dyno install --browser firefox
+npx dyno --browser firefox --ui
 npx dyno install --browser webkit
-npx dyno --browser webkit              # headless
-npx dyno --browser firefox --ui        # visible
-npx dyno browsers                      # downloaded builds and paths
+npx dyno --browser webkit
 ```
 
-Runs never download browsers. `dyno install` uses Playwright's installer and cache. On Linux, use `dyno install --with-deps` to also install [Playwright's system dependencies](https://playwright.dev/docs/browsers#install-system-dependencies). That explicit option can require administrator access.
+Runs never download browsers. On Linux, `dyno install --with-deps` also installs [system dependencies](https://playwright.dev/docs/browsers#install-system-dependencies) and may need administrator access. Use `dyno browsers` to see downloaded builds and paths.
 
-| Target | Setup |
+## Choose a browser
+
+| Browser | How to run |
 | --- | --- |
-| Chromium, Firefox, WebKit | Download the matching build with `dyno install` |
-| Installed Chrome | `dyno --browser chrome` uses Playwright's Chrome channel |
-| Installed Edge | `dyno --browser edge` uses Playwright's Edge channel |
+| Chromium, Firefox, WebKit | Install its matching build, then use `--browser` |
+| Installed Chrome or Edge | `dyno --browser chrome` or `--browser edge` |
 | Stock Safari, other browsers and devices | `dyno --manual`, then open the printed URL |
 
-WebKit and Safari are separate targets. WebKit results don't establish Safari behavior. `dyno browsers` lists downloaded engine builds; Chrome and Edge channel availability is checked at launch.
+WebKit isn't Safari; passing WebKit tests doesn't establish Safari behavior. Chrome and Edge availability is checked at launch. Managed runs support screenshots and viewport sizing, with a private context per worker. Tests and Interactor still run in the browser.
 
-## Manual runs
+## Open the URL yourself
 
-Manual mode needs no local browser installed. Open the printed URL, click **Start tests** if its popup was blocked, and keep the app and companion windows open. Use `--manual --host 0.0.0.0` to try another device. Tests still need the [modern browser APIs listed in the guide](guide.md#current-limits).
+Manual runs need no local browser installed. Open the printed URL and click **Start tests** if the popup was blocked. Keep the app and companion windows open. Use `--manual --host 0.0.0.0` to reach Dyno from another device.
 
-A URL-only browser can't capture screenshots or resize its own tab. Required screenshots fail; `{ optional: true }` reports a skipped image. A matching `app.setViewport` request succeeds, and a different size fails. Fixed config dimensions must also match the actual window.
-
-## Managed runs
-
-Dyno owns one browser server per run, with a private context for each managed worker. Workers share the run and reporter, with separate app windows and project resources. Playwright keeps the original app page for capture and sizing, even when the companion is active. Closing the app interrupts its run. Shutdown closes contexts, then the browser server. The parent retains the SDK shutdown handle even if the IPC worker crashes.
-
-Screenshots are PNGs of the original app page with the reporter hidden. `fullPage: true` preserves the app viewport and captures the whole page. Masks change only the PNG. Animation suppression and caret hiding are prepared in the browser and restored afterward. See the [screenshot API](guide.md#screenshots).
-
-`browser.deviceScaleFactor` accepts `1`, `2`, or `3`. Viewport dimensions describe desktop layout; they don't emulate a phone's input or operating system.
+A URL-only browser can't take screenshots or resize its tab. Required captures fail; explicitly optional ones report a skipped image. Viewport requests and fixed config dimensions must match the actual window. See [viewport sizing](guide.md#viewport-sizing).
 
 ## Native capabilities
+
+Use `app.native.capabilities` to choose browser-specific coverage explicitly. Required operations fail when unsupported; Dyno doesn't substitute a synthetic event.
 
 | Feature | Chromium / Chrome / Edge | Firefox | WebKit | Manual URL |
 | --- | --- | --- | --- | --- |
 | Native keys and pointer | Yes | Yes | Yes | Unavailable |
-| Dialog handling and browser console | Yes | Yes | Yes | Unavailable |
+| Dialogs and browser console | Yes | Yes | Yes | Unavailable |
 | Reduced motion | Yes | Yes | Yes | Unavailable |
 | Clipboard permission grants | Read/write | Unavailable | Read only | Unavailable |
 | Virtual authenticator | Yes | Unavailable | Unavailable | Unavailable |
 | App network offline | Yes | Unavailable | Unavailable | Unavailable |
 
-Capabilities describe the provider API; they don't make an unsupported engine silently pass a required test. Use `app.native.capabilities` and keep browser-specific coverage explicit. An authenticator is virtual browser hardware; your app still owns its real registration, challenge, and signature validation.
+Native state resets between tests. Cookies, storage, and backend cleanup remain your project's responsibility. Chromium offline keeps companion HTTP connected, but can change its `navigator.onLine` too.
 
-App offline blocks the original app page's requests while companion HTTP remains connected. Chromium also changes the companion's navigator.onLine signal. This is not fully isolated offline state. Context-wide Playwright offline would disconnect the runner too, so Dyno doesn't use it.
-
-Managed config accepts `browser.locale` and `browser.timezoneId`, for example `en-US` and `UTC`. These apply when creating the browser context. Native state resets between tests; cookies and backend state still belong to the project. Managed Firefox disables background timer throttling, matching Playwright’s BiDi defaults, so the companion’s Interactor retries keep running while the app is active. Manual browsers retain their own background policies.
+Set `browser.locale` and `browser.timezoneId` when creating managed contexts. `browser.deviceScaleFactor` accepts 1, 2, or 3. A mobile-sized viewport still uses a desktop browser; it doesn't emulate a phone's input or OS.
 
 ## Custom executables
 
-Prefer Playwright's matching builds. To use a compatible executable, pass `--browser-path` or set `browser.path`. Dyno passes it to Playwright's `executablePath`; it doesn't scan application folders or read browser-specific path environment variables.
-
-```js
-browser: {
-  name: 'chromium',
-  path: '/path/to/chrome',
-  args: []
-}
-```
-
-Custom builds may be incompatible with Playwright. Extra arguments go directly to the browser and can break automation. Profile and instance flags are reserved because Dyno owns the session.
+Prefer Playwright's matching builds. Use `--browser-path` or `browser.path` for a compatible executable; Dyno passes it to Playwright without scanning application folders. Extra `browser.args` can break automation. Profile and instance flags are reserved because Dyno owns the session.
 
 ## Known limits
 
-CI exercises Chromium, Firefox, and WebKit on Linux and macOS. Windows and companion behavior on phones, iOS, and TVs still need verification. Manual execution is available there, but popup and background-tab policies can affect it. Dyno doesn't ship extensions or a separate native or WebDriver launcher.
+CI exercises Chromium, Firefox, and WebKit on Linux and macOS. Windows, phones, iOS, and TVs still need verification. Manual browsers need [modern APIs](guide.md#current-limits), and their popup and background-tab policies can affect the runner.
 
-If a browser fails before the app loads, check `dyno browsers`, run `dyno doctor` with that browser, and include the launch diagnostic when reporting the issue. A launch failure is an error, never a passing test or an automatic fallback to a different browser. Manual mode can run the URL in an installed browser without managed capabilities.
-
-See [CI setup](ci.md) for the suites and saved results.
+For launch failures, check `dyno browsers`, then run `dyno doctor` with that browser. Include its diagnostic when reporting a problem. A failed launch is an error; Dyno never silently switches browsers.

@@ -4,11 +4,11 @@ import { glob, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { sourceDocs, documentedTypes } from './source.js';
+import { guideOrder } from '../navigation.js';
 
 let exec = promisify(execFile);
 export let root = fileURLToPath(new URL('../../', import.meta.url));
 export let site = join(root, 'site');
-export let guideOrder = ['getting-started', 'running', 'debugging', 'interactors', 'native', 'custom-interactors', 'suites', 'viewport', 'screenshots', 'concurrency', 'timings', 'reports', 'app-server', 'configuration', 'vizzly', 'limits'];
 let read = path => readFile(join(root, path), 'utf8');
 let write = async (path, text) => {
   await mkdir(dirname(path), { recursive: true });
@@ -23,8 +23,8 @@ export async function generate() {
   await rm(output, { recursive: true, force: true });
   await rm(join(site, '.generated'), { recursive: true, force: true });
   let used = new Set();
-  for (let path of ['types/index.d.ts', 'types/config.d.ts', 'types/test.d.ts'])
-    await write(join(site, '.generated', path.replace('types/index.d.ts', 'types/dyno.d.ts')), documentedTypes(path, await read(path), api, used));
+  for (let [source, target] of [['types/index.d.ts', 'types/dyno.d.ts'], ['types/config.d.ts', 'types/config.d.ts'], ['types/test.d.ts', 'types/test.d.ts']])
+    await write(join(site, '.generated', target), documentedTypes(source, await read(source), api, used));
   for (let key of api.keys()) if (!used.has(key)) throw new Error(`Source @api ${key} has no public declaration.`);
   let requiredGuides = [...guideOrder, 'overview', 'api-overview', 'cli'];
   for (let key of requiredGuides) if (!guides.has(key)) throw new Error(`Missing source guide ${key}.`);
@@ -59,7 +59,7 @@ export async function generate() {
   await page('index', overview.title, overview.body);
   for (let key of guideOrder) {
     let { title, body } = guides.get(key);
-    markdown += `\n## ${title}\n\n${body}\n`;
+    markdown += `\n## ${title}\n\n${body.replace(/^(#{2,5}) /gm, '#$1 ')}\n`;
     await page(`guides/${key}`, title, body);
   }
   for (let [path, target] of [['docs/browsers.md', 'guides/browsers'], ['docs/architecture.md', 'contributing/architecture'], ['docs/design.md', 'contributing/design'], ['docs/ci.md', 'contributing/ci'], ['docs/documentation.md', 'contributing/documentation'], ['vision.md', 'contributing/vision']]) {

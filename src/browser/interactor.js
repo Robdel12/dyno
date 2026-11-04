@@ -1,10 +1,11 @@
 /**
- * Define and export custom interactors at module scope in your app's test support, or beside the components they exercise. Tests import those definitions and bind them to their own `I`. `defineInteractor` uses Interactor's native custom actions and assertions, without changing the test's `I` or other definitions.
+ * @guide custom-interactors Custom interactors
+ * Once a few tests use the same form or component, give that workflow a name. Keep the definition with your app's test support—or beside the component—so tests can import it.
  *
  * ```js
+ * // tests/interactors/login.js
  * import { defineInteractor } from 'dyno';
  *
- * // tests/interactors/login.js
  * export let LoginForm = defineInteractor({
  *   actions: {
  *     async enterCredentials({ email, password }) {
@@ -23,7 +24,7 @@
  * });
  * ```
  *
- * Bind the imported definition to `I` inside a test or hook. Each call creates an independent scope with that test's assertion settings and cancellation signal. Share definitions between tests, not bound instances. Queries follow the app after navigation; elements aren't cached.
+ * Bind it to the test's `I` when you use it:
  *
  * ```js
  * import { LoginForm } from './interactors/login.js';
@@ -33,18 +34,22 @@
  * await login.assert.hasError('Check your password');
  * ```
  *
- * Components can bind inside other components. With project-defined `Post`, `Composer`, and `postSelector`:
+ * Share definitions, not bound instances. Each binding gets the test's scope, assertion settings and cancellation signal. It follows the app after navigation without caching elements or changing other interactors.
+ *
+ * ## Compose smaller components
+ *
+ * A custom interactor can bind inside another one. With your own `Post`, `Composer` and selector:
  *
  * ```js
  * let reply = Composer(Post(I, postSelector(words)), '$([aria-label="Reply"])');
  * await reply.write('I remember this storm.');
  * ```
  *
- * Use async actions and await each operation when composing fields or child components. Native generator actions remain available; their yielded operations share the current subject. Assertion callbacks receive `$` for that subject and `root()` for the component root. Custom assertions support `.not` and Interactor's failure-message objects. Predicates must return a boolean, including `false` for missing content; Interactor treats `undefined` as success to support callbacks that throw on failure. Actions keep native `.then` chaining; deriving a chain doesn't change the original one. `scope()` retains custom methods.
+ * Use async actions and await each operation. Interactor's generator actions and `.then` chains work too, and `scope()` keeps your custom methods.
  *
- * Keep navigation, fixture I/O, screenshots, and named steps in workflow functions. Share action functions or combine action/assertion maps with object spread. TypeScript infers custom method arguments and chain methods; import `InteractorContext` when annotating assertion callbacks.
+ * Assertions receive `$` for the current subject and `root()` for the component root. Return a boolean, including `false` when content is missing. Interactor treats `undefined` as success for callbacks that throw on failure. Custom assertions support `.not` and failure-message objects.
  *
- * @guide custom-interactors Custom interactors
+ * Keep navigation, fixture requests, screenshots and named steps in the surrounding workflow. TypeScript infers custom method arguments; use `InteractorContext` when annotating assertion callbacks.
  */
 
 /**
@@ -116,49 +121,73 @@
  */
 
 /**
- * Import `describe`, `test`, `beforeEach`, and `afterEach` from `dyno`. Tests and hooks receive `{ app, I, fixtures, signal, test, step }`. `I` is an [Interactor.js](https://github.com/wwilsman/interactor.js) instance rooted in the current app document.
+ * @guide interactors Interact with the app
+ * Your test gets two things you'll use constantly: `app` to navigate and make requests, and `I` to interact with the UI. `I` is [Interactor.js](https://github.com/wwilsman/interactor.js), rooted in your app's current document.
  *
  * ```js
- * await I.type('Robert').into('$(input[name=name])');
+ * await app.goto('/contacts/new');
+ * await I.find('Name').then.fill('Robert');
  * await I.click('Save');
- * await I.find('$([role=status])').text('Saved Robert');
- * await I.find('No projects yet').visible();
+ * await I.find('$([role=status])').text('Contact saved');
+ * ```
+ *
+ * `app.goto` waits for the document. The last assertion waits for the result you care about. You don't need a sleep between those steps.
+ *
+ * ## Find what someone would use
+ *
+ * Strings match text, placeholders and related label controls. They match the whole text; use a regular expression for a partial match. Use `$(...)` when you need CSS:
+ *
+ * ```js
+ * await I.find('Email').then.fill('rob@example.com');
+ * await I.find(/Contact saved/).rendered();
+ * await I.find('$(input[name=email])').value('rob@example.com');
+ * ```
+ *
+ * `rendered()` checks displayed content, including below the fold. `visible()` also requires it to be in the viewport. `expectTimeout` sets the assertion deadline.
+ *
+ * For changing browser state, use an assertion callback:
+ *
+ * ```js
  * await I.assert(
  *   () => app.window.location.pathname === '/dashboard',
  *   'Expected the dashboard URL'
  * );
  * ```
  *
- * Text selectors match text, placeholders and related label controls. Strings match the whole text; use a regular expression for a partial match. `$(...)` selects with CSS. Interactor owns actions, retries and errors; `expectTimeout` sets its assertion deadline. Wait for the result you care about rather than assuming all background work is idle.
+ * ## Work within a component
  *
- * - `app.goto('/path')` waits for the app's bridge and document readiness. Use Interactor to wait for rendered UI.
- * - `app.setViewport({ width, height })` asks a managed provider to resize the actual app viewport and waits for layout. Each dimension must be 1–8192 CSS pixels. Manual runs require the requested size to already match.
- * - `app.screenshot(name, options)` waits for a saved PNG. See [screenshots](#screenshots).
- * - `app.request('/api/path', fetchOptions)` makes a same-origin request with the browser session and returns a standard `Response`.
- * - `app.document` and `app.window` expose the app's document and window. Await navigation before direct access; use `I.assert` callbacks for changing state.
- *
- * Each test gets fresh test and app documents and globals. Queries use the current document after navigation. Execution timeout cancels the test APIs. Entered scopes still get their `afterEach` hooks, from the inside out, with fresh APIs and a separate `cleanupTimeout` budget (5 seconds by default). A failed cleanup hook does not hide the original error or prevent later cleanup within that budget. Dyno then replaces the hidden test runtime before the next test. The persistent companion survives full app navigation.
- *
- * Fresh documents don't reset cookies, localStorage, IndexedDB, service workers, or database records. Use hooks to reset sessions and fixtures. Node setup teardown should clean up shared resources even if a browser test times out before `afterEach` finishes. Dyno's private window binding survives `sessionStorage.clear()`; avoid changing `window.name` during a run.
- *
- * Dyno exports the same `Interactor` class that provides `I`. Custom actions and assertions work in tests and scopes.
+ * Use `scope()` to narrow the root. It finds that root again after navigation, so you can reuse the scope within a test:
  *
  * ```js
  * let contact = I.scope('$(form)');
  * await contact.find('Email').then.fill('rob@example.com');
- * await contact.find('Photos').then.upload({ name: 'note.txt', bytes: 'Storm notes', type: 'text/plain' });
- * await contact.find('Saved').rendered();
  * ```
  *
- * `scope(selector)` returns another Interactor rooted in that element. Scopes resolve against the current app document, even after navigation, and retain the assertion settings and cancellation signal. Nest them for page objects. A missing scope fails instead of searching elsewhere. Create scopes before chaining: use `I.scope(selector)`, not `I.find(selector).then.scope()`. Pending chains cannot bind scopes or custom interactors; Dyno rejects them before they can target the wrong element.
+ * A missing root fails. Create scopes before chaining; use `I.scope(selector)` rather than `I.find(selector).then.scope()`.
  *
- * Use built-in assertions such as `I.find('$([role=status])').text('Saved')`. `contains(selector)` checks for a descendant, not a text substring. For a custom DOM predicate, bind a scope and call its assertion: `I.scope('$([role=status])').assert(({ $ }) => $.textContent.includes('Saved'))`. Reusable assertions belong in a custom interactor.
+ * `fill()` replaces an editable input or textarea value and sends input/change events. To select a file:
  *
- * `fill(value)` waits for an editable input or textarea, replaces its value, and sends input/change events. Empty strings and number inputs work too. Use upstream `type()` and `press()` when individual keys matter. `upload(...files)` sets a file input's selection and sends input/change events; each file needs `name` and `bytes`, with an optional MIME `type`. Pass no files to clear it. Load fixture bytes through your project's setup or `app.request`.
+ * ```js
+ * await contact.find('Photo').then.upload({
+ *   name: 'note.txt',
+ *   bytes: 'Storm notes',
+ *   type: 'text/plain',
+ * });
+ * ```
  *
- * `rendered()` checks that content has layout and is displayed, including below the fold. Transparent parents count as hidden. It doesn't scroll or require viewport visibility; use `visible()` for that. Both keep Interactor's normal retries and stability settings. Upstream text/CSS selectors, `find(...).times(count)`, `not.overflows('x')`, option clicks, and custom selector functions work directly. Keep page objects focused on your app's workflows.
+ * Pass no files to clear the input. Use [custom interactors](guide.md#custom-interactors) when these actions form a workflow you'll share.
  *
- * @guide interactors Interact with the app
+ * ## Check the right thing
+ *
+ * Built-in assertions cover text, values, visibility and more. `contains(selector)` checks for a descendant, not a text substring. For a DOM predicate, bind a scope:
+ *
+ * ```js
+ * await I.scope('$([role=status])').assert(
+ *   ({ $ }) => $.textContent.includes('Saved')
+ * );
+ * ```
+ *
+ * Ordinary actions use DOM methods and synthetic events. For browser defaults such as Tab order or CSS hover, use [native browser behavior](guide.md#native-browser-actions).
  */
 
 import { Interactor as BrowserInteractor } from 'interactor.js';

@@ -1,20 +1,29 @@
 <!-- Generated from source JSDoc. Run npm --prefix site run generate -- --write-markdown. -->
 # Using Dyno
 
-Dyno starts your app, bundles tests, and serves a URL. Tests and Interactor.js run in that browser. The CLI reports results and stops the processes it owns.
+Write a test the way you'd use your app: open a page, fill in a field, and check what changed. Dyno runs that JavaScript in the browser, with Interactor handling DOM interaction and waiting for the UI.
 
-You'll need Node 24+. Playwright Core is included. Dyno isn't published to npm yet; install it from GitHub.
+You get the browser APIs you already know and its devtools for debugging. The CLI starts your app, opens a browser, and reports the results.
 
-## Add it to an app
+## Write your first test
+
+Start with a workflow you care about. We'll use saving a contact here; swap in your app's route, labels and expected result.
+
+### Install Dyno
+
+You'll need Node 24+. Install from GitHub for now, then download Chromium once:
 
 ```sh
 npm install --save-dev github:Robdel12/dyno
 npx dyno init
 npx dyno install
-npx dyno doctor
 ```
 
-`init` creates `dyno.config.js` and one example test. It checks both paths before writing and leaves existing files alone. Update the command, URL, and assertion for your app.
+`init` adds a config and an example test without overwriting existing files. Commit your lockfile so local runs and CI use the same Dyno revision.
+
+### Point it at your app
+
+In `dyno.config.js`, set the command that starts your app and the URL it serves:
 
 ```js
 export default {
@@ -22,10 +31,16 @@ export default {
   webServer: {
     command: 'npm run dev',
     url: 'http://127.0.0.1:3000',
-    reuseExistingServer: !process.env.CI
-  }
+    reuseExistingServer: !process.env.CI,
+  },
 };
 ```
+
+Dyno starts that command for you. Locally, `reuseExistingServer` lets you use an app that's already running; Dyno leaves that server alone when it stops.
+
+### Test the result
+
+Replace the example test in `tests/browser`:
 
 ```js
 import { describe, test } from 'dyno';
@@ -33,143 +48,145 @@ import { describe, test } from 'dyno';
 describe('Contacts', () => {
   test('saves a contact', async ({ app, I }) => {
     await app.goto('/contacts/new');
-    await I.type('Robert').into('$(input[name=name])');
+    await I.find('Name').then.fill('Robert');
     await I.click('Save');
     await I.find('$([role=status])').text('Contact saved');
   });
 });
 ```
 
-Run `npx dyno`, or add `"test:browser": "dyno"` to your package scripts. Tests can use browser APIs and browser-compatible npm packages. JavaScript, JSX, TypeScript, and TSX are supported; TypeScript is transpiled without type checking. Filesystem and database setup belongs in the Node setup hook.
+Interactor waits for the expected UI. Await each action and assertion, and keep tests inside a named `describe`.
 
-Use the [API reference](api.md) to look up methods and the [custom interactor guide](guide.md#custom-interactors) to share component workflows.
-
-## Run and inspect
+### Run it
 
 ```sh
-dyno                              # headless run
-dyno --ui                         # visible browser and repeated runs
-dyno --watch                      # rerun when tests or imported helpers change
-dyno --manual --host 0.0.0.0      # open the URL yourself or on another device
-dyno --test 'saves a contact'      # exact test name
-dyno --config path/to/config.js
-dyno --json                       # one JSON event per stdout line
+npx dyno doctor
+npx dyno --ui
 ```
 
-`dyno` runs tests by default; `dyno run` is the explicit form. Use `dyno --help` for commands and `dyno run --help`, `dyno doctor --help`, or `dyno install --help` for their options and examples. Put command-specific options after the command name. Usage errors suggest likely flag corrections and point to the relevant help. JSON errors also include Commander's error code.
+`doctor` checks your config, test bundle and browser setup. `--ui` runs the test with the app visible. Use `npx dyno` for a headless run.
 
-Exit codes are 0 for passing tests, 1 for failures, 130 for SIGINT, and 143 for SIGTERM. Cleanup failures exit 1 even when interrupted. `--ui` and `--manual` keep the gateway available for reruns; Ctrl-C stops it. Browser installation uses the same interruption and process cleanup.
-
-With `--json`, stdout contains one JSON event per line. Project `console` messages from config, setup, and teardown go to stderr, as does app-server output. Project code that writes directly to a stream should use `process.stderr`. Errors remain available as JSON events and stderr diagnostics. Use the process exit code for the final CLI outcome; a failure can emit an error after `session-timing`.
-
-Connection diagnostics appear as `browser-connection` and `browser-diagnostic` events, separately from test outcomes. Idle streams send keepalive comments so inspection can stay open.
-
-Open the start URL at `/__dyno__/`. Dyno opens a companion window for test execution, then loads the app in the original window. If the popup is blocked, click **Start tests**. Keep both windows open: tests stay in the companion while the app navigates normally.
-
-Press **Ctrl+Shift+D** in the app to request inspection. Dyno finishes the current test before opening the reporter iframe over the app. The app keeps its full viewport underneath.
-
-The overview groups files and suites, with search and status filters saved in its URL. Run one test, a suite, a file, or failed tests. Stable test links still point to the same test after definitions are reordered. Connection and command states stay visible; failed commands offer Try again. Open a test's Output route for failures, source excerpts, console messages, and screenshots. Its Application route lets you return to the actual app and choose a viewport. Reporter navigation never moves or scales the app.
-
-**Run options** includes Pause on failure. Continue closes the overlay before starting the next test. A completed interactive run keeps each worker's last app available; rerun an earlier test to inspect it again. Stop cancels execution and begins cleanup. Managed runs retire their documents before draining project work, so use Pause when you want to inspect the current app. Pausing doesn't freeze the app's timers or requests. Closing or reloading the companion interrupts execution; start a fresh run rather than trying to resume it.
-
-The CLI also prints a separate reporter URL. Open it in another tab to observe and control the run without covering the app. Reruns rebuild tests; separate reporters follow the new run. Back/forward navigation only changes reporter routes.
-
-Console capture keeps the first 100 messages per test, up to 2,000 characters each, without evaluating object getters. It supports `log`, `info`, `warn`, `error`, and `debug`. Logging an error doesn't fail the test. Capture ends with the test; use the browser console for later inspection.
-
-## Editing and debugging
-
-`dyno doctor` checks config, bundles tests, checks the selected Playwright build or executable, and checks the app URL without launching anything. It validates headless mode by default; add `--ui` for a visible browser or `--manual` for a URL-only setup. It cannot prove that a configured server command starts successfully; the run checks its output and HTTP readiness.
-
-`--watch` keeps the app server and browser session alive. It watches test files and imported project helpers using filesystem events. Edits during a run queue one rebuild of the latest files. Build errors leave the previous results available; fixing the file runs again. Config and Node setup changes need a CLI restart. App code keeps its own hot reload.
-
-Use `await app.pause('Inspect this contact')` within a test or setup hook with `--ui` or `--manual`. It opens the reporter immediately, retains the current app and test, and suspends the test deadline. Continue hides the reporter and resumes the remaining budget. It does not freeze application timers or network requests. Cleanup has its own deadline and cannot pause. Headless pause calls fail clearly.
-
-The package includes types for tests, hooks, config, fixtures, and app APIs. Browser tests use TypeScript's `moduleResolution: "Bundler"`; Interactor.js currently has extensionless declaration imports that do not support strict NodeNext checking. Config types work independently of those browser declarations. TypeScript is still transpiled during a run; use your project's `tsc --noEmit` for type checking. JavaScript editors get the same declarations.
-
-Extend `Fixtures` in your project to type values returned by Node setup:
-
-```ts
-import 'dyno';
-
-declare module 'dyno' {
-  interface Fixtures { contactId: string }
-}
-```
+Next, [learn the interaction basics](guide.md#interact-with-the-app) or [share workflows with custom interactors](guide.md#custom-interactors). JavaScript, JSX, TypeScript and TSX work; run your own type checker for TypeScript.
 
 ## Interact with the app
 
-Import `describe`, `test`, `beforeEach`, and `afterEach` from `dyno`. Tests and hooks receive `{ app, I, fixtures, signal, test, step }`. `I` is an [Interactor.js](https://github.com/wwilsman/interactor.js) instance rooted in the current app document.
+Your test gets two things you'll use constantly: `app` to navigate and make requests, and `I` to interact with the UI. `I` is [Interactor.js](https://github.com/wwilsman/interactor.js), rooted in your app's current document.
 
 ```js
-await I.type('Robert').into('$(input[name=name])');
+await app.goto('/contacts/new');
+await I.find('Name').then.fill('Robert');
 await I.click('Save');
-await I.find('$([role=status])').text('Saved Robert');
-await I.find('No projects yet').visible();
+await I.find('$([role=status])').text('Contact saved');
+```
+
+`app.goto` waits for the document. The last assertion waits for the result you care about. You don't need a sleep between those steps.
+
+### Find what someone would use
+
+Strings match text, placeholders and related label controls. They match the whole text; use a regular expression for a partial match. Use `$(...)` when you need CSS:
+
+```js
+await I.find('Email').then.fill('rob@example.com');
+await I.find(/Contact saved/).rendered();
+await I.find('$(input[name=email])').value('rob@example.com');
+```
+
+`rendered()` checks displayed content, including below the fold. `visible()` also requires it to be in the viewport. `expectTimeout` sets the assertion deadline.
+
+For changing browser state, use an assertion callback:
+
+```js
 await I.assert(
   () => app.window.location.pathname === '/dashboard',
   'Expected the dashboard URL'
 );
 ```
 
-Text selectors match text, placeholders and related label controls. Strings match the whole text; use a regular expression for a partial match. `$(...)` selects with CSS. Interactor owns actions, retries and errors; `expectTimeout` sets its assertion deadline. Wait for the result you care about rather than assuming all background work is idle.
+### Work within a component
 
-- `app.goto('/path')` waits for the app's bridge and document readiness. Use Interactor to wait for rendered UI.
-- `app.setViewport({ width, height })` asks a managed provider to resize the actual app viewport and waits for layout. Each dimension must be 1–8192 CSS pixels. Manual runs require the requested size to already match.
-- `app.screenshot(name, options)` waits for a saved PNG. See [screenshots](#screenshots).
-- `app.request('/api/path', fetchOptions)` makes a same-origin request with the browser session and returns a standard `Response`.
-- `app.document` and `app.window` expose the app's document and window. Await navigation before direct access; use `I.assert` callbacks for changing state.
-
-Each test gets fresh test and app documents and globals. Queries use the current document after navigation. Execution timeout cancels the test APIs. Entered scopes still get their `afterEach` hooks, from the inside out, with fresh APIs and a separate `cleanupTimeout` budget (5 seconds by default). A failed cleanup hook does not hide the original error or prevent later cleanup within that budget. Dyno then replaces the hidden test runtime before the next test. The persistent companion survives full app navigation.
-
-Fresh documents don't reset cookies, localStorage, IndexedDB, service workers, or database records. Use hooks to reset sessions and fixtures. Node setup teardown should clean up shared resources even if a browser test times out before `afterEach` finishes. Dyno's private window binding survives `sessionStorage.clear()`; avoid changing `window.name` during a run.
-
-Dyno exports the same `Interactor` class that provides `I`. Custom actions and assertions work in tests and scopes.
+Use `scope()` to narrow the root. It finds that root again after navigation, so you can reuse the scope within a test:
 
 ```js
 let contact = I.scope('$(form)');
 await contact.find('Email').then.fill('rob@example.com');
-await contact.find('Photos').then.upload({ name: 'note.txt', bytes: 'Storm notes', type: 'text/plain' });
-await contact.find('Saved').rendered();
 ```
 
-`scope(selector)` returns another Interactor rooted in that element. Scopes resolve against the current app document, even after navigation, and retain the assertion settings and cancellation signal. Nest them for page objects. A missing scope fails instead of searching elsewhere. Create scopes before chaining: use `I.scope(selector)`, not `I.find(selector).then.scope()`. Pending chains cannot bind scopes or custom interactors; Dyno rejects them before they can target the wrong element.
+A missing root fails. Create scopes before chaining; use `I.scope(selector)` rather than `I.find(selector).then.scope()`.
 
-Use built-in assertions such as `I.find('$([role=status])').text('Saved')`. `contains(selector)` checks for a descendant, not a text substring. For a custom DOM predicate, bind a scope and call its assertion: `I.scope('$([role=status])').assert(({ $ }) => $.textContent.includes('Saved'))`. Reusable assertions belong in a custom interactor.
-
-`fill(value)` waits for an editable input or textarea, replaces its value, and sends input/change events. Empty strings and number inputs work too. Use upstream `type()` and `press()` when individual keys matter. `upload(...files)` sets a file input's selection and sends input/change events; each file needs `name` and `bytes`, with an optional MIME `type`. Pass no files to clear it. Load fixture bytes through your project's setup or `app.request`.
-
-`rendered()` checks that content has layout and is displayed, including below the fold. Transparent parents count as hidden. It doesn't scroll or require viewport visibility; use `visible()` for that. Both keep Interactor's normal retries and stability settings. Upstream text/CSS selectors, `find(...).times(count)`, `not.overflows('x')`, option clicks, and custom selector functions work directly. Keep page objects focused on your app's workflows.
-
-## Native browser behavior
-
-Use native input when the browser's default behavior is the thing being tested. Keep ordinary clicks, fields, and assertions in Interactor.
+`fill()` replaces an editable input or textarea value and sends input/change events. To select a file:
 
 ```js
-await I.find('Name').then.focus();
-await I.nativePress('Tab');
-await I.find('Notes').focused();
-await I.find('Account menu').then.nativeHover();
-await I.nativeMove({ x: 0, y: 0 });
+await contact.find('Photo').then.upload({
+  name: 'note.txt',
+  bytes: 'Storm notes',
+  type: 'text/plain',
+});
 ```
 
-These actions compose with scopes and custom interactors. `nativePress` sends a real key to the app's focused element; it doesn't focus a selector for you. Follow navigation-producing input with an Interactor assertion on the destination. Hover scrolls the element into view and uses a visible point that receives pointer input. A stale or covered target fails.
+Pass no files to clear the input. Use [custom interactors](guide.md#custom-interactors) when these actions form a workflow you'll share.
 
-`app.native.withDialog({ action: 'accept', message: 'Delete this note?' }, async () => { await I.click('Delete'); })` handles a real browser dialog around that action. It checks the optional exact message and preserves the callback result; `dismiss` and prompt `text` are supported too. Await the scope, including when its callback navigates.
+### Check the right thing
 
-`app.native.consoleMessages()` reads up to 100 recent browser console entries, including browser-generated warnings. Each has an increasing `id`, `type`, and `text` (up to 4,000 characters). Record the highest ID before a workflow to inspect only newer messages. These entries aren't automatically copied to reports.
+Built-in assertions cover text, values, visibility and more. `contains(selector)` checks for a descendant, not a text substring. For a DOM predicate, bind a scope:
 
-`app.native` also provides `grantPermissions([...])`, `enableVirtualAuthenticator()`, `disableVirtualAuthenticator()`, `setOffline(boolean)`, and `setReducedMotion('reduce' | 'no-preference')`. Settings can run in setup before `app.goto`. Permissions, authenticators, network state, and media changes reset before the next test, including after failure. Failed cleanup ends the managed browser session. Each call appears in the timing report.
+```js
+await I.scope('$([role=status])').assert(
+  ({ $ }) => $.textContent.includes('Saved')
+);
+```
 
-`app.native.capabilities` describes this browser's support. Required calls fail when unavailable; there is no synthetic fallback. Keyboard, pointer, and media use managed Playwright browsers. Virtual authenticators and app network offline require Chromium. Clipboard permission support varies by engine. Manual URL runs don't have native capabilities. Chromium offline keeps companion HTTP working, but its browser online-state signal can also change in the companion. See [browser limits](browsers.md).
+Ordinary actions use DOM methods and synthetic events. For browser defaults such as Tab order or CSS hover, use [native browser behavior](guide.md#native-browser-actions).
+
+## Suites and selection
+
+Give each group of workflows a name with `describe`. Keep its setup and cleanup there too:
+
+```js
+import { describe, test, beforeEach } from 'dyno';
+
+describe('Authentication', () => {
+  beforeEach(async ({ app }) => {
+    await app.goto('/login');
+  });
+
+  test('opens registration', async ({ I }) => {
+    await I.click('Create account');
+    await I.find('Start testing UI changes').visible();
+  });
+});
+```
+
+Every test and hook belongs inside a `describe`. You can nest suites or have several at the top level. Suite definitions are synchronous; put async work in hooks or tests.
+
+### Set up and clean up
+
+`beforeEach` runs from the outer suite inward. `afterEach` runs from the inner suite outward, including after failure for suites the test entered. Cleanup gets fresh APIs and its own budget, so one failed assertion doesn't use up the cleanup time.
+
+Each test starts with fresh app and test documents. Cookies, browser storage, service workers and backend records persist. Reset those through your app's fixtures and hooks; use Node teardown for resources that outlive a test. [Configuration](guide.md#configure-your-project) covers that setup.
+
+### Run just what you're editing
+
+```sh
+dyno --suite Authentication
+dyno --file login.test.js
+dyno --test 'Authentication › opens registration'
+dyno --id '<ID from test discovery/results>'
+```
+
+File, suite and ID flags can repeat. Different kinds narrow the selection together. If a short test name is ambiguous, Dyno tells you how to pick one.
+
+Use `test.only` or `describe.only` for local focus. CI rejects them by default. `test.skip('later')` and `describe.skip` report skipped tests without running their hooks or bodies.
+
+Names must be unique within a suite. Stable IDs use the file, suite path and test name, so adding or reordering other tests doesn't change them. The reporter uses those IDs for reruns.
 
 ## Custom interactors
 
-Define and export custom interactors at module scope in your app's test support, or beside the components they exercise. Tests import those definitions and bind them to their own `I`. `defineInteractor` uses Interactor's native custom actions and assertions, without changing the test's `I` or other definitions.
+Once a few tests use the same form or component, give that workflow a name. Keep the definition with your app's test support—or beside the component—so tests can import it.
 
 ```js
+// tests/interactors/login.js
 import { defineInteractor } from 'dyno';
 
-// tests/interactors/login.js
 export let LoginForm = defineInteractor({
   actions: {
     async enterCredentials({ email, password }) {
@@ -188,7 +205,7 @@ export let LoginForm = defineInteractor({
 });
 ```
 
-Bind the imported definition to `I` inside a test or hook. Each call creates an independent scope with that test's assertion settings and cancellation signal. Share definitions between tests, not bound instances. Queries follow the app after navigation; elements aren't cached.
+Bind it to the test's `I` when you use it:
 
 ```js
 import { LoginForm } from './interactors/login.js';
@@ -198,225 +215,43 @@ await step('Sign in', () => login.signIn(user));
 await login.assert.hasError('Check your password');
 ```
 
-Components can bind inside other components. With project-defined `Post`, `Composer`, and `postSelector`:
+Share definitions, not bound instances. Each binding gets the test's scope, assertion settings and cancellation signal. It follows the app after navigation without caching elements or changing other interactors.
+
+### Compose smaller components
+
+A custom interactor can bind inside another one. With your own `Post`, `Composer` and selector:
 
 ```js
 let reply = Composer(Post(I, postSelector(words)), '$([aria-label="Reply"])');
 await reply.write('I remember this storm.');
 ```
 
-Use async actions and await each operation when composing fields or child components. Native generator actions remain available; their yielded operations share the current subject. Assertion callbacks receive `$` for that subject and `root()` for the component root. Custom assertions support `.not` and Interactor's failure-message objects. Predicates must return a boolean, including `false` for missing content; Interactor treats `undefined` as success to support callbacks that throw on failure. Actions keep native `.then` chaining; deriving a chain doesn't change the original one. `scope()` retains custom methods.
+Use async actions and await each operation. Interactor's generator actions and `.then` chains work too, and `scope()` keeps your custom methods.
 
-Keep navigation, fixture I/O, screenshots, and named steps in workflow functions. Share action functions or combine action/assertion maps with object spread. TypeScript infers custom method arguments and chain methods; import `InteractorContext` when annotating assertion callbacks.
+Assertions receive `$` for the current subject and `root()` for the component root. Return a boolean, including `false` when content is missing. Interactor treats `undefined` as success for callbacks that throw on failure. Custom assertions support `.not` and failure-message objects.
 
-## Suites and selection
+Keep navigation, fixture requests, screenshots and named steps in the surrounding workflow. TypeScript infers custom method arguments; use `InteractorContext` when annotating assertion callbacks.
 
-Every test and hook must be inside a named `describe(name, callback)`, including skipped and focused tests. You can have several top-level suites in a file. Callbacks register synchronously; put async work in hooks or tests.
+## Configure your project
 
-Nested `beforeEach` hooks run from the outer suite inward, and `afterEach` hooks run from the inner suite outward.
-
-```js
-import { describe, test, beforeEach } from 'dyno';
-
-describe('Authentication', () => {
-  beforeEach(async ({ app }) => {
-    await app.goto('/login');
-  });
-
-  test('opens registration', async ({ I }) => {
-    await I.click('Create account');
-    await I.find('Start testing UI changes').visible();
-  });
-});
-```
-
-One worker runs tests sequentially. [Concurrent runs](#concurrent-runs) assign tests across private workers; suite names organize hooks and reports without creating shared storage or backend isolation. Keep that cleanup in your project.
-
-Names must be unique within a suite; different files and suites can reuse a short name. Each test has a stable ID based on its file, suite path, and name. Adding another test doesn't change that ID.
-
-`test.skip('later')` and `describe.skip` report skipped tests without executing their hooks or bodies. `test.only` and `describe.only` select focused tests locally. `forbidOnly` defaults to true when `CI` is set, so committed focus markers fail clearly.
-
-```sh
-dyno --suite Authentication
-dyno --file login.test.js
-dyno --test 'Authentication › opens registration'
-dyno --id '<ID from test discovery/results>'
-```
-
-File, suite, and ID selectors can repeat; different selector kinds narrow each other. A short `--test` name that matches multiple tests explains how to disambiguate it. Reporter reruns use stable IDs and rebuild before execution. JSON start events include descriptors with `id`, `file`, `suites`, `name`, and the index within that bundle; outcomes include `testId`.
-
-## Viewport sizing
-
-Manual runs use the app window's actual viewport. Managed runs default to 1280 × 800 CSS pixels. Set `viewport` in config for fixed dimensions, or await `app.setViewport({ width: 390, height: 844 })` within a managed test. The next test restores its default size.
-
-A browser page cannot reliably resize its own tab. Without a managed provider, a matching `app.setViewport` call is a no-op and any different size fails clearly. A fixed config size must also match the actual window. Resize it yourself or use a managed run; Dyno does not fake a viewport with an app iframe.
-
-These are layout dimensions, not phone emulation. They don't set touch input, OS orientation, or physical screen size. A mobile-sized desktop viewport does not prove real-device behavior.
-
-## Screenshots
-
-Managed runs include screenshots and window sizing through Playwright Core. [Download a browser build](browsers.md) once with `dyno install`; no extra dependency is needed. Manual URL-only runs have neither capability.
+Start with your app's command and URL. Paths are relative to `dyno.config.js`.
 
 ```js
-export default {
-  browser: { name: 'chromium' },
-  viewport: { width: 1280, height: 800 },
-  artifactsDir: '.dyno/artifacts',
+import { defineConfig } from 'dyno/config';
+
+export default defineConfig({
+  testDir: 'tests/browser',
   webServer: {
     command: 'npm run dev',
-    url: 'http://127.0.0.1:3000'
-  }
-};
-```
-
-```js
-await I.find('Dashboard').visible();
-let image = await app.screenshot('dashboard', {
-  fullPage: true,
-  mask: [...app.document.querySelectorAll('[data-private]')],
-  animations: 'disabled',
-  caret: 'hide'
-});
-// image.path, image.url, image.width, image.height, image.pixelRatio
-```
-
-Dyno captures the original app window with the reporter hidden. By default it captures the viewport; `fullPage: true` captures the whole page without enlarging the viewport. It waits for fonts, checks the document and dimensions, and saves the PNG before resolving. Navigation, Stop, resize, or lost ownership invalidates pending captures. Screenshot and viewport requests run in order; finishing a test or hook with unfinished operations fails clearly. Await both APIs.
-
-In a manual run, required capture fails. Use `await app.screenshot('dashboard', { optional: true })` only when the functional test is useful without an image. It returns and reports a skipped image when capture is unavailable. Provider and storage errors still fail.
-
-Reported images remain on disk after cleanup. Interrupted runs discard images that weren't reported. JSON attachment events and test results include the path, browser/provider/version, viewport, and pixel ratio. The reporter links to the PNG while the gateway is running.
-
-For one element, use `app.screenshot('card', { element: await I.find('$(.card)') })`. It captures the element's document bounds, including content below the fold, without scrolling or resizing. Fractional edges round outward. Element capture cannot combine `fullPage` or `mask`.
-
-Capture options are `fullPage` (default `false`), `mask` (an array of app `Element` objects), `animations` (`'allow'` or `'disabled'`, default `'allow'`), and `caret` (`'initial'` or `'hide'`, default `'initial'`). `maskColor` accepts an opaque `#RRGGBB` color (default `#ff00ff`). Masks cover those elements in the PNG; pass current elements from the app document. All managed targets support full-page capture.
-
-Screenshots are attachments, without baseline comparison. They record a rendered frame during the request; they don't freeze other app work. Animation suppression finishes finite animations and suspends infinite ones before measuring the document and masks. Temporary styles are removed and suspended animations restart afterward. Use Interactor to wait for the state you want first.
-
-## Execution order
-
-Tests use declared order by default. Randomize them with a recorded seed:
-
-```sh
-dyno --random
-dyno --seed issue-184
-```
-
-Dyno prints the seed and includes it in live run info and saved reports. The same seed preserves priority for the same test IDs, including when filtering. It does not control app randomness or asynchronous timing. `schedule.json` records the actual assignments and completion order. A final retained assignment keeps its app available until session shutdown; browser shutdown is recorded in `session.json`.
-
-### Concurrent runs
-
-`dyno --workers 4` uses one browser with private contexts, app gateways and project resources. The default is one worker. Manual URL runs use one worker regardless of the configured managed count; an explicit `--manual --workers 4` fails with an explanation. Every worker registers the same catalog before dispatch. Tests keep their suite hooks and fresh documents, and results stay in catalog order.
-
-Concurrent projects must return `createWorker` from Node setup:
-
-```js
-import { prepareBuild, startTestProject } from './support/project.js';
-
-export default async function setup({ signal }) {
-  let build = await prepareBuild({ signal });
-  return {
-    createWorker: ({ worker, signal }) => startTestProject({ worker, build, signal }),
-    teardown: build.teardown,
-  };
-}
-```
-
-Those helpers belong to your project. `worker` contains its string `id` and numeric `index`. Each call returns `{ webServer, env, fixtures, drain, teardown }`. Use private databases, queues, files and mutable app state; share immutable build output. A deliberately stateless app can share a server. If setup starts the server itself, return its URL with `command: undefined` and `reuseExistingServer: true`.
-
-Worker values override setup defaults for the server, environment and fixtures. A worker can override the setup's `drain`. Worker teardown releases that worker; setup teardown runs once afterward. Failed setup must clean up anything it acquired before returning. One worker uses this same path.
-
-Global Pause stops new assignments and waits at test boundaries; `app.pause()` holds only its worker. The reporter shows one combined run and lets you choose a worker to inspect. Stop or worker loss preserves accepted outcomes and images, then drains and closes the run. There are no automatic worker restarts or test retries.
-
-Declare shared resources before execution when a test uses something such as the OS clipboard:
-
-```js
-test('copies a token', async ({ I }) => {
-  await I.click('Copy token');
-}, { resources: ['clipboard'] });
-```
-
-Dyno reserves a test's named resources together and holds them through document retirement and project draining. Other eligible tests can continue. Browser tabs alone do not isolate your app's database or storage.
-
-### Queue replay
-
-`dyno --replay .dyno/reports/<run>/schedule.json` restores each worker's recorded queue and count. An explicit `--workers` must match. The test bundle fingerprint and catalog must match too; changed sources or malformed schedules fail plainly. Replay cannot combine with selection flags, seeds or `--watch`.
-
-A completed schedule replays the full recorded selection. An interrupted schedule replays attempted tests, including the unfinished assignment, and reports how many unassigned tests it omitted. It does not claim those omitted tests passed. Queue replay preserves worker order, not network or timer interleaving. App code outside the test bundle, backend data and application randomness remain your project's responsibility.
-
-## Find slow work
-
-Timings are always recorded. Open **Slowest tests** in the reporter, then a test’s **Timings** tab. It separates fresh-document setup, hooks, the body, and queued errors. Individual hooks keep their function name and execution order. Navigation, requests, screenshots, viewport changes, native calls, and debug pauses have their own intervals.
-
-Custom Interactor actions and assertions are included in the enclosing test or hook duration. They don't get separate timing rows automatically. Wrap meaningful workflows in `step()` to give them named intervals:
-
-```js
-describe('Contacts', () => {
-  test('saves a contact', async ({ app, I, step }) => {
-    await app.goto('/contacts/new');
-    let contact = await step('Save contact', async () => {
-      await I.type('Robert').into('$(input[name=name])');
-      await I.click('Save');
-      await I.find('$([role=status])').text('Contact saved');
-      return 'Robert';
-    });
-  });
+    url: 'http://127.0.0.1:3000',
+  },
 });
 ```
 
-`step(name, callback)` returns the callback’s value and preserves its error. Use it in hooks too. Await it before finishing a test or hook. Interactor still owns interaction and convergence; timings do not wrap its polling loop or change assertion behavior.
+Dyno gives each test 10 seconds, including hooks and document startup. Interactor assertions get up to 2 seconds. Change `timeout` or `expectTimeout` when the workflow needs it; use [timings](guide.md#understand-where-time-goes) to find out why.
 
-For agents, `--json` test events and saved `run.json` tests include `timings: { duration, entries, truncated }`. Each entry has `id`, `kind`, `name`, `start`, `duration`, and `status` (`passed`, `failed`, or `cancelled`), with `phase` on operations and steps. All numbers are milliseconds from that test runtime’s monotonic clock. `performance.slowestTests` ranks up to five tests and their slowest work. Single-worker summaries include `outsideTestsDuration` when a run duration is available. It measures time outside accepted test runtimes, including frame startup, reporting, and between-test inspection. Concurrent summaries use `coordination` instead.
-
-Each saved run also has `session.json`. It measures CLI config, bundling, project setup, app-server readiness, browser startup/results, and cleanup on a separate clock. Cleanup includes separate intervals for stopping the app, saving reports, project teardown, and stopping the browser. Its status is `running` until the CLI closes its resources; shutdown atomically finalizes it and emits a `session-timing` JSON event. Watch and manual runs share one session across their browser runs. The final report write itself is outside the measured wall time. These fields are separate from the browser-run duration. Managed runs also record `browserCleanup.graceful` and emit a `browser-stopped` event, so forced process cleanup is visible.
-
-```sh
-jq '.performance.slowestTests' .dyno/reports/<run-id>/run.json
-jq '.timings.entries | sort_by(-.duration)' .dyno/reports/<run-id>/session.json
-```
-
-Intervals include waiting. A step can contain a request or another step, and parallel work overlaps. Do not add inclusive rows together. Debugging time is included and marked as a pause. Request timing ends when response headers arrive; reading the body belongs to the surrounding step. This measures test execution, not application CPU time.
-
-`coordination` in JSON and Run info separates coordinator wall time from summed browser test work. Its clock starts with the first registered catalog and ends after terminal draining, before report persistence. Session timing includes startup, report writing and shutdown. Concurrent work is never subtracted from wall time to invent an overhead number.
-
-Worker timings show assigned execution, handoff after result acceptance, queue time for requests that received assignments, and remaining unassigned time. Handoff includes document retirement, project cleanup and final completion waiting. `projectCleanupDuration` measures the callback within that handoff; do not add it again. Unassigned time includes waiting after a worker's last assignment.
-
-Each test retains up to 500 entries; `truncated` counts omitted intervals. An interrupted runtime that cannot report has no timings, rather than invented zeros. Dyno records request methods and paths, without query strings, bodies, or headers. Step and screenshot names appear in reports, so keep secrets out of those labels.
-
-## Saved reports
-
-Each browser run saves `.dyno/reports/<run-id>/` with `run.json`, `junit.xml`, `index.html`, `schedule.json`, and `session.json`. Set `reportDir` or pass `--report-dir path` to choose another folder. The CLI prints the HTML path; JSON output includes a `report-saved` event.
-
-Open `index.html` directly in a browser after Dyno stops. It includes searchable files/suites, failures, source excerpts, console output, timings, and screenshots copied into `images/`. Copy the whole run folder to share it. A source image removed before saving appears as Screenshot unavailable.
-
-Run JSON uses `schemaVersion: 1`. It contains stable test descriptors, outcomes, summary counts, and relative image paths. A run is `completed` or `interrupted`; a test without an accepted result is `not-run`. Primary and additional failures retain their phase and source context. JUnit includes an error case for interruption, so an unfinished run cannot look green to CI.
-
-Completed runs save before completion is reported. SIGINT, SIGTERM, browser loss, and app failures save accepted results before shutdown. A force kill or machine failure cannot flush results. Storage failures fail the CLI; partially written run folders never become published reports. Old reports stay until you remove them.
-
-Reports include your test output and source excerpts. Dyno does not save its config, fixtures, connection keys, or launch tokens in them.
-
-## App server integration
-
-Dyno serves the start page at `/__dyno__/`, keeps its controller in a companion window, and forwards app paths to `webServer.url`, including WebSocket upgrades. The app keeps its normal routes, relative assets, and API calls. Its own server still handles hot reload.
-
-The gateway rewrites redirects to the upstream app back to its own origin. It translates same-origin Origin/Referer headers and matching cookie domains while preserving cookie security attributes and unrelated external redirects. Foreign origins remain foreign.
-
-A small script inserted before executable app scripts reports errors and document readiness and hosts the reporter iframe. The test bundle loads only in the companion's hidden runtime and reads the top-level app DOM directly. The app doesn't need test imports or source changes.
-
-CSP and app isolation headers stay in place. Dyno uses the opener/embedder policies from the startup HTTP response on its own pages, keeping strict same-origin apps connected to the companion. The script uses an existing app nonce when available. If the app blocks that script, the reporter iframe, or same-origin window access, give it an explicit test configuration. Cross-origin navigation and policy changes that sever the companion relationship during a run are unsupported. The gateway supports UTF-8 HTML with gzip, deflate, and Brotli compression, up to 10 MB decoded.
-
-### Starting and stopping the server
-
-If the app URL already returns an HTTP response, Dyno reuses it only with `reuseExistingServer: true` and leaves it running afterward. Otherwise, Dyno starts `command` in `cwd` with `env`. Commands can be shell strings or argv arrays such as `['node', 'server.js']`.
-
-The server must log after it starts listening. Set `webServer.ready` to match that message. Process output triggers an HTTP HEAD check; even a 404 or 401 confirms a responding server. There is no fixed startup sleep or timed polling loop.
-
-The app receives `DYNO_URL`, the gateway origin. Use it for the app’s public URL setting when testing OAuth or WebAuthn. The gateway forwards the upstream Host and rewrites its own Origin header, while browser credentials contain the gateway origin. Root-relative URLs are easiest to use.
-
-App exit, startup failure, browser exit, signals, and completed headless runs go through cleanup. Dyno stops its own processes and descendants, with a bounded grace period before forceful termination. Reused servers and manually opened browsers remain yours.
-
-## Configuration
-
-Paths are relative to the config file unless noted. See `dyno --help` for CLI overrides and [browser setup](browsers.md) for executable selection.
+<details>
+<summary>All options and defaults</summary>
 
 | Option | Default | Purpose |
 | --- | --- | --- |
@@ -443,38 +278,390 @@ Paths are relative to the config file unless noted. See `dyno --help` for CLI ov
 | `workers` | `1` | Managed worker count, from 1 to 32; concurrent runs need project worker setup |
 | `forbidOnly` | Whether `CI` is set | Reject focused test/suite definitions |
 
-### Node setup
+</details>
 
-The setup module exports an async function receiving `{ config, signal }`. Return `{ webServer, env, fixtures, drain, teardown }`: `webServer` can override the app configuration, `env` adds app environment values, `fixtures` provides JSON-safe browser data, and `teardown` releases the setup. Optional `drain` joins work between executions. Honor the signal during long work, and keep production secrets out of browser fixtures. Console messages go to stderr. If setup throws before returning, it must clean up resources it already created.
+### Set up real app data
 
-Optional `drain({ runId, executionId, workerId, test, signal })` joins the project work an execution started. Before another test body, Dyno first removes the old runtime and app document, preserving the controller and browser storage. It then awaits `drain`. The callback also runs for the last non-skipped execution before terminal persistence, if it has not already drained; skipped tests do not invoke it. Each non-skipped execution drains once. Its named duration is included in CLI session timings. Honor the signal and keep this callback within `cleanupTimeout`. A failure or deadline ends the session, saves accepted results and leaves remaining tests unassigned.
+Point `setup` at a Node module. Its async default export receives `{ config, signal }` and returns the resources your tests need:
 
-Keep scenario setup in project-owned factories: create fresh committed records, establish a real session and return only the IDs and paths the test needs. Exercise the UI, API or job itself when that behavior is under test. Reuse immutable fixture inputs rather than shared mutable records.
+```js
+import { startTestProject } from './support/project.js';
 
-Setup owns run-wide resources; `createWorker` owns private app resources; suite hooks prepare each scenario. Browser tests cannot import Node factories. When a scenario needs Node work, expose a finite, authenticated test-only API in your app server and call it through `app.request`; keep those endpoints out of the production server. There is no built-in Node task API.
+export default async function setup({ signal }) {
+  return startTestProject({ signal });
+}
+```
 
-For apps with an API, web server and background workers, use one project command that starts the real stack and handles shutdown. Use real application states, held requests or external HTTP fixtures for failure paths. Keep map/image readiness in project Interactors, and publish captured PNGs to your visual service from Node. Dyno doesn't replace your factory, auth, queue or visual-comparison libraries.
+`startTestProject` is your helper. Return `webServer` overrides, app `env`, JSON-safe `fixtures` for tests, and a `teardown` function. Keep credentials out of browser fixtures. Setup messages go to stderr; if setup throws before returning, clean up anything it already created.
 
-Navigation does not cancel server writes or service workers. Your project must close old admission, release fixture gates, join its requests/jobs and return resources ready for reuse. Keep database, queues, storage and session policy in the app. Use `teardown` to release the entire setup, including after failed draining.
+Use project factories to create committed records and real sessions. Return the IDs and paths a scenario needs, then exercise the behavior through the app. Share immutable fixture inputs rather than mutable records. For concurrent runs, [give each worker its own resources](guide.md#concurrent-runs).
 
-`cleanupTimeout` bounds Dyno's wait. A callback that ignores its signal can keep running in Node, so drains must stop touching project resources when aborted, and teardown must be safe after a drain timeout.
+Browser tests can't import Node factories. If a scenario needs Node work, expose a small authenticated test-only API and call it through `app.request`. Keep those endpoints out of production. Dyno doesn't provide a Node task API or replace your factory, auth, queue, or visual-comparison libraries.
 
-## Vizzly example
+### Finish work before reusing resources
 
-`examples/vizzly` demonstrates login and navigation against a real app and database. It needs a Vizzly checkout with built `dist` assets and Docker. Set `VIZZLY_ROOT` if the checkout isn't the sibling `vizzly` directory.
+A fresh page doesn't stop server writes, background jobs, or service workers. Return `drain` when your project needs to join that work between tests. Close admission for the old scenario, release any held requests, and leave its resources ready for reuse.
 
-Run `npm run test:vizzly`, or append `-- --ui` to inspect it. Setup creates its own PostgreSQL and Redis containers, runs migrations and seeds, and supplies a disposable account. The app uses port 3017 and the gateway uses 7359. Cleanup removes only that run's containers and volumes.
+Dyno removes the old runtime and app document, then calls `drain({ runId, executionId, workerId, test, signal })`. It runs once per non-skipped execution, including the last one before results are saved. Its duration appears in session timings.
 
-This example is optional. `npm test` uses the self-contained fixture app.
+Keep draining within `cleanupTimeout` and honor its signal. A failure ends the session and saves accepted results; remaining tests stay unassigned. Aborting only bounds Dyno's wait, so your callback must stop touching resources when aborted. Make `teardown` safe after a drain timeout.
+
+Setup owns run-wide resources, worker setup owns private resources, and suite hooks prepare scenarios. For a multi-process app, use one project command to start the real stack and handle shutdown.
+
+## Connect your app server
+
+Give Dyno the command you already use to start your app and its URL. Your server still handles routes, assets, API calls, and hot reload.
+
+```js
+webServer: {
+  command: 'npm run dev',
+  url: 'http://127.0.0.1:3000',
+  ready: 'Listening on',
+  reuseExistingServer: !process.env.CI,
+}
+```
+
+The server must log after it starts listening. `ready` can be a string or RegExp matching that message. Output triggers an HTTP HEAD check; any response, including a 401 or 404, confirms the server is up. There's no fixed startup sleep.
+
+### Start and stop
+
+Dyno reuses a responding server only with `reuseExistingServer: true` and leaves it running afterward. Otherwise, it starts `command` in `cwd` with `env`. Use a shell string or an argv array such as `['node', 'server.js']`.
+
+When a run ends or fails, Dyno stops the processes it started, including descendants. A bounded grace period comes before forceful termination. Reused servers and manually opened browsers remain yours.
+
+### How the app reaches the browser
+
+The browser loads Dyno's gateway, which forwards app requests and WebSockets to `webServer.url`. The app fills the main window. Tests load in a companion window and read the app's DOM directly; a small injected script reports readiness and errors and hosts the reporter iframe. Your app needs no test imports.
+
+Redirects to the app are rewritten to the gateway origin. Dyno translates same-origin Origin/Referer headers and matching cookie domains, preserving cookie security attributes. External redirects stay external.
+
+The app receives `DYNO_URL`, the gateway origin. Use it as your public URL for OAuth or WebAuthn: browser credentials contain that origin, while the upstream receives its own Host. Root-relative URLs work best.
+
+### If the app blocks the runner
+
+Dyno preserves CSP and isolation headers and uses an existing script nonce when available. Give your app an explicit test configuration if it blocks injection, the reporter iframe, or same-origin window access. Changing isolation policy or navigating cross-origin can disconnect the companion and is unsupported.
+
+The gateway accepts UTF-8 HTML, including gzip, deflate, and Brotli, up to 10 MB decoded. See [current limits](guide.md#current-limits) for origin and browser requirements.
+
+## Run and inspect
+
+Run the whole suite headlessly, or keep the browser open while you work:
+
+```sh
+dyno                    # run and exit
+dyno --ui               # inspect the app and results
+dyno --ui --watch        # rerun when tests or helpers change
+```
+
+Dyno starts the app and stops the processes it owns when you finish. `--ui` keeps the session open for reruns; press Ctrl-C to stop it.
+
+### Open the reporter
+
+Press **Ctrl+Shift+D** in the app. Dyno finishes the current test, then opens the reporter over it. The app keeps its full viewport underneath.
+
+Start with the file/suite overview, then open a test's **Output**, **Timings** or **Application** view. You can rerun a test, suite, file or failed selection. Search and filters stay in the URL.
+
+Turn on **Pause on failure** in Run options to inspect a failing app. Continue hides the reporter before the next test. Stop cancels the run and starts cleanup. Pausing leaves app timers and requests running.
+
+The CLI also prints a separate reporter URL. Open it in another tab if you'd rather keep the app uncovered. A completed interactive run keeps each worker's last app available; rerun an earlier test to inspect it again.
+
+### Bring your own browser
+
+```sh
+dyno --manual --host 0.0.0.0
+```
+
+Open the printed URL and click **Start tests** if the popup was blocked. Keep both the app and companion windows open. Closing or reloading the companion interrupts the run; start a new one afterward.
+
+See [browser setup](browsers.md) for manual-mode limits. Use [editing and debugging](guide.md#editing-and-debugging) for watch mode and in-test pauses, or `dyno --help` for selection and other options.
+
+### Use the output in CI
+
+`dyno --json` writes one JSON event per stdout line. Config, setup, teardown and app logs go to stderr. Use the process exit code as the outcome: `0` passes, `1` fails, `130` means SIGINT, and `143` means SIGTERM. Cleanup failure exits `1`, including after interruption.
+
+[Saved reports](guide.md#saved-reports) give you portable HTML, JSON, JUnit and images after the session stops.
+
+## Editing and debugging
+
+Keep the app and browser running while you change tests:
+
+```sh
+dyno --ui --watch
+```
+
+Edits to tests or imported helpers queue a rebuild. If a run is active, Dyno waits for it before running the latest code. A build error leaves the previous results available; fix the file to run again.
+
+Your app keeps its own hot reload. Restart Dyno after changing config or Node setup.
+
+### Stop where the problem is
+
+```js
+await app.pause('Inspect this contact');
+```
+
+Use this in a test or setup hook with `--ui` or `--manual`. It opens the reporter immediately and suspends the test deadline. Continue hides the reporter and resumes the remaining budget.
+
+The app's timers and requests keep running. Cleanup cannot pause, and headless runs reject the call. For failures anywhere in a suite, use **Pause on failure** in the reporter.
+
+### Check the setup first
+
+Run `dyno doctor` to check config, bundling, browser prerequisites and the app URL without launching anything. Add `--ui` or `--manual` to check that mode. The actual run still needs to start the server successfully.
+
+### Type-check your tests
+
+Dyno transpiles TypeScript without checking it. Run your project's `tsc --noEmit`, using `moduleResolution: "Bundler"` for browser tests; Interactor's declarations don't currently support strict NodeNext checking. JavaScript editors use the same included types.
+
+To type values from Node setup, extend `Fixtures` in your project:
+
+```ts
+import 'dyno';
+
+declare module 'dyno' {
+  interface Fixtures { contactId: string }
+}
+```
+
+Config types work independently of the browser declarations.
+
+## Saved reports
+
+The CLI prints an HTML report path after each browser run. Open `index.html` directly after Dyno stops to search tests, read failures and source excerpts, inspect console output and timings, and view screenshots.
+
+Reports live in `.dyno/reports/<run-id>/`. Change that with `reportDir` or `--report-dir path`. Copy the whole folder to share a report; its images live in `images/`. Old reports stay until you remove them.
+
+### Use reports in CI
+
+Each folder includes `run.json`, `junit.xml`, `schedule.json`, and `session.json`. JSON output emits a `report-saved` event. `run.json` uses `schemaVersion: 1`, stable test descriptors, outcomes, summary counts, and relative image paths.
+
+Runs are `completed` or `interrupted`; tests without accepted results are `not-run`. Failures retain their phase and source context. JUnit adds an error case for interruption, so an unfinished run can't look green.
+
+Dyno saves results before reporting completion, including accepted outcomes on signals, browser loss, and app failure. A force kill or machine failure can't flush results. Storage errors fail the CLI, and partially written folders aren't published as reports. A source image removed before saving appears as **Screenshot unavailable**.
+
+Reports contain test output and source excerpts. Dyno doesn't save config, fixtures, connection keys, or launch tokens in them.
+
+## Understand where time goes
+
+Open **Slowest tests** in the reporter, then a test's **Timings** tab. Dyno always records document startup, hooks, the test body, queued errors, and operations such as navigation, requests, screenshots, and native calls.
+
+Give meaningful workflows a name with `step()`:
+
+```js
+describe('Contacts', () => {
+  test('saves a contact', async ({ app, I, step }) => {
+    await app.goto('/contacts/new');
+    await step('Save contact', async () => {
+      await I.find('Name').then.fill('Robert');
+      await I.click('Save');
+      await I.find('$([role=status])').text('Contact saved');
+    });
+  });
+});
+```
+
+Use steps in hooks too. Await them before finishing; they return the callback's value and preserve its error. Custom Interactor actions stay inside the enclosing test or hook unless you add a named step.
+
+### Read the numbers
+
+Durations include waiting, not just CPU work. Nested steps include their children and parallel operations overlap, so don't add all rows together. Debug pauses are included and marked. Requests end when headers arrive; body reading belongs to the surrounding step.
+
+Check `session.json` when browser tests are fast but the command is slow. It separates config, bundling, project setup, server readiness, browser startup/results, and cleanup. Cleanup includes report saving and stopping the app and browser.
+
+```sh
+jq '.performance.slowestTests' .dyno/reports/<run-id>/run.json
+jq '.timings.entries | sort_by(-.duration)' .dyno/reports/<run-id>/session.json
+```
+
+### Use timings in tools and agents
+
+JSON test events and saved results include `timings: { duration, entries, truncated }`. `performance.slowestTests` ranks up to five tests and their slowest work. Use these to compare runs or identify the next workflow to investigate.
+
+<details>
+<summary>Timing fields and clocks</summary>
+
+Each entry has `id`, `kind`, `name`, `start`, `duration`, and `status` (`passed`, `failed`, or `cancelled`). Operations and steps include `phase`. Test numbers are milliseconds from that runtime's monotonic clock. Hook rows retain function names and execution order.
+
+Single-worker summaries include `outsideTestsDuration` when run duration is available. It covers time outside accepted test runtimes, including frame startup, reporting, and between-test inspection. Concurrent summaries instead use `coordination`: coordinator wall time stays separate from summed browser work. Its clock starts at the first registered catalog and ends after terminal draining, before report persistence.
+
+Worker timings show assigned execution, handoff after result acceptance, queue time for assigned requests, and remaining unassigned time. Handoff includes document retirement, project cleanup, and final completion waiting. `projectCleanupDuration` is already part of handoff; don't add it again. Unassigned time includes waiting after the last assignment.
+
+Session timing uses its own clock and includes startup, report writing, and shutdown. It stays `running` until resources close, then is finalized atomically with a `session-timing` event. Watch and manual runs share one session across browser runs. The final report write itself is outside measured wall time. `browserCleanup.graceful` and the `browser-stopped` event show whether process cleanup was forced.
+
+</details>
+
+Each test keeps up to 500 entries; `truncated` counts omissions. A runtime that can't report has no timings, rather than invented zeros. Request labels omit queries, bodies, and headers. Keep secrets out of step and screenshot names: those appear in reports.
+
+## Screenshots
+
+Wait for the UI you care about, then capture it:
+
+```js
+await I.find('Dashboard').visible();
+let image = await app.screenshot('dashboard', { fullPage: true });
+```
+
+Managed browsers capture the original app page with the reporter hidden. The default is a viewport image; `fullPage: true` captures the whole page without changing its viewport. The result includes `path`, `url`, dimensions, and pixel ratio. Images appear in live and [saved reports](guide.md#saved-reports).
+
+### Choose what to capture
+
+```js
+await app.screenshot('dashboard', {
+  mask: [...app.document.querySelectorAll('[data-private]')],
+  maskColor: '#ff00ff',
+  animations: 'disabled',
+  caret: 'hide',
+});
+
+await app.screenshot('card', {
+  element: await I.find('$(.card)'),
+});
+```
+
+Masks cover current app elements in the PNG. `maskColor` takes an opaque `#RRGGBB` color. Element capture uses the element's document bounds, including content below the fold, without scrolling or resizing. Fractional edges round outward; element capture can't combine with `fullPage` or masks.
+
+Animations and carets stay unchanged by default. With suppression enabled, finite animations finish, infinite animations pause, and temporary styles are removed afterward. Dyno waits for fonts and checks the document and dimensions, but other app work can continue. Use Interactor to choose the state first.
+
+Always await captures and viewport changes. They run in order; navigation, Stop, resize, or lost ownership invalidates pending captures. Leaving operations unfinished fails the test or hook.
+
+### Manual browsers
+
+URL-only runs can't take screenshots. Required captures fail. Use `{ optional: true }` only when the functional test is useful without an image; Dyno returns and reports a skipped image. Provider and storage errors still fail.
+
+Reported PNGs stay on disk after cleanup; interrupted runs discard unreported images. Capture metadata includes the browser/provider/version, viewport, and pixel ratio. Dyno saves attachments; your visual-comparison service owns baselines and diffs.
+
+## Viewport sizing
+
+Managed runs start at 1280 × 800 CSS pixels. Set `viewport` in config or change it during a test:
+
+```js
+await app.setViewport({ width: 390, height: 844 });
+```
+
+The next test restores its default size. These dimensions change desktop layout; they don't emulate touch input, a phone's OS, or its physical screen.
+
+Manual runs use the actual window. A browser can't reliably resize its own tab, so a matching `app.setViewport` request succeeds and a different size fails. Fixed config dimensions must match too. Resize the window yourself or use a managed browser.
+
+## Native browser actions
+
+Use native input when you're testing the browser's default behavior, such as Tab navigation or CSS hover. Keep ordinary clicks, fields, and assertions in Interactor.
+
+```js
+await I.find('Name').then.focus();
+await I.nativePress('Tab');
+await I.find('Notes').focused();
+await I.find('Account menu').then.nativeHover();
+await I.nativeMove({ x: 0, y: 0 });
+```
+
+These work with scopes and custom interactors. `nativePress` uses the focused element; it doesn't focus a selector for you. Hover scrolls to a visible point that receives pointer input. Stale or covered targets fail. After an action navigates, assert on the destination with Interactor.
+
+### Handle a dialog
+
+```js
+await app.native.withDialog({
+  action: 'accept',
+  message: 'Delete this note?',
+}, async () => {
+  await I.click('Delete');
+});
+```
+
+The optional message must match exactly. You can also dismiss a dialog or supply prompt `text`. Await the scope, including when the callback navigates; it returns the callback's result.
+
+### Choose supported features
+
+`app.native.capabilities` tells you what this browser supports. Required calls fail when unavailable. Manual runs have no native capabilities; managed support varies by engine. See the [browser support table](browsers.md#native-capabilities).
+
+Use `grantPermissions([...])`, `enableVirtualAuthenticator()`, `disableVirtualAuthenticator()`, `setOffline(boolean)`, or `setReducedMotion('reduce' | 'no-preference')` before or after navigation. State resets before the next test, including after failure. Failed cleanup ends the managed session, and each operation appears in timings.
+
+Virtual authenticators and app offline require Chromium. Your app still performs real passkey registration and validation. Offline keeps companion HTTP connected, but Chromium can change its `navigator.onLine` too; this isn't fully isolated offline state.
+
+### Read browser console messages
+
+`app.native.consoleMessages()` returns up to 100 recent entries with increasing `id`, `type`, and `text` (up to 4,000 characters). Save the highest ID before a workflow to find newer messages. Browser-generated warnings are included; these entries aren't automatically copied to reports.
 
 ## Current limits
 
-Dyno tests web UI. Native iOS and macOS interfaces keep their platform UI tests.
+Dyno tests web UI. Keep platform UI tests for native iOS and macOS apps, and real-device checks for behavior a desktop viewport can't prove.
 
-The runner uses ES2022 syntax and modern APIs, including `AbortSignal.timeout`, `AbortSignal.any`, `Promise.withResolvers`, `crypto.getRandomValues`, and `EventSource`. Older browsers, including historical WebOS builds, need compatibility work. See [browser setup](browsers.md#known-limits) for verification gaps.
+### Browser support
 
-Ordinary Interactor actions use DOM methods and synthetic events. Use explicit native actions when a workflow needs browser defaults or trusted input. Closed shadow roots, downloads, video capture, visual baselines and HTTPS gateway serving are outside this version. Companion popups and background execution on iOS, phones, and TVs still need real-device verification; URL-only execution across browsers remains the goal.
+The runner needs ES2022 and modern APIs: `AbortSignal.timeout`, `AbortSignal.any`, `Promise.withResolvers`, `crypto.getRandomValues`, and `EventSource`. Older browsers, including historical WebOS builds, need compatibility work. Phones, iOS, and TVs still need verification of companion popups and background execution. See [browser setup](browsers.md#known-limits).
 
-The gateway uses HTTP. Secure cookies and secure-context-only features may need a different test origin. Cooperating HTML routes, including test fixtures, need the same opener and agent-cluster isolation headers as the app; changing them can sever the companion even on the same origin. The app and test contexts share an origin and aren't a security sandbox. An infinite loop can freeze the browser; the Node deadline can stop a browser it owns but can't recover a manual browser's event loop.
+Ordinary Interactor actions use DOM methods and synthetic events. Use explicit native actions for browser defaults or trusted input. Closed shadow roots, downloads, video, visual baselines, and HTTPS gateway serving are outside this version.
 
-The gateway rejects unknown Host headers and foreign WebSocket origins. Event and command requests are limited to 1 MB. Observers stream large views in bounded records; a slow reader can be disconnected without losing accepted results or saved output. Active browser runs are limited to 20. New joins fail at capacity; finished runs can be removed to make room.
+### App origins and isolation
+
+The gateway uses HTTP. Secure cookies and secure-context features may need a different test origin. HTML routes, including fixtures, need the app's opener and agent-cluster isolation headers; changing policy can disconnect the companion even on the same origin.
+
+Avoid changing `window.name` during a run; Dyno uses it to keep the companion connected. Tests and app code have separate contexts but share an origin. This isn't a security sandbox. An infinite loop can freeze the browser; Node can stop a managed browser, but can't recover a manual browser's event loop.
+
+### Run limits
+
+The gateway rejects unknown Host headers and foreign WebSocket origins. Event and command requests have a 1 MB limit. Large observer views stream in bounded records; a slow reader may disconnect without losing accepted results or saved output.
+
+Up to 20 browser runs can be active. Dyno drops finished runs as new ones join. If all 20 are still active, finish or close one before joining again.
+
+## Concurrent runs
+
+Start with one worker, the default. Once your app has isolated test resources, try `dyno --workers 4` and compare [run times](guide.md#understand-where-time-goes). More tabs don't make a shared database safe.
+
+Dyno uses one managed browser with private worker contexts, gateways, and app resources. Tests keep their hooks and fresh documents; the reporter combines results in catalog order. Manual runs use one worker; explicitly combining `--manual --workers 4` fails.
+
+### Give each worker its own resources
+
+Return `createWorker` from Node setup:
+
+```js
+import { prepareBuild, startTestProject } from './support/project.js';
+
+export default async function setup({ signal }) {
+  let build = await prepareBuild({ signal });
+  return {
+    createWorker: ({ worker, signal }) => startTestProject({ worker, build, signal }),
+    teardown: build.teardown,
+  };
+}
+```
+
+These helpers belong to your project. `worker` has a string `id` and numeric `index`. Each call returns `{ webServer, env, fixtures, drain, teardown }`, overriding setup defaults. Share immutable build output; keep databases, queues, files, and mutable app state private. A deliberately stateless app can share a server.
+
+If setup starts the server, return its URL with `command: undefined` and `reuseExistingServer: true`. Worker teardown runs before shared setup teardown. Clean up partial setup if it throws. The same setup path works with one worker.
+
+### Protect shared resources
+
+Declare resources such as the OS clipboard before execution:
+
+```js
+test('copies a token', async ({ I }) => {
+  await I.click('Copy token');
+}, { resources: ['clipboard'] });
+```
+
+Dyno reserves the names together until document retirement and project draining finish. Other eligible tests continue. Global Pause stops new assignments at test boundaries; `app.pause()` holds only its worker. Stop or worker loss saves accepted outcomes and images, drains, and closes the run. Tests and workers aren't automatically retried.
+
+### Randomize order
+
+```sh
+dyno --random
+dyno --seed issue-184
+```
+
+The seed appears in CLI output, Run info, and saved reports. It preserves priority for the same test IDs, including when filtering. It doesn't control app randomness or asynchronous timing.
+
+### Replay worker queues
+
+```sh
+dyno --replay .dyno/reports/<run-id>/schedule.json
+```
+
+`schedule.json` records assignments and completion order. Replay restores worker queues and count, not network or timer interleaving. The bundle fingerprint and catalog must match; an explicit `--workers` must match too. Selection flags, seeds, and `--watch` can't combine with replay.
+
+A completed schedule replays its full selection. An interrupted one replays attempted tests, including the unfinished assignment, and reports omitted unassigned tests. Those tests never count as passed. App code outside the test bundle, backend data, and application randomness remain yours to control. The last app stays available until shutdown, which is recorded in `session.json`.
+
+## Real app example: Vizzly
+
+`examples/vizzly` runs login and navigation against the real app and database. You'll need a Vizzly checkout with built `dist` assets and Docker. Set `VIZZLY_ROOT` if it isn't the sibling `vizzly` directory.
+
+Run `npm run test:vizzly`, or add `-- --ui` to inspect it. Setup creates private PostgreSQL and Redis containers, runs migrations and seeds, and provides a disposable account. The app uses port 3017; the gateway uses 7359. Cleanup removes only that run's containers and volumes.
+
+This integration is optional. `npm test` uses a self-contained fixture app.

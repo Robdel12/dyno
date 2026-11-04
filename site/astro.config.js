@@ -1,6 +1,7 @@
 import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
 import starlightTypeDoc, { typeDocSidebarGroup } from 'starlight-typedoc';
+import { guideNavigation } from './navigation.js';
 import { settings } from './scripts/settings.js';
 
 let { base } = settings();
@@ -32,9 +33,7 @@ export default defineConfig({
       },
     })],
     sidebar: [
-      { label: 'Start here', items: [{ label: 'Why Dyno', slug: '' }, { slug: 'guides/getting-started' }, { slug: 'example' }] },
-      { label: 'Write and run tests', items: ['interactors', 'custom-interactors', 'suites', 'configuration', 'app-server', 'concurrency', 'running', 'debugging'].map(key => ({ slug: `guides/${key}` })) },
-      { label: 'Inspect a run', items: ['timings', 'reports', 'screenshots', 'viewport', 'native', 'browsers', 'limits', 'vizzly'].map(key => ({ slug: `guides/${key}` })) },
+      ...guideNavigation,
       { slug: 'cli' },
       typeDocSidebarGroup,
       { label: 'Contribute', items: [{ autogenerate: { directory: 'contributing' } }] },

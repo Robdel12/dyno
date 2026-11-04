@@ -1,15 +1,14 @@
 <!-- Generated from source JSDoc. Run npm --prefix site run generate -- --write-markdown. -->
 # API reference
 
-Tests run in the browser. Configuration and project setup run in Node. Use the guides to start a project; use this reference to look up arguments, return values and browser capabilities.
+Write tests with browser APIs; configure the app and its resources in Node. This reference covers arguments, return values, and available capabilities. Start with the [first test guide](guide.md#write-your-first-test) if you're setting up a project.
 
-Start with `describe` and `test`, then look up what you need:
-
-- `TestContext`: the values passed to tests and hooks.
-- `Application`: navigation, requests, screenshots and browser access.
-- `defineInteractor`: reusable component actions and assertions.
-- `Config`: app server and run settings.
-- `ProjectSetup`: shared setup and private worker resources.
+- `describe` and `test` organize your tests.
+- `TestContext` has the values passed to tests and hooks.
+- `Application` handles navigation, requests, screenshots, and browser access.
+- `defineInteractor` creates reusable component actions and assertions.
+- `Config` sets up your app server and test run.
+- `ProjectSetup` prepares shared and private worker resources.
 
 Signatures: [browser types](../types/index.d.ts), [configuration](../types/config.d.ts). See the [guide](guide.md) for examples.
 
@@ -22,7 +21,7 @@ Signatures: [browser types](../types/index.d.ts), [configuration](../types/confi
 | `TestContext.fixtures` | JSON-safe values returned by project setup. These are visible to browser code. |
 | `TestContext.signal` | Cancellation for this test or hook. Cleanup receives a fresh signal and its own budget. |
 | `TestContext.test` | The current test’s stable ID, file, suite path, name and declared resources. |
-| `TestContext` | The browser context passed to a test or hook. `I` resolves against the current app document; fixtures are JSON-safe data supplied by Node setup. |
+| `TestContext` | The values you receive in a test or hook. Use `app` for navigation and browser access, `I` for interaction, and `step` to name work in reports. |
 | `TestContext.step` | Name meaningful work in the timing report. Await it; it returns the callback’s value and preserves its error. Use it in hooks too. Keep secrets out of step names. |
 | `Fixtures` | Browser-visible JSON-safe values from project setup. Extend this interface in your app to type fixture IDs and paths. Never put production credentials in fixtures. |
 | `test` | Run one user workflow in the browser. |
@@ -55,15 +54,15 @@ Signatures: [browser types](../types/index.d.ts), [configuration](../types/confi
 
 | API | Use |
 | --- | --- |
-| `Application` | The current app window and the operations Dyno owns. Tests run in a separate context and read the app DOM directly. Fresh documents do not reset browser storage or backend data. |
-| `Application.goto` | Navigate to a same-origin app path and wait for its document bridge. Use Interactor to wait for the UI you care about after navigation. |
-| `Application.request` | Make a same-origin fetch with the browser session and test cancellation signal. Returns a standard Response. Call your app’s test-only fixture endpoints here; Dyno does not own database factories. |
+| `Application` | Navigate and inspect your app from a test. Tests have their own context and read the app DOM directly. Fresh documents don't reset browser storage or backend data. |
+| `Application.goto` | Navigate to a same-origin app path and wait for its document bridge. Then use Interactor to wait for the UI you care about. |
+| `Application.request` | Fetch a same-origin URL using the browser session and test cancellation signal. Returns a standard Response. Use this for your app's test-only fixture endpoints; keep database factories in your project. |
 | `Application.setViewport` | Resize the actual managed viewport and wait for layout. Each dimension must be 1–8192 CSS pixels. Manual runs require the requested dimensions to already match. |
 | `Application.screenshot` | Save an exact PNG of the app, excluding the reporter. Full-page and element captures are supported. Required capture fails when unavailable; explicitly optional capture can skip. |
 | `Application.pause` | Open the reporter and suspend the execution deadline until Continue. Requires `--ui` or `--manual`. App timers and network work keep running; cleanup cannot pause. |
 | `Application.document` | Read the current app document after navigation is ready. Resolve elements again after navigation. |
 | `Application.window` | Read the current app window. Browser APIs are available directly; use Interactor assertions for changing state. |
-| `Application.native` | Explicit managed browser capabilities. Unsupported required operations fail clearly; there is no synthetic fallback. |
+| `Application.native` | Use managed browser features such as native input and permissions. Required operations fail when unsupported. |
 | `Viewport` | App viewport dimensions in CSS pixels. Resizing changes the real viewport, so responsive layouts behave normally. |
 | `BrowserIdentity` | The managed browser and provider recorded with a screenshot. This identifies the capture environment, not a simulated device. |
 | `CapturedScreenshot` | Saved PNG metadata, including the file path, image dimensions, pixel ratio, viewport and capture policy. Use the path from Node to publish an image to your visual service. |
@@ -87,7 +86,7 @@ Signatures: [browser types](../types/index.d.ts), [configuration](../types/confi
 | `NativeBrowser.setOffline` | Change Chromium app network availability. It does not change the controller connection. |
 | `NativeBrowser.setReducedMotion` | Change the managed browser’s reduced-motion preference. |
 | `NativeBrowser.consoleMessages` | Read recent browser console messages without evaluating objects in the app. |
-| `NativeBrowser.withDialog` | Arm an accept/dismiss response, await the callback that opens the dialog, then disarm it. An optional message checks the dialog text; `text` supplies a prompt response. |
+| `NativeBrowser.withDialog` | Handle a dialog opened by the callback, then remove the handler. Optionally check its exact message or supply prompt `text`. Returns the callback result. |
 | `NativeCapabilities` | Check support before a browser-specific workflow. Virtual authenticators and app offline require Chromium; clipboard permission support varies by engine. Manual URL runs have no native capabilities. |
 | `NativePoint` | A point in CSS pixels. Pointer moves use viewport coordinates; hover positions use the element’s bounding box. |
 | `NativeHoverOptions` | Optionally choose a point inside the target element. Without it, Dyno chooses a visible point that receives pointer input. |
@@ -105,13 +104,13 @@ Signatures: [browser types](../types/index.d.ts), [configuration](../types/confi
 
 | API | Use |
 | --- | --- |
-| `defineConfig` | Define typed Node configuration. Paths resolve relative to the config file. A plain default-exported object works too; this helper gives JavaScript editors the same type hints. |
-| `Config` | The project configuration. Supply a web-server origin and optionally its startup command. The configuration guide lists defaults, setup ownership and CLI overrides. |
+| `defineConfig` | Get type hints for your Node config. Paths resolve relative to the config file. A plain default-exported object works too. |
+| `Config` | Set your app server and test-run options. Start with the app URL and, if Dyno should start it, a command. The configuration guide lists defaults and setup examples. |
 | `ProjectWorker.env` | Environment values added to this worker’s app process. |
 | `ProjectWorker.fixtures` | JSON-safe IDs, paths and other values supplied to browser tests. |
 | `ProjectWorker.webServer` | Override the app command, URL or readiness settings for this worker. |
 | `ProjectWorker` | Private app resources for one worker: server overrides, environment, browser-visible fixtures, optional drain and teardown. Share immutable build output; isolate mutable databases, queues, files and sessions. |
-| `ProjectWorker.drain` | Join work started by this execution after Dyno retires its documents. Honor cancellation. Failed draining ends the run and preserves accepted results; teardown must remain safe afterward. |
+| `ProjectWorker.drain` | Wait for work this execution started after Dyno removes its documents. Honor cancellation. Failed draining ends the run and saves accepted results; teardown must remain safe afterward. |
 | `ProjectWorker.teardown` | Release resources acquired by this worker. Setup teardown runs once after all workers close. |
 | `ProjectSetup` | The value returned by the Node setup module. One setup owns run-wide resources; each worker owns its private app state. |
 | `ProjectSetup.createWorker` | Create private resources for a worker. Required for concurrent managed runs. Manual runs always use one worker. If acquisition fails before returning, clean up anything already created. |

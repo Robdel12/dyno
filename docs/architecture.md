@@ -31,7 +31,7 @@ Node gateway → Playwright worker → original app window and screenshots
 
 The start URL, `/__dyno__/`, opens a named companion before loading the app in the original window. Managed launch activates Dyno's **Start tests** button with a trusted browser gesture and waits for the companion to open. Manual URLs open it automatically when allowed, with the same button available if popups are blocked. The companion keeps its reference to the app through `opener`, so app navigation preserves test execution. Both windows must stay open.
 
-The gateway forwards app requests and WebSocket upgrades to the app server. Its startup HTTP readiness check reads the app’s opener/embedder isolation headers; Dyno applies those headers to its own documents before a browser joins. App response headers stay intact. It inserts a small bridge for errors, document readiness, and the reporter overlay. Test code stays in the companion's execution iframe. See the [guide](guide.md#app-server-integration) for cookies, redirects, and CSP behavior.
+The gateway forwards app requests and WebSocket upgrades to the app server. Its startup HTTP readiness check reads the app’s opener/embedder isolation headers; Dyno applies those headers to its own documents before a browser joins. App response headers stay intact. It inserts a small bridge for errors, document readiness, and the reporter overlay. Test code stays in the companion's execution iframe. See the [guide](guide.md#connect-your-app-server) for cookies, redirects, and CSP behavior.
 
 ## Test definitions
 

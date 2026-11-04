@@ -1,41 +1,47 @@
 /**
- * These commands and flags come from the installed CLI’s help. Put command-specific options after its name.
- *
  * @guide cli Commands and flags
+ * Run `dyno` for headless tests, `dyno --ui` to inspect the app, or `dyno --manual` to open the test URL yourself. Add `--watch` to rerun edits.
+ *
+ * The help below comes from the CLI itself. Use `dyno <command> --help` in your terminal to see the same options.
  */
 
 /**
+ * @guide running Run and inspect
+ * Run the whole suite headlessly, or keep the browser open while you work:
+ *
  * ```sh
- * dyno                              # headless run
- * dyno --ui                         # visible browser and repeated runs
- * dyno --watch                      # rerun when tests or imported helpers change
- * dyno --manual --host 0.0.0.0      # open the URL yourself or on another device
- * dyno --test 'saves a contact'      # exact test name
- * dyno --config path/to/config.js
- * dyno --json                       # one JSON event per stdout line
+ * dyno                    # run and exit
+ * dyno --ui               # inspect the app and results
+ * dyno --ui --watch        # rerun when tests or helpers change
  * ```
  *
- * `dyno` runs tests by default; `dyno run` is the explicit form. Use `dyno --help` for commands and `dyno run --help`, `dyno doctor --help`, or `dyno install --help` for their options and examples. Put command-specific options after the command name. Usage errors suggest likely flag corrections and point to the relevant help. JSON errors also include Commander's error code.
+ * Dyno starts the app and stops the processes it owns when you finish. `--ui` keeps the session open for reruns; press Ctrl-C to stop it.
  *
- * Exit codes are 0 for passing tests, 1 for failures, 130 for SIGINT, and 143 for SIGTERM. Cleanup failures exit 1 even when interrupted. `--ui` and `--manual` keep the gateway available for reruns; Ctrl-C stops it. Browser installation uses the same interruption and process cleanup.
+ * ## Open the reporter
  *
- * With `--json`, stdout contains one JSON event per line. Project `console` messages from config, setup, and teardown go to stderr, as does app-server output. Project code that writes directly to a stream should use `process.stderr`. Errors remain available as JSON events and stderr diagnostics. Use the process exit code for the final CLI outcome; a failure can emit an error after `session-timing`.
+ * Press **Ctrl+Shift+D** in the app. Dyno finishes the current test, then opens the reporter over it. The app keeps its full viewport underneath.
  *
- * Connection diagnostics appear as `browser-connection` and `browser-diagnostic` events, separately from test outcomes. Idle streams send keepalive comments so inspection can stay open.
+ * Start with the file/suite overview, then open a test's **Output**, **Timings** or **Application** view. You can rerun a test, suite, file or failed selection. Search and filters stay in the URL.
  *
- * Open the start URL at `/__dyno__/`. Dyno opens a companion window for test execution, then loads the app in the original window. If the popup is blocked, click **Start tests**. Keep both windows open: tests stay in the companion while the app navigates normally.
+ * Turn on **Pause on failure** in Run options to inspect a failing app. Continue hides the reporter before the next test. Stop cancels the run and starts cleanup. Pausing leaves app timers and requests running.
  *
- * Press **Ctrl+Shift+D** in the app to request inspection. Dyno finishes the current test before opening the reporter iframe over the app. The app keeps its full viewport underneath.
+ * The CLI also prints a separate reporter URL. Open it in another tab if you'd rather keep the app uncovered. A completed interactive run keeps each worker's last app available; rerun an earlier test to inspect it again.
  *
- * The overview groups files and suites, with search and status filters saved in its URL. Run one test, a suite, a file, or failed tests. Stable test links still point to the same test after definitions are reordered. Connection and command states stay visible; failed commands offer Try again. Open a test's Output route for failures, source excerpts, console messages, and screenshots. Its Application route lets you return to the actual app and choose a viewport. Reporter navigation never moves or scales the app.
+ * ## Bring your own browser
  *
- * **Run options** includes Pause on failure. Continue closes the overlay before starting the next test. A completed interactive run keeps each worker's last app available; rerun an earlier test to inspect it again. Stop cancels execution and begins cleanup. Managed runs retire their documents before draining project work, so use Pause when you want to inspect the current app. Pausing doesn't freeze the app's timers or requests. Closing or reloading the companion interrupts execution; start a fresh run rather than trying to resume it.
+ * ```sh
+ * dyno --manual --host 0.0.0.0
+ * ```
  *
- * The CLI also prints a separate reporter URL. Open it in another tab to observe and control the run without covering the app. Reruns rebuild tests; separate reporters follow the new run. Back/forward navigation only changes reporter routes.
+ * Open the printed URL and click **Start tests** if the popup was blocked. Keep both the app and companion windows open. Closing or reloading the companion interrupts the run; start a new one afterward.
  *
- * Console capture keeps the first 100 messages per test, up to 2,000 characters each, without evaluating object getters. It supports `log`, `info`, `warn`, `error`, and `debug`. Logging an error doesn't fail the test. Capture ends with the test; use the browser console for later inspection.
+ * See [browser setup](browsers.md) for manual-mode limits. Use [editing and debugging](guide.md#editing-and-debugging) for watch mode and in-test pauses, or `dyno --help` for selection and other options.
  *
- * @guide running Run and inspect
+ * ## Use the output in CI
+ *
+ * `dyno --json` writes one JSON event per stdout line. Config, setup, teardown and app logs go to stderr. Use the process exit code as the outcome: `0` passes, `1` fails, `130` means SIGINT, and `143` means SIGTERM. Cleanup failure exits `1`, including after interruption.
+ *
+ * [Saved reports](guide.md#saved-reports) give you portable HTML, JSON, JUnit and images after the session stops.
  */
 
 import { Command, CommanderError, InvalidArgumentError, Option } from 'commander';
