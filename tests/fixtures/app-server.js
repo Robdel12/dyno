@@ -262,6 +262,12 @@ let server = http.createServer(async (request, response) => {
   }
   if (request.url === '/api/logout') { response.writeHead(200, { 'Set-Cookie': 'saved=; Max-Age=0; HttpOnly; Path=/' }); response.end('signed out'); return; }
   if (request.url === '/api/crash') { response.end('stopping'); queueMicrotask(() => process.exit(9)); return; }
+  if (request.url === '/missing-page' || request.url === '/unavailable-page') {
+    let missing = request.url === '/missing-page';
+    response.writeHead(missing ? 404 : 503, { 'Content-Type': 'text/html' });
+    response.end(`<!doctype html><h1>${missing ? 'Page not found' : 'Service unavailable'}</h1>`);
+    return;
+  }
   if (request.url === '/nonce-app') {
     response.writeHead(200, { 'Content-Type': 'text/html', 'Content-Security-Policy': "default-src 'none'; script-src 'nonce-fixture'; frame-ancestors 'self'" });
     response.end('<!doctype html><html><head><title>Nonce app</title></head><body><h1>Booting</h1><script nonce="fixture">document.querySelector("h1").textContent = "Nonce app ready"</script></body></html>');

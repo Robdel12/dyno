@@ -89,6 +89,26 @@ test('starts without the reset session', async ({app, I}) => {
   outcomes(await fixture.run().completion, 3, 0);
 });
 
+test('browser tests can navigate to HTML error responses without changing their HTTP status', { timeout: 15000 }, async t => {
+  let fixture = await project(t, {
+    source: `
+describe('Error pages', () => {
+  test('reads the server error document', async ({ app, I }) => {
+    for (let [path, status, heading] of [
+      ['/missing-page', 404, 'Page not found'],
+      ['/unavailable-page', 503, 'Service unavailable']
+    ]) {
+      await app.goto(path);
+      await I.find('$(h1)').text(heading);
+      let response = await app.request(path);
+      await I.assert(() => response.status === status, 'Expected the original HTTP status');
+    }
+  });
+});`
+  });
+  outcomes(await fixture.run().completion, 1, 0);
+});
+
 test(
   'the app CSP permits a nonced bridge and a blocked bridge fails without weakening the policy',
   { timeout: 90000 },

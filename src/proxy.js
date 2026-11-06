@@ -99,7 +99,9 @@ export function proxyRequest(request, response, { target, gatewayOrigin }) {
   }, async incoming => {
     try {
       let headers = responseHeaders(incoming.headers, upstream, gatewayOrigin);
-      if (request.method !== 'HEAD' && /text\/html/i.test(headers['content-type'] ?? '') && incoming.statusCode === 200) {
+      let status = incoming.statusCode;
+      let rendersDocument = status === 200 || (status >= 400 && status < 600);
+      if (rendersDocument && request.method !== 'HEAD' && /text\/html/i.test(headers['content-type'] ?? '')) {
         let chunks = [];
         let size = 0;
         for await (let chunk of incoming) {
