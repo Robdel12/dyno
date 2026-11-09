@@ -39,23 +39,43 @@ export interface Config {
 }
 export function defineConfig(config: Config): Config;
 
+export interface ProjectContext {
+  readonly config: Readonly<Config>;
+  readonly signal: AbortSignal;
+  readonly session: { readonly id: string };
+  readonly onCleanup: (cleanup: () => unknown) => void;
+}
+export interface ProjectWorkerContext extends ProjectContext {
+  readonly worker: { readonly id: string; readonly index: number };
+}
+export interface ProjectExecution {
+  readonly runId: string;
+  readonly executionId: string;
+  readonly workerId: string;
+  readonly test: import('./test.js').TestDescriptor;
+  readonly signal: AbortSignal;
+}
+export interface FixtureTransport {
+  readonly path: string;
+  readonly scope: {
+    readonly runId: string;
+    readonly executionId: string;
+    readonly workerId: string;
+    readonly token: string;
+  };
+}
+export interface ExecutionPreparation {
+  readonly fixtures?: Readonly<Record<string, unknown>>;
+  readonly fixtureTransport?: FixtureTransport;
+}
 export interface ProjectWorker {
   readonly webServer?: Partial<Config['webServer']>;
   readonly env?: Readonly<Record<string, string>>;
   readonly fixtures?: Readonly<Record<string, unknown>>;
-  readonly drain?: (context: {
-    readonly runId: string;
-    readonly executionId: string;
-    readonly workerId: string;
-    readonly test: import('./test.js').TestDescriptor;
-    readonly signal: AbortSignal;
-  }) => void | PromiseLike<void>;
+  readonly beforeExecution?: (context: ProjectExecution) => void | ExecutionPreparation | PromiseLike<void | ExecutionPreparation>;
+  readonly drain?: (context: ProjectExecution) => void | PromiseLike<void>;
   readonly teardown?: () => void | PromiseLike<void>;
 }
 export interface ProjectSetup extends ProjectWorker {
-  readonly createWorker?: (context: {
-    readonly worker: { readonly id: string; readonly index: number };
-    readonly config: Readonly<Config>;
-    readonly signal: AbortSignal;
-  }) => ProjectWorker | PromiseLike<ProjectWorker>;
+  readonly createWorker?: (context: ProjectWorkerContext) => ProjectWorker | PromiseLike<ProjectWorker>;
 }

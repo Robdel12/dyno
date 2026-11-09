@@ -11,7 +11,7 @@ export let guideNavigation = [
     { slug: 'example' },
   ] },
   guides('Write tests', ['interactors', 'suites', 'custom-interactors']),
-  guides('Set up your app', ['configuration', 'app-server']),
+  guides('Set up your app', ['configuration', 'app-server', 'fixtures']),
   guides('Run and debug', ['running', 'debugging', 'reports', 'timings']),
   guides('Browser features', ['screenshots', 'viewport', 'native', 'limits']),
   guides('Larger suites', ['concurrency', 'vizzly']),

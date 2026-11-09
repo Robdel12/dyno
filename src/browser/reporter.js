@@ -458,7 +458,7 @@ export function createReporter(actions) {
     get('worker-timings').hidden = !coordination;
     if (coordination) {
       write(get('run-coordination'), `${duration(coordination.wallDuration)} wall · ${duration(coordination.testWorkDuration)} summed test work`);
-      let lines = coordination.workers.map(worker => `Worker ${worker.id}: ${duration(worker.executionDuration)} execution · ${duration(worker.handoffDuration)} handoff · ${duration(worker.queueDuration)} queue to assignment · ${duration(worker.unassignedDuration)} unassigned`);
+      let lines = coordination.workers.map(worker => `Worker ${worker.id}: ${duration(worker.executionDuration)} execution (${duration(worker.projectPreparationDuration ?? 0)} preparation) · ${duration(worker.handoffDuration)} handoff · ${duration(worker.queueDuration)} queue to assignment · ${duration(worker.unassignedDuration)} unassigned`);
       if (get('worker-timings').textContent !== lines.join(''))
         get('worker-timings').replaceChildren(...lines.map(line => element('li', '', line)));
     }

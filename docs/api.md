@@ -10,7 +10,7 @@ Write tests with browser APIs; configure the app and its resources in Node. This
 - `Config` sets up your app server and test run.
 - `ProjectSetup` prepares shared and private worker resources.
 
-Signatures: [browser types](../types/index.d.ts), [configuration](../types/config.d.ts). See the [guide](guide.md) for examples.
+Signatures: [browser types](../types/index.d.ts), [configuration](../types/config.d.ts), [app-process fixtures](../types/fixtures.d.ts). See the [guide](guide.md) for examples.
 
 ## Tests and hooks
 
@@ -70,6 +70,7 @@ Signatures: [browser types](../types/index.d.ts), [configuration](../types/confi
 | `Screenshot` | A captured PNG or an explicitly skipped optional image. Check `status` before consuming the path. |
 | `ScreenshotRenderingOptions` | Capture policy. Animations default to `allow`, caret to `initial`, and masks to opaque `#ff00ff`. Optional capture skips only when the capability is unavailable. |
 | `ScreenshotOptions` | Choose a viewport, full-page or element capture. Element capture cannot combine with `fullPage` or `mask`. Masks use elements from the current app document. |
+| `Application.fixture` | Call a named fixture in this worker's actual app process. Dyno supplies the execution capability, bounded JSON, cancellation, and a named timing step. Configure the optional fixture controller through beforeExecution. Omitted input is null. Calls never retry or follow redirects; abort cannot undo a committed write. Await every call before finishing the test or hook. |
 
 ## Managed capabilities
 
@@ -106,11 +107,35 @@ Signatures: [browser types](../types/index.d.ts), [configuration](../types/confi
 | --- | --- |
 | `defineConfig` | Get type hints for your Node config. Paths resolve relative to the config file. A plain default-exported object works too. |
 | `Config` | Set your app server and test-run options. Start with the app URL and, if Dyno should start it, a command. The configuration guide lists defaults and setup examples. |
+| `ProjectWorker.beforeExecution` | Prepare one assignment before browser hooks start. Return optional JSON fixtures and a fixture transport binding. Keys must not replace static fixture keys. Preparation consumes this test's timeout and runs once across assignment reply replays. Callbacks must honor cancellation; Dyno joins actual settlement before resource destruction, so uncooperative Node work can delay shutdown. Interrupted or failed preparation requires restarting Dyno. Only the app owns database reset and independent jobs. |
+| `ProjectContext` | Inputs to shared project setup: configuration, acquisition signal, immutable CLI session identity, and immediate cleanup registration. |
+| `ProjectContext.session` | The CLI session's stable random ID. It survives watch reruns and differs between simultaneous CLI invocations. |
+| `ProjectContext.onCleanup` | Register one owned release during acquisition. Callbacks run once in reverse order after app work stops, including when setup throws. Do not reuse the aborted acquisition signal for cleanup or register work after the factory settles. |
+| `ProjectWorkerContext` | Project acquisition inputs plus this worker's immutable string ID and numeric index. Resource names still need session identity to separate simultaneous runs. |
+| `ProjectExecution` | One owned test execution, with run/worker/execution IDs, the selected test descriptor, and a cancellation signal. Preparation and cleanup get separate live signals. |
+| `FixtureTransport` | An execution-owned, same-origin fixture call path and capability. Produced by the fixture control helper; private control credentials never enter this value. |
+| `ExecutionPreparation` | JSON data returned by beforeExecution. Fixtures extend static values without replacing keys; the optional transport binds app.fixture to this execution only. |
 | `ProjectWorker.env` | Environment values added to this worker’s app process. |
 | `ProjectWorker.fixtures` | JSON-safe IDs, paths and other values supplied to browser tests. |
 | `ProjectWorker.webServer` | Override the app command, URL or readiness settings for this worker. |
-| `ProjectWorker` | Private app resources for one worker: server overrides, environment, browser-visible fixtures, optional drain and teardown. Share immutable build output; isolate mutable databases, queues, files and sessions. |
-| `ProjectWorker.drain` | Wait for work this execution started after Dyno removes its documents. Honor cancellation. Failed draining ends the run and saves accepted results; teardown must remain safe afterward. |
+| `ProjectWorker` | Private app resources for one worker: server overrides, environment, browser-visible fixtures, execution preparation, drain and cleanup. Share immutable build output; isolate mutable databases, queues, files and sessions. |
+| `ProjectWorker.drain` | Wait for work this execution started after document retirement between tests. The final successful document can remain for inspection; close app admission and join its backend work anyway. Honor cancellation. Failed draining ends the run and saves accepted results; teardown must remain safe afterward. |
 | `ProjectWorker.teardown` | Release resources acquired by this worker. Setup teardown runs once after all workers close. |
-| `ProjectSetup` | The value returned by the Node setup module. One setup owns run-wide resources; each worker owns its private app state. |
-| `ProjectSetup.createWorker` | Create private resources for a worker. Required for concurrent managed runs. Manual runs always use one worker. If acquisition fails before returning, clean up anything already created. |
+| `ProjectSetup` | The value returned by the Node setup module. One setup owns CLI-session resources; each worker owns its private app state. |
+| `ProjectSetup.createWorker` | Create private resources for a worker. Required for concurrent managed runs. Manual runs always use one worker. Use onCleanup while acquiring resources so partial setup is released if the factory throws. |
+
+## App-process fixtures
+
+| API | Use |
+| --- | --- |
+| `defineFixtureOperations` | Compose named app operations without changing their definitions. Duplicate names fail immediately. |
+| `createFixtureController` | Own fixture admission for one real app worker. Operations receive `(context, input, execution)`; reset and drain receive `(context, execution)`. Execution contains identity and an abort signal. A reset requires a synchronous app admission hold, acquired before the controller returns. |
+| `createFixtureHttpHandler` | Handle fixed POST begin/call/drain routes in an outer Node listener. Returns false outside its path. Keep this handler reachable while the app is paused; the control token never belongs in browser fixtures. |
+| `connectFixtureControl` | Connect Node worker callbacks to the app's fixed fixture protocol. Calls never retry or follow redirects. `begin` returns execution fixtures and a same-origin browser binding; `drain` returns no browser data. |
+| `JsonValue` | Plain JSON accepted by fixture operations: finite numbers, strings, booleans, null, dense arrays and plain records. Runtime validation rejects custom serializers and values JSON would silently drop. |
+| `FixtureIdentity` | Run, worker and execution identity supplied by Dyno's coordinator. |
+| `FixtureScope` | Execution identity plus its short-lived browser operation capability. Never reuse it across tests or log its token. |
+| `FixtureExecution` | Explicit operation identity and cancellation signal. App dependencies arrive separately through the controller context. |
+| `FixtureHold` | An app-owned admission hold. Idle waits for accepted work; resume explicitly reopens this owner's admission after successful reset. Independent holds must compose. |
+| `FixtureOperation` | A real app factory or helper receiving dependencies, JSON input and its execution context. Return committed browser-safe JSON; detached work still needs app-owned drain. |
+| `FixtureController` | App-process fixture lifecycle and named dispatch. Construction can hold app admission; failed or cancelled preparation/drain never reopens it. Close before releasing app dependencies. |

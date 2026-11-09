@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { EventEmitter, once } from 'node:events';
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { loadConfig } from '../../src/config.js';
 import { buildSuite } from '../../src/build.js';
@@ -79,7 +79,7 @@ test(
   'native cleanup failure still delivers and saves the terminal failure',
   { timeout: 90000 },
   async (suite) => {
-    for (let terminalType of ['fatal', 'complete', 'restart'])
+    for (let terminalType of ['fatal', 'complete', 'restart', 'shutdown'])
       await suite.test(terminalType, async (t) => {
         let fixture = await project(t, {
           config: { browser, timeout: 60000 },
@@ -106,6 +106,7 @@ describe('Native cleanup failure', () => {
           app = await startWebServer(config.webServer, { signal: t.signal });
           gateway = await createGateway(config, bundle, {
             onRun: (run) => writer.save(run),
+            onDrain: () => writeFile(join(fixture.directory, 'drained.txt'), 'execution drained'),
             onEvent: (event) => {
               events.push(event);
               if (event.type === 'fatal' || event.type === 'complete')
@@ -154,19 +155,26 @@ describe('Native cleanup failure', () => {
           // Crash the real owned provider without allowing browser unload JS.
           // Cleanup still crosses IPC to a stopped worker, with no fake session.
           await crashOwnedProvider();
-          let response = terminalType === 'restart'
-            ? await fetch(gateway.url + 'control', {
-                method: 'POST', body: JSON.stringify({ runId: credentials.runId, command: 'rerun', ids: [] }), signal: t.signal,
-              })
-            : await post(
-            terminalType === 'fatal'
+          let response;
+          if (terminalType === 'shutdown') {
+            await gateway.close();
+            gateway = undefined;
+          } else if (terminalType === 'restart') {
+            response = await fetch(gateway.url + 'control', {
+              method: 'POST', body: JSON.stringify({ runId: credentials.runId, command: 'rerun', ids: [] }), signal: t.signal,
+            });
+          } else {
+            response = await post(terminalType === 'fatal'
               ? { type: 'fatal', error: { message: 'Browser ended while native state was active.' } }
               : { type: 'complete', duration: 1 },
-          );
-          assert.equal(response.status, 200, await response.text());
+            );
+          }
+          if (response) assert.equal(response.status, 200, await response.text());
           let [terminal] = await observed;
           assert.equal(terminal.type, 'fatal');
-          let expected = terminalType === 'restart'
+          let expected = terminalType === 'shutdown'
+            ? /Dyno stopped before the browser run completed\..*Native cleanup:/
+            : terminalType === 'restart'
             ? /closed|disconnect|IPC|channel/i
             : terminalType === 'fatal'
               ? /Browser ended while native state was active\. Native cleanup:/
@@ -179,7 +187,8 @@ describe('Native cleanup failure', () => {
           assert.equal(report.status, 'interrupted');
           assert.match(report.error.message, expected);
           assert.match(report.error.message, /closed|disconnect|IPC|channel|resetNative/i);
-          await gateway.close();
+          assert.equal(await readFile(join(fixture.directory, 'drained.txt'), 'utf8'), 'execution drained');
+          await gateway?.close();
           gateway = undefined;
         } finally {
           let cleanup = await Promise.allSettled([gateway?.close(), pool?.stop(), app?.stop()]);

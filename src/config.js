@@ -58,31 +58,31 @@
  *
  * ## Set up real app data
  *
- * Point `setup` at a Node module. Its async default export receives `{ config, signal }` and returns the resources your tests need:
+ * Point `setup` at a Node module. Its async default export receives `{ config, session, signal, onCleanup }` and returns the resources your tests need:
  *
  * ```js
  * import { startTestProject } from './support/project.js';
  *
- * export default async function setup({ signal }) {
- *   return startTestProject({ signal });
+ * export default async function setup({ session, signal, onCleanup }) {
+ *   return startTestProject({ session, signal, onCleanup });
  * }
  * ```
  *
- * `startTestProject` is your helper. Return `webServer` overrides, app `env`, JSON-safe `fixtures` for tests, and a `teardown` function. Keep credentials out of browser fixtures. Setup messages go to stderr; if setup throws before returning, clean up anything it already created.
+ * `startTestProject` is your helper. Return `webServer` overrides, app `env`, JSON-safe `fixtures` for tests, and a `teardown` function. Keep credentials out of browser fixtures. Register owned releases with `onCleanup` as resources are acquired. They run even if setup throws before returning. Setup messages go to stderr.
  *
  * Use project factories to create committed records and real sessions. Return the IDs and paths a scenario needs, then exercise the behavior through the app. Share immutable fixture inputs rather than mutable records. For concurrent runs, [give each worker its own resources](guide.md#concurrent-runs).
  *
- * Browser tests can't import Node factories. If a scenario needs Node work, expose a small authenticated test-only API and call it through `app.request`. Keep those endpoints out of production. Dyno doesn't provide a Node task API or replace your factory, auth, queue, or visual-comparison libraries.
+ * Use [named app fixtures](guide.md#named-app-fixtures) to call your real factories through `app.fixture`. Keep that test control outside production entrypoints. Operations receive explicit app dependencies; Dyno handles execution ownership and transport, while your app owns factories, auth, queues and visual comparison.
  *
  * ## Finish work before reusing resources
  *
  * A fresh page doesn't stop server writes, background jobs, or service workers. Return `drain` when your project needs to join that work between tests. Close admission for the old scenario, release any held requests, and leave its resources ready for reuse.
  *
- * Dyno removes the old runtime and app document, then calls `drain({ runId, executionId, workerId, test, signal })`. It runs once per non-skipped execution, including the last one before results are saved. Its duration appears in session timings.
+ * Between tests Dyno retires the old document, then calls `drain({ runId, executionId, workerId, test, signal })`. It runs once per non-skipped execution, including the last one before results are saved. The final successful document can remain for inspection, so its backend admission still needs to close during drain. Its duration appears in session timings.
  *
- * Keep draining within `cleanupTimeout` and honor its signal. A failure ends the session and saves accepted results; remaining tests stay unassigned. Aborting only bounds Dyno's wait, so your callback must stop touching resources when aborted. Make `teardown` safe after a drain timeout.
+ * Keep draining within `cleanupTimeout` and honor its signal. A failure ends the session and saves accepted results; remaining tests stay unassigned. Callbacks must honor cancellation. Dyno retains their original promises until settlement before resource destruction; uncooperative Node work can delay shutdown. Make teardown safe after a drain failure.
  *
- * Setup owns run-wide resources, worker setup owns private resources, and suite hooks prepare scenarios. For a multi-process app, use one project command to start the real stack and handle shutdown.
+ * Setup owns CLI-session resources, worker setup owns private resources, and optional `beforeExecution` resets or binds each scenario before browser hooks. Preparation uses the selected test timeout, leaving the remaining budget for browser work. Timings distinguish preparation from execution cleanup. For a multi-process app, use one project command to start the real stack and handle shutdown.
  */
 
 import { access } from 'node:fs/promises';

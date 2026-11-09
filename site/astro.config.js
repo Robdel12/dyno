@@ -16,7 +16,7 @@ export default defineConfig({
     customCss: ['./src/styles/docs.css'],
     components: { Header: './src/components/Header.astro' },
     plugins: [starlightTypeDoc({
-      entryPoints: ['./.generated/types/dyno.d.ts', './.generated/types/config.d.ts'],
+      entryPoints: ['./.generated/types/dyno.d.ts', './.generated/types/config.d.ts', './.generated/types/fixtures.d.ts'],
       tsconfig: './tsconfig.json',
       typeDoc: {
         name: 'API reference',

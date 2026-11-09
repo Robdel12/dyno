@@ -1,4 +1,52 @@
 /**
+ * Prepare one assignment before browser hooks start. Return optional JSON fixtures and a fixture transport binding. Keys must not replace static fixture keys. Preparation consumes this test's timeout and runs once across assignment reply replays. Callbacks must honor cancellation; Dyno joins actual settlement before resource destruction, so uncooperative Node work can delay shutdown. Interrupted or failed preparation requires restarting Dyno. Only the app owns database reset and independent jobs.
+ *
+ * @api ProjectWorker.beforeExecution
+ */
+
+/**
+ * Inputs to shared project setup: configuration, acquisition signal, immutable CLI session identity, and immediate cleanup registration.
+ *
+ * @api ProjectContext
+ */
+
+/**
+ * The CLI session's stable random ID. It survives watch reruns and differs between simultaneous CLI invocations.
+ *
+ * @api ProjectContext.session
+ */
+
+/**
+ * Register one owned release during acquisition. Callbacks run once in reverse order after app work stops, including when setup throws. Do not reuse the aborted acquisition signal for cleanup or register work after the factory settles.
+ *
+ * @api ProjectContext.onCleanup
+ */
+
+/**
+ * Project acquisition inputs plus this worker's immutable string ID and numeric index. Resource names still need session identity to separate simultaneous runs.
+ *
+ * @api ProjectWorkerContext
+ */
+
+/**
+ * One owned test execution, with run/worker/execution IDs, the selected test descriptor, and a cancellation signal. Preparation and cleanup get separate live signals.
+ *
+ * @api ProjectExecution
+ */
+
+/**
+ * An execution-owned, same-origin fixture call path and capability. Produced by the fixture control helper; private control credentials never enter this value.
+ *
+ * @api FixtureTransport
+ */
+
+/**
+ * JSON data returned by beforeExecution. Fixtures extend static values without replacing keys; the optional transport binds app.fixture to this execution only.
+ *
+ * @api ExecutionPreparation
+ */
+
+/**
  * Environment values added to this worker’s app process.
  *
  * @api ProjectWorker.env
@@ -17,14 +65,14 @@
  */
 
 /**
- * Private app resources for one worker: server overrides, environment, browser-visible fixtures, optional drain and teardown. Share immutable build output; isolate mutable databases, queues, files and sessions.
+ * Private app resources for one worker: server overrides, environment, browser-visible fixtures, execution preparation, drain and cleanup. Share immutable build output; isolate mutable databases, queues, files and sessions.
  *
  * @api ProjectWorker
  */
 
 /**
  * @api ProjectWorker.drain
- * Wait for work this execution started after Dyno removes its documents. Honor cancellation. Failed draining ends the run and saves accepted results; teardown must remain safe afterward.
+ * Wait for work this execution started after document retirement between tests. The final successful document can remain for inspection; close app admission and join its backend work anyway. Honor cancellation. Failed draining ends the run and saves accepted results; teardown must remain safe afterward.
  */
 
 /**
@@ -34,13 +82,13 @@
  */
 
 /**
- * The value returned by the Node setup module. One setup owns run-wide resources; each worker owns its private app state.
+ * The value returned by the Node setup module. One setup owns CLI-session resources; each worker owns its private app state.
  *
  * @api ProjectSetup
  */
 
 /**
- * Create private resources for a worker. Required for concurrent managed runs. Manual runs always use one worker. If acquisition fails before returning, clean up anything already created.
+ * Create private resources for a worker. Required for concurrent managed runs. Manual runs always use one worker. Use onCleanup while acquiring resources so partial setup is released if the factory throws.
  *
  * @api ProjectSetup.createWorker
  */
@@ -58,18 +106,18 @@
  * ```js
  * import { prepareBuild, startTestProject } from './support/project.js';
  *
- * export default async function setup({ signal }) {
- *   let build = await prepareBuild({ signal });
+ * export default async function setup({ session, signal, onCleanup }) {
+ *   let build = await prepareBuild({ session, signal, onCleanup });
  *   return {
- *     createWorker: ({ worker, signal }) => startTestProject({ worker, build, signal }),
- *     teardown: build.teardown,
+ *     createWorker: ({ worker, signal, onCleanup }) =>
+ *       startTestProject({ session, worker, build, signal, onCleanup }),
  *   };
  * }
  * ```
  *
- * These helpers belong to your project. `worker` has a string `id` and numeric `index`. Each call returns `{ webServer, env, fixtures, drain, teardown }`, overriding setup defaults. Share immutable build output; keep databases, queues, files, and mutable app state private. A deliberately stateless app can share a server.
+ * These helpers belong to your project. `worker` has a string `id` and numeric `index`. Each call returns `{ webServer, env, fixtures, beforeExecution, drain, teardown }`, overriding setup defaults. Share immutable build output; keep databases, queues, files, and mutable app state private. A deliberately stateless app can share a server.
  *
- * If setup starts the server, return its URL with `command: undefined` and `reuseExistingServer: true`. Worker teardown runs before shared setup teardown. Clean up partial setup if it throws. The same setup path works with one worker.
+ * If setup starts the server, return its URL with `command: undefined` and `reuseExistingServer: true`. Worker teardown runs before shared setup teardown. Register each release with `onCleanup` before the next fallible step. Registration closes when the factory settles; callbacks run once in reverse order even after setup fails. Returned `teardown` joins that same cleanup stack. Do not register the same release twice. The frozen `session.id` is shared across workers and stays stable during watch reruns; combine it with worker identity when naming private backend resources. The same setup path works with one worker.
  *
  * ## Protect shared resources
  *
@@ -104,24 +152,20 @@
  */
 
 import { normalizeConfig } from './config.js';
+import { snapshotJson } from './fixture-protocol.js';
 
 let record = value => value && typeof value === 'object' && !Array.isArray(value);
-let snapshot = value => {
-  if (Array.isArray(value)) return Object.freeze(value.map(snapshot));
-  if (record(value)) return Object.freeze(Object.fromEntries(Object.entries(value).map(([key, item]) => [key, snapshot(item)])));
-  return value;
-};
 
 export function projectWorker(config, project, index, defaults = {}) {
   if (!project || typeof project !== 'object' || Array.isArray(project))
     throw new Error('createWorker must return a project worker with its app configuration.');
   for (let key of Object.keys(project))
-    if (!['webServer', 'env', 'fixtures', 'drain', 'teardown'].includes(key))
+    if (!['webServer', 'env', 'fixtures', 'beforeExecution', 'drain', 'teardown'].includes(key))
       throw new Error(`Unknown project worker option: ${key}.`);
   for (let input of [defaults, project])
     for (let name of ['webServer', 'env', 'fixtures'])
       if (input[name] !== undefined && !record(input[name])) throw new Error(`Project worker ${name} must be an object.`);
-  for (let name of ['drain', 'teardown'])
+  for (let name of ['beforeExecution', 'drain', 'teardown'])
     if (project[name] !== undefined && typeof project[name] !== 'function')
       throw new Error(`Project worker ${name} must be a function.`);
   let webServer = normalizeConfig({ webServer: {
@@ -129,11 +173,16 @@ export function projectWorker(config, project, index, defaults = {}) {
     env: { ...config.webServer.env, ...defaults.webServer?.env, ...defaults.env, ...project.webServer?.env, ...project.env },
   } }, config.file).webServer;
   let fixtures;
-  try { fixtures = snapshot(JSON.parse(JSON.stringify({ ...defaults.fixtures, ...project.fixtures }))); }
+  try {
+    let shared = snapshotJson(defaults.fixtures ?? {}, { maxBytes: 8_000_000 });
+    let own = snapshotJson(project.fixtures ?? {}, { maxBytes: 8_000_000 });
+    fixtures = snapshotJson({ ...shared, ...own }, { maxBytes: 8_000_000 });
+  }
   catch (error) { throw new Error('Project worker fixtures must be JSON-serializable.', { cause: error }); }
   return Object.freeze({
     config: Object.freeze({ ...config, port: index === 0 ? config.port : 0, webServer }),
     fixtures,
+    beforeExecution: project.beforeExecution ?? defaults.beforeExecution,
     drain: project.drain ?? defaults.drain,
   });
 }

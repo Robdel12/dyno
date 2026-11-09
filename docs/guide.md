@@ -282,31 +282,31 @@ Dyno gives each test 10 seconds, including hooks and document startup. Interacto
 
 ### Set up real app data
 
-Point `setup` at a Node module. Its async default export receives `{ config, signal }` and returns the resources your tests need:
+Point `setup` at a Node module. Its async default export receives `{ config, session, signal, onCleanup }` and returns the resources your tests need:
 
 ```js
 import { startTestProject } from './support/project.js';
 
-export default async function setup({ signal }) {
-  return startTestProject({ signal });
+export default async function setup({ session, signal, onCleanup }) {
+  return startTestProject({ session, signal, onCleanup });
 }
 ```
 
-`startTestProject` is your helper. Return `webServer` overrides, app `env`, JSON-safe `fixtures` for tests, and a `teardown` function. Keep credentials out of browser fixtures. Setup messages go to stderr; if setup throws before returning, clean up anything it already created.
+`startTestProject` is your helper. Return `webServer` overrides, app `env`, JSON-safe `fixtures` for tests, and a `teardown` function. Keep credentials out of browser fixtures. Register owned releases with `onCleanup` as resources are acquired. They run even if setup throws before returning. Setup messages go to stderr.
 
 Use project factories to create committed records and real sessions. Return the IDs and paths a scenario needs, then exercise the behavior through the app. Share immutable fixture inputs rather than mutable records. For concurrent runs, [give each worker its own resources](guide.md#concurrent-runs).
 
-Browser tests can't import Node factories. If a scenario needs Node work, expose a small authenticated test-only API and call it through `app.request`. Keep those endpoints out of production. Dyno doesn't provide a Node task API or replace your factory, auth, queue, or visual-comparison libraries.
+Use [named app fixtures](guide.md#named-app-fixtures) to call your real factories through `app.fixture`. Keep that test control outside production entrypoints. Operations receive explicit app dependencies; Dyno handles execution ownership and transport, while your app owns factories, auth, queues and visual comparison.
 
 ### Finish work before reusing resources
 
 A fresh page doesn't stop server writes, background jobs, or service workers. Return `drain` when your project needs to join that work between tests. Close admission for the old scenario, release any held requests, and leave its resources ready for reuse.
 
-Dyno removes the old runtime and app document, then calls `drain({ runId, executionId, workerId, test, signal })`. It runs once per non-skipped execution, including the last one before results are saved. Its duration appears in session timings.
+Between tests Dyno retires the old document, then calls `drain({ runId, executionId, workerId, test, signal })`. It runs once per non-skipped execution, including the last one before results are saved. The final successful document can remain for inspection, so its backend admission still needs to close during drain. Its duration appears in session timings.
 
-Keep draining within `cleanupTimeout` and honor its signal. A failure ends the session and saves accepted results; remaining tests stay unassigned. Aborting only bounds Dyno's wait, so your callback must stop touching resources when aborted. Make `teardown` safe after a drain timeout.
+Keep draining within `cleanupTimeout` and honor its signal. A failure ends the session and saves accepted results; remaining tests stay unassigned. Callbacks must honor cancellation. Dyno retains their original promises until settlement before resource destruction; uncooperative Node work can delay shutdown. Make teardown safe after a drain failure.
 
-Setup owns run-wide resources, worker setup owns private resources, and suite hooks prepare scenarios. For a multi-process app, use one project command to start the real stack and handle shutdown.
+Setup owns CLI-session resources, worker setup owns private resources, and optional `beforeExecution` resets or binds each scenario before browser hooks. Preparation uses the selected test timeout, leaving the remaining budget for browser work. Timings distinguish preparation from execution cleanup. For a multi-process app, use one project command to start the real stack and handle shutdown.
 
 ## Connect your app server
 
@@ -342,6 +342,70 @@ The app receives `DYNO_URL`, the gateway origin. Use it as your public URL for O
 Dyno preserves CSP and isolation headers and uses an existing script nonce when available. Give your app an explicit test configuration if it blocks injection, the reporter iframe, or same-origin window access. Changing isolation policy or navigating cross-origin can disconnect the companion and is unsupported.
 
 The gateway accepts UTF-8 HTML, including gzip, deflate, and Brotli, up to 10 MB decoded. See [current limits](guide.md#current-limits) for origin and browser requirements.
+
+## Named app fixtures
+
+Browser tests can ask the real app process to seed committed records or perform small test operations.
+Import the Node helpers from `dyno/fixtures`; keep factories and database connections in your app.
+
+```js
+import { defineFixtureOperations, createFixtureController, createFixtureHttpHandler } from 'dyno/fixtures';
+
+let controller = createFixtureController({
+  workerId,
+  context: { db, factories },
+  operations: defineFixtureOperations({
+    'seed.user': ({ factories }, input, { signal }) => factories.createUser(input, { signal }),
+  }),
+  pause: () => appRequests.pause(),
+  reset: ({ db }, { signal }) => resetDatabase(db, { signal }),
+  drain: (_context, { signal }) => stopAndJoinAppJobs({ signal }),
+});
+let handleFixtures = createFixtureHttpHandler(controller, { token: privateControlToken });
+```
+
+Call `handleFixtures(request, response)` before delegating to your ordinary Node app handler.
+It returns whether it handled the request. Keep control reachable outside the app runtime being paused.
+An app with parsed endpoints can call `controller.dispatch()` directly; it needs no HTTP adapter.
+
+Connect the worker's lifecycle callbacks in Node setup:
+
+```js
+import { connectFixtureControl } from 'dyno/fixtures';
+
+let control = connectFixtureControl({ url: appOrigin, workerId, token: privateControlToken });
+return {
+  beforeExecution: control.begin,
+  drain: control.drain,
+  teardown: () => stopOwnedAppResources(),
+};
+```
+
+Register `controller.close()` before releasing its app dependencies. A reset requires `pause()` to
+synchronously return an admission hold with `idle({ signal })` and `resume()`. Construction acquires
+that initial hold. Begin waits for idle, resets exclusively, then resumes. Resume commits preparation;
+if the caller loses the response after that point, the worker is open and can still be drained by
+execution identity. Drain closes admission and starts your app drain before waiting, so it can stop
+producers or end streams. Keep the hold until
+the next successful preparation. Failed or canceled reset/drain never reopens the worker.
+
+Tests call `await app.fixture('seed.user', { email: 'alice@example.test' })`, then exercise the real app
+through navigation and Interactor. Omitted input means null. Operations return JSON; reset may return
+a JSON record of execution fixture values or undefined. Drain returns no browser data.
+
+The default routes are POST `/__dyno_fixtures__/begin`, `/call` and `/drain`. Set the same base `path` on handler and control client to change them. Control uses a private
+token; browser calls receive only their execution capability and same-origin call path. Calls never
+retry or follow redirects. Keep tokens and returned records out of your own logs.
+
+Input is limited to 64 KiB, result envelopes to 1 MiB, and JSON depth to 64. Values must be ordinary
+JSON: no undefined properties, functions, dates, custom serializers, sparse arrays or cycles.
+Callback errors have fixed public messages with their original cause available only in Node.
+
+Aborting HTTP cannot undo committed writes or queued work. Operations must honor their signal;
+the controller retains their actual promises until settlement. Your app still owns jobs, service
+workers, database reset and shutdown. A delayed ordinary app request has no fixture execution
+envelope, so stopping its source remains app policy. Close is terminal; it uses its own cleanup
+signal and never resumes admission.
 
 ## Run and inspect
 
@@ -614,18 +678,18 @@ Return `createWorker` from Node setup:
 ```js
 import { prepareBuild, startTestProject } from './support/project.js';
 
-export default async function setup({ signal }) {
-  let build = await prepareBuild({ signal });
+export default async function setup({ session, signal, onCleanup }) {
+  let build = await prepareBuild({ session, signal, onCleanup });
   return {
-    createWorker: ({ worker, signal }) => startTestProject({ worker, build, signal }),
-    teardown: build.teardown,
+    createWorker: ({ worker, signal, onCleanup }) =>
+      startTestProject({ session, worker, build, signal, onCleanup }),
   };
 }
 ```
 
-These helpers belong to your project. `worker` has a string `id` and numeric `index`. Each call returns `{ webServer, env, fixtures, drain, teardown }`, overriding setup defaults. Share immutable build output; keep databases, queues, files, and mutable app state private. A deliberately stateless app can share a server.
+These helpers belong to your project. `worker` has a string `id` and numeric `index`. Each call returns `{ webServer, env, fixtures, beforeExecution, drain, teardown }`, overriding setup defaults. Share immutable build output; keep databases, queues, files, and mutable app state private. A deliberately stateless app can share a server.
 
-If setup starts the server, return its URL with `command: undefined` and `reuseExistingServer: true`. Worker teardown runs before shared setup teardown. Clean up partial setup if it throws. The same setup path works with one worker.
+If setup starts the server, return its URL with `command: undefined` and `reuseExistingServer: true`. Worker teardown runs before shared setup teardown. Register each release with `onCleanup` before the next fallible step. Registration closes when the factory settles; callbacks run once in reverse order even after setup fails. Returned `teardown` joins that same cleanup stack. Do not register the same release twice. The frozen `session.id` is shared across workers and stays stable during watch reruns; combine it with worker identity when naming private backend resources. The same setup path works with one worker.
 
 ### Protect shared resources
 

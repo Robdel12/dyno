@@ -23,7 +23,7 @@ export async function generate() {
   await rm(output, { recursive: true, force: true });
   await rm(join(site, '.generated'), { recursive: true, force: true });
   let used = new Set();
-  for (let [source, target] of [['types/index.d.ts', 'types/dyno.d.ts'], ['types/config.d.ts', 'types/config.d.ts'], ['types/test.d.ts', 'types/test.d.ts']])
+  for (let [source, target] of [['types/index.d.ts', 'types/dyno.d.ts'], ['types/config.d.ts', 'types/config.d.ts'], ['types/test.d.ts', 'types/test.d.ts'], ['types/fixtures.d.ts', 'types/fixtures.d.ts']])
     await write(join(site, '.generated', target), documentedTypes(source, await read(source), api, used));
   for (let key of api.keys()) if (!used.has(key)) throw new Error(`Source @api ${key} has no public declaration.`);
   let requiredGuides = [...guideOrder, 'overview', 'api-overview', 'cli'];
@@ -74,7 +74,7 @@ export async function generate() {
   }
   await page('cli', 'Commands and flags', cli);
   await write(join(site, '.generated/overview.md'), links(guides.get('api-overview').body) + '\n');
-  let reference = '# API reference\n\n' + guides.get('api-overview').body.replace(/\[([^\]]+)\]\(api\/[^)]+\)/g, '`$1`') + '\n\nSignatures: [browser types](../types/index.d.ts), [configuration](../types/config.d.ts). See the [guide](guide.md) for examples.\n';
+  let reference = '# API reference\n\n' + guides.get('api-overview').body.replace(/\[([^\]]+)\]\(api\/[^)]+\)/g, '`$1`') + '\n\nSignatures: [browser types](../types/index.d.ts), [configuration](../types/config.d.ts), [app-process fixtures](../types/fixtures.d.ts). See the [guide](guide.md) for examples.\n';
   let groups = [
     ['Tests and hooks', ['src/browser/registry.js', 'src/browser/index.js', 'src/suite.js']],
     ['Interactors', ['src/browser/interactor.js']],
@@ -82,6 +82,7 @@ export async function generate() {
     ['Managed capabilities', ['src/browser/native.js']],
     ['Timings', ['src/browser/timings.js']],
     ['Configuration and Node setup', ['src/config.js', 'src/project-worker.js']],
+    ['App-process fixtures', ['src/fixtures.js']],
   ];
   for (let [title, paths] of groups) {
     reference += `\n## ${title}\n\n| API | Use |\n| --- | --- |\n`;

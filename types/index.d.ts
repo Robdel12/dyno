@@ -146,6 +146,7 @@ export interface NativeBrowser {
 export interface Application {
   goto(path: string): Promise<void>;
   request(path: string, options?: RequestInit): Promise<Response>;
+  fixture<T = unknown>(name: string, input?: unknown): Promise<T>;
   setViewport(viewport: Viewport): Promise<Viewport>;
   screenshot(name: string, options?: ScreenshotOptions): Promise<Screenshot>;
   pause(message?: string): Promise<void>;
