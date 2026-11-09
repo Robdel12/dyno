@@ -40,6 +40,7 @@ export async function createGateway(
     onRun = async () => {},
     onError = () => {},
     onDrain,
+    beforeExecution,
     rebuild,
     interactive = false,
     coordinator,
@@ -84,7 +85,7 @@ export async function createGateway(
     onCommand: input => coordinator.command(input, workerId),
     onCommandResult: input => coordinator.commandResult(workerId, input),
   });
-  coordinator.register(workerId, control, onDrain);
+  coordinator.register(workerId, control, onDrain, beforeExecution, fixtures);
   let origin;
   let allowedHosts;
   let settings = {

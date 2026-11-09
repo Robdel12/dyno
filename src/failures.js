@@ -1,4 +1,4 @@
-let phases = ['runtime', 'beforeEach', 'test', 'afterEach', 'app', 'timeout', 'cleanup'];
+let phases = ['preparation', 'runtime', 'beforeEach', 'test', 'afterEach', 'app', 'timeout', 'cleanup'];
 export function failureRecord(error, phase = 'runtime', declaration) {
   return Object.freeze({
     phase,

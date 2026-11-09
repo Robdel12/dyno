@@ -442,7 +442,7 @@ window.addEventListener('pagehide', () => {
     );
 });
 
-async function runtime(mode, timeout, index, testId, executionId = id()) {
+async function runtime(mode, timeout, index, testId, executionId = id(), binding) {
   let frame = document.createElement('iframe');
   frame.title =
     mode === 'discover'
@@ -505,6 +505,9 @@ async function runtime(mode, timeout, index, testId, executionId = id()) {
         message.executionId !== current.id
       )
         return;
+      if (message.kind === 'runtime-binding')
+        frame.contentWindow.postMessage({ channel: 'dyno', kind: 'runtime-binding', runId,
+          executionId: current.id, binding: binding ?? { fixtures: settings.fixtures } }, location.origin);
       if (message.kind === 'output' && message.index === index)
         update({ type: 'test.output', index, entries: message.entries });
       if (message.kind === 'location' && message.index === index)
@@ -737,6 +740,7 @@ try {
     if (admissionPaused && !assignment) { await paused(); continue; }
     if (!assignment) throw new Error('No eligible test assignment is available.');
     if (state.interactive && state.phase === 'pausing') await paused();
+    let localDeadline = assignment.preparation?.remaining === undefined ? null : performance.now() + assignment.preparation.remaining;
     let test = assignment.test;
     position = assignment.index;
     controller.signal.throwIfAborted();
@@ -770,7 +774,9 @@ try {
       observedViewport.pixelRatio !== appWindow.devicePixelRatio
     )
       await sizeViewport(viewport, null, viewportMode);
-    let runner = await runtime('test', test.timeout ?? settings.timeout, test.index, test.id, assignment.id);
+    let budget = localDeadline === null ? test.timeout ?? settings.timeout : localDeadline - performance.now();
+    if (budget <= 0) throw new Error('Execution preparation used the test timeout before the browser started.');
+    let runner = await runtime('test', Math.max(1, Math.ceil(budget)), test.index, test.id, assignment.id, assignment.preparation);
     update({ type: 'test.started', index: test.index });
     let outcome;
     try {

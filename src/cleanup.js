@@ -21,3 +21,19 @@ export function createCleanup() {
     }
   });
 }
+
+export function createCleanupScope() {
+  let cleanup = createCleanup();
+  let sealed = false;
+  return Object.freeze({
+    onCleanup(step) {
+      if (sealed) throw new Error('Resource acquisition has finished; cleanup registration is closed.');
+      cleanup.add(step);
+    },
+    seal() { sealed = true; },
+    run() {
+      sealed = true;
+      return cleanup.run();
+    },
+  });
+}

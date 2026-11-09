@@ -1,3 +1,4 @@
+import { fixtureOperationName, snapshotJson, readFixtureResponse, fixtureRequestLimit } from '../fixture-protocol.js';
 /**
  * @api Application
  * Navigate and inspect your app from a test. Tests have their own context and read the app DOM directly. Fresh documents don't reset browser storage or backend data.
@@ -402,6 +403,11 @@ function maskRectangles(elements, document, policy, metrics) {
   });
 }
 
+/**
+ * Call a named fixture in this worker's actual app process. Dyno supplies the execution capability, bounded JSON, cancellation, and a named timing step. Configure the optional fixture controller through beforeExecution. Omitted input is null. Calls never retry or follow redirects; abort cannot undo a committed write. Await every call before finishing the test or hook.
+ *
+ * @api Application.fixture
+ */
 export function createApp(
   appWindow,
   readState,
@@ -412,6 +418,8 @@ export function createApp(
   supportsCapture,
   measure,
   nativeCapabilities,
+  fixtureTransport,
+  fixtureStep = (name, work) => measure('step', name, work),
 ) {
   let captures = Promise.resolve();
   return Object.freeze({
@@ -532,6 +540,24 @@ export function createApp(
     get window() {
       signal.throwIfAborted();
       return appWindow;
+    },
+    fixture: (name, input = null) => {
+      signal.throwIfAborted();
+      fixtureOperationName(name);
+      if (!fixtureTransport) throw new Error('This project has no execution fixture transport. Configure beforeExecution with a fixture controller.');
+      let body = JSON.stringify(snapshotJson({ scope: fixtureTransport.scope, name, input }, { maxBytes: fixtureRequestLimit }));
+      return fixtureStep(`Fixture ${name}`, async () => {
+        let response = await measure('request', `POST ${fixtureTransport.path}`, () =>
+          fetch(fixtureTransport.path, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body, credentials: 'same-origin', redirect: 'error', signal,
+          }));
+        let result = await readFixtureResponse(response);
+        signal.throwIfAborted();
+        if (!result || Object.keys(result).length !== 1 || !Object.hasOwn(result, 'value'))
+          throw new Error('The fixture server returned an invalid result envelope.');
+        return result.value;
+      });
     },
     request: (path, init = {}) => {
       let url = new URL(path, location.origin);

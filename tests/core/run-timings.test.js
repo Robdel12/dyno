@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { finishRunTimings, recordProjectCleanup } from '../../src/run-timings.js';
+import { finishRunTimings, recordProjectCleanup, recordProjectPreparation } from '../../src/run-timings.js';
 
 test('concurrent timing keeps coordinator wall, browser work and worker intervals separate', () => {
   let run = {
@@ -11,7 +11,8 @@ test('concurrent timing keeps coordinator wall, browser work and worker interval
       { id: 'second', workerId: '1', index: 1, requestedAt: 0, assignedAt: 20, reportedAt: 90 },
     ],
   };
-  let drained = recordProjectCleanup(run, 'first', { startedAt: 60, finishedAt: 75, status: 'passed' });
+  let prepared = recordProjectPreparation(run, 'first', { startedAt: 10, finishedAt: 18, status: 'passed' });
+  let drained = recordProjectCleanup(prepared, 'first', { startedAt: 60, finishedAt: 75, status: 'passed' });
   drained = recordProjectCleanup(drained, 'second', { startedAt: 95, finishedAt: 100, status: 'passed' });
   let finished = finishRunTimings(drained, 100);
   assert.equal(finished.summary.duration, 100);
@@ -19,8 +20,8 @@ test('concurrent timing keeps coordinator wall, browser work and worker interval
   assert.equal(finished.coordination.testWorkDuration, 95);
   assert.equal(Object.hasOwn(finished.summary.performance, 'outsideTestsDuration'), false);
   assert.deepEqual(finished.coordination.workers, [
-    { id: '0', executionDuration: 40, handoffDuration: 30, queueDuration: 10, projectCleanupDuration: 15, unassignedDuration: 20 },
-    { id: '1', executionDuration: 70, handoffDuration: 10, queueDuration: 20, projectCleanupDuration: 5, unassignedDuration: 0 },
+    { id: '0', executionDuration: 40, handoffDuration: 30, queueDuration: 10, projectCleanupDuration: 15, projectPreparationDuration: 8, unassignedDuration: 20 },
+    { id: '1', executionDuration: 70, handoffDuration: 10, queueDuration: 20, projectCleanupDuration: 5, projectPreparationDuration: 0, unassignedDuration: 0 },
   ]);
   assert.equal(run.assignments[0].projectCleanup, undefined);
   assert.equal(run.summary.duration, 1);
@@ -35,7 +36,7 @@ test('an interrupted assignment measures execution until cleanup without inventi
   let drained = recordProjectCleanup(run, 'lost', { startedAt: 90, finishedAt: 100, status: 'failed' });
   let { coordination } = finishRunTimings(drained, 100);
   assert.equal(coordination.testWorkDuration, 0);
-  assert.deepEqual(coordination.workers[0], { id: '0', executionDuration: 80, handoffDuration: 10, queueDuration: 10, projectCleanupDuration: 10, unassignedDuration: 0 });
+  assert.deepEqual(coordination.workers[0], { id: '0', executionDuration: 80, handoffDuration: 10, queueDuration: 10, projectCleanupDuration: 10, projectPreparationDuration: 0, unassignedDuration: 0 });
   assert.throws(() => recordProjectCleanup(run, 'lost', { startedAt: 9, finishedAt: 100, status: 'passed' }), /Invalid/);
   assert.throws(() => finishRunTimings(run, -1), /Invalid/);
 });

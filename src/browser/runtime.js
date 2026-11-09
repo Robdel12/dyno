@@ -22,6 +22,18 @@ export async function boot() {
       send('discovered', { tests: tests.map(testDescriptor) });
       return;
     }
+    let binding = await new Promise(resolve => {
+      let receive = event => {
+        let message = event.data;
+        if (event.source !== parent || event.origin !== location.origin ||
+          message?.channel !== 'dyno' || message.kind !== 'runtime-binding' ||
+          message.runId !== runId || message.executionId !== executionId) return;
+        window.removeEventListener('message', receive);
+        resolve(message.binding);
+      };
+      window.addEventListener('message', receive);
+      send('runtime-binding');
+    });
     let index = Number(parameters.get('test'));
     let selectedId = parameters.get('id');
     let test = tests.find((test) => test.id === selectedId);
@@ -324,17 +336,6 @@ export async function boot() {
         debugResume?.();
     });
     let contextFor = (signal) => {
-      let app = createApp(
-        appWindow,
-        () => state,
-        signal,
-        (path) => navigate(path, signal),
-        (input, prepare, select) => operation(input, prepare, select, signal),
-        pause,
-        Boolean(parent.__dynoController?.capabilities?.screenshot),
-        (kind, name, work) => timings.measure(kind, name, work, { signal, phase }),
-        parent.__dynoController?.capabilities?.native,
-      );
       let step = (name, work) => {
         signal.throwIfAborted();
         if (
@@ -365,12 +366,25 @@ export async function boot() {
         );
         return result;
       };
+      let app = createApp(
+        appWindow,
+        () => state,
+        signal,
+        (path) => navigate(path, signal),
+        (input, prepare, select) => operation(input, prepare, select, signal),
+        pause,
+        Boolean(parent.__dynoController?.capabilities?.screenshot),
+        (kind, name, work) => timings.measure(kind, name, work, { signal, phase }),
+        parent.__dynoController?.capabilities?.native,
+        binding.fixtureTransport,
+        step,
+      );
       return Object.freeze({
         app,
         step,
         I: createInteractor(app, signal, settings.expectTimeout),
         signal,
-        fixtures: settings.fixtures,
+        fixtures: binding.fixtures,
         test: testDescriptor(test),
       });
     };

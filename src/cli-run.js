@@ -9,7 +9,7 @@ import { createGateway } from './server.js';
 import { createCoordinator } from './coordinator.js';
 import { projectWorker } from './project-worker.js';
 import { resolveSession, createBrowserPool } from './browser-session.js';
-import { createCleanup } from './cleanup.js';
+import { createCleanup, createCleanupScope } from './cleanup.js';
 import { defaultViewport } from './browser/viewport.js';
 import { createWatchSession } from './watch-session.js';
 import { createReportWriter } from './reports.js';
@@ -25,12 +25,26 @@ async function duringStartup(signal, start) {
   finally { signal.removeEventListener('abort', abort); }
 }
 
+async function acquire(scope, create) {
+  try {
+    let descriptor = await create();
+    if (typeof descriptor?.teardown === 'function') scope.onCleanup(descriptor.teardown);
+    return descriptor;
+  } finally { scope.seal(); }
+}
+
+async function closeScope(scope, name) {
+  let errors = await scope.run();
+  if (errors.length) throw new AggregateError(errors, `${name}: ${errors.map(error => error.message).join(' ')}`);
+}
+
 export async function runTests(options, { signal, output }) {
   let controller = new AbortController();
   let runSignal = AbortSignal.any([signal, controller.signal]);
   let exitCode = 0;
   let sessionTimings = createTimings();
   let sessionId = randomUUID();
+  let session = Object.freeze({ id: sessionId });
   let browserCleanup;
   let sessionStartedAt = new Date().toISOString();
   let sessionSnapshot = (status, timings = sessionTimings.snapshot()) => Object.freeze({
@@ -99,14 +113,17 @@ export async function runTests(options, { signal, output }) {
     });
     let setup;
     if (config.setup) {
-      setup = await measure('Project setup', () => duringStartup(runSignal, async (startupSignal) => {
+      let scope = createCleanupScope();
+      cleanup('Project teardown', () => closeScope(scope, 'Project teardown failed'));
+      setup = await measure('Project setup', () => acquire(scope, () => duringStartup(runSignal, async (startupSignal) => {
         let module = await import(pathToFileURL(config.setup).href);
         if (typeof module.default !== 'function') throw new Error('setup must export a function.');
-        return module.default({ config, signal: startupSignal });
-      }));
-      if (typeof setup?.teardown === 'function') cleanup('Project teardown', setup.teardown);
+        return module.default({ config, session, signal: startupSignal, onCleanup: scope.onCleanup });
+      })));
       if (setup?.teardown !== undefined && typeof setup.teardown !== 'function')
         throw new Error('setup.teardown must be a function.');
+      if (setup?.beforeExecution !== undefined && typeof setup.beforeExecution !== 'function')
+        throw new Error('setup.beforeExecution must be a function.');
       if (setup?.drain !== undefined && typeof setup.drain !== 'function')
         throw new Error('setup.drain must be a function.');
     }
@@ -119,7 +136,7 @@ export async function runTests(options, { signal, output }) {
     let appCleanups = createCleanup();
     cleanup('Project worker teardown', async () => {
       let errors = await projectCleanups.run();
-      if (errors.length) throw new AggregateError(errors, 'Project worker teardown failed.');
+      if (errors.length) throw new AggregateError(errors, `Project worker teardown failed: ${errors.map(error => error.message).join(' ')}`);
     });
     cleanup('Stop app server', async () => {
       let errors = await appCleanups.run();
@@ -143,19 +160,23 @@ export async function runTests(options, { signal, output }) {
     let startupSignal = AbortSignal.any([runSignal, starting.signal]);
     let starts = await measure('App server ready', () => Promise.allSettled(workerIds.map(async (id, index) => {
       try {
+        let scope;
+        if (setup?.createWorker) {
+          scope = createCleanupScope();
+          projectCleanups.add(() => closeScope(scope, `Project worker ${id} teardown failed`));
+        }
         let descriptor = setup?.createWorker
-          ? await measure(`Project worker ${id} setup`, () => duringStartup(startupSignal, startupSignal =>
-              setup.createWorker({ worker: Object.freeze({ id, index }), config, signal: startupSignal })))
+          ? await measure(`Project worker ${id} setup`, () => acquire(scope, () => duringStartup(startupSignal, startupSignal =>
+              setup.createWorker({ worker: Object.freeze({ id, index }), config, session,
+                signal: startupSignal, onCleanup: scope.onCleanup }))))
           : setup ?? {};
-        if (setup?.createWorker && typeof descriptor?.teardown === 'function')
-          projectCleanups.add(descriptor.teardown);
         let project = projectWorker(config, descriptor, index, setup?.createWorker ? setup : undefined);
         runSignal.throwIfAborted();
         let browser = pool ? await pool.createWorker(id, { viewport: config.viewport ?? defaultViewport }) : null;
         let launchKey = browser ? randomUUID() : null;
         if (launchKey) launchKeys = [...launchKeys, launchKey];
         let gateway = await measure(`Start worker ${id} gateway`, () => createGateway(project.config, bundle, {
-          coordinator, workerId: id, fixtures: project.fixtures,
+          coordinator, workerId: id, fixtures: project.fixtures, beforeExecution: project.beforeExecution,
           onDrain: project.drain ? context => sessionTimings.measure('lifecycle',
             ('Project cleanup: ' + [...context.test.suites, context.test.name].join(' › ')).slice(0, 200),
             () => project.drain(context), { signal: context.signal }) : undefined,

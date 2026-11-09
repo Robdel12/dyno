@@ -172,6 +172,9 @@ beforeEach(({app})=>app.request('/api/reset',{method:'POST'}));
       await step(123,()=>{});
       // @ts-expect-error step callbacks are required
       await step('Save');
+      let user: {name:string}=await app.fixture<{name:string}>('seed.user',{name:'Rob'});
+      // @ts-expect-error fixture names must be strings
+      await app.fixture(123);
       await app.setViewport({width:390,height:844});await app.pause(id);
       await I.click('Save');let response:Response=await app.request('/api');
       let image=await app.screenshot('saved',{optional:true});
@@ -290,4 +293,30 @@ beforeEach(({app})=>app.request('/api/reset',{method:'POST'}));
     ],
     { cwd: fixture.directory, timeout: 15000 },
   );
+  await writeFile(join(fixture.directory, 'fixture-node.ts'), `
+import { createServer } from 'node:http';
+import { createFixtureController, createFixtureHttpHandler, connectFixtureControl, defineFixtureOperations, type JsonValue } from 'dyno/fixtures';
+import type { ProjectContext, ProjectWorkerContext, ProjectWorker } from 'dyno/config';
+let context = { names: [] as string[] };
+let operations = defineFixtureOperations({ 'seed.user': (ctx: typeof context, input: JsonValue) => {let name=String(input);ctx.names.push(name);return {name};} });
+let controller = createFixtureController({ workerId:'0', context, operations,
+  pause:()=>({idle:async()=>{},resume:()=>{}}), reset:()=>({reference:'today'}), drain:async()=>{} });
+let handler=createFixtureHttpHandler(controller,{token:'private-test-token'});
+let server=createServer(async(req,res)=>{if(await handler(req,res))return;res.end('app');});
+let control=connectFixtureControl({url:'http://localhost:3000',workerId:'0',token:'private-test-token'});
+async function setup(ctx:ProjectContext){ctx.onCleanup(()=>server.close());let id:string=ctx.session.id;}
+async function worker(ctx:ProjectWorkerContext):Promise<ProjectWorker>{let id:string=ctx.worker.id;return{beforeExecution:control.begin,drain:control.drain};}
+// @ts-expect-error reset needs a synchronous admission hold factory
+createFixtureController({workerId:'0',context,reset:()=>({}),pause:async()=>({idle:async()=>{},resume:()=>{}})});
+`);
+  await writeFile(join(fixture.directory, 'fixture-node-check.json'), JSON.stringify({
+    compilerOptions: {
+      target: 'ES2022', module: 'NodeNext', moduleResolution: 'NodeNext',
+      strict: true, noEmit: true, skipLibCheck: false,
+      typeRoots: [join(repository, 'node_modules/@types')],
+    }, files: ['fixture-node.ts'],
+  }));
+  await exec(process.execPath, [join(repository, 'node_modules/typescript/bin/tsc'),
+    '--project', join(fixture.directory, 'fixture-node-check.json')], { cwd: fixture.directory, timeout: 15000 });
+
 });

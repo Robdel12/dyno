@@ -1,7 +1,9 @@
 import { randomUUID, createHash } from 'node:crypto';
 import { createRun, acceptEvent, claimTest, releaseTest, reportedExecution, joinWorker, finishWorker, retireWorkers, pauseRun } from './run.js';
 import { mapStack, sourceContext } from './stack.js';
-import { finishRunTimings, recordProjectCleanup } from './run-timings.js';
+import { finishRunTimings, recordProjectCleanup, recordProjectPreparation } from './run-timings.js';
+import { projectOperation } from './project-operation.js';
+import { executionFixtures } from './execution-fixtures.js';
 import { partialOutput, validOutput, snapshotOutput, applyLiveChange, workerView } from './browser/reporting.js';
 
 let terminal = (run) => ['completed', 'failed'].includes(run.status);
@@ -13,7 +15,8 @@ export function createCoordinator(config, bundle, {
   workerIds = ['0'], onEvent = () => {}, onRun = async () => {}, onError = () => {}, rebuild,
 } = {}) {
   let runs = new Map(), bundles = new Map(), workers = new Map();
-  let queues = new Map(), receipts = new Map(), drains = new Map();
+  let queues = new Map(), receipts = new Map(), drains = new Map(), preparations = new Map();
+  let failedWorkers = new Set();
   let pendingReports = new Set(), waiters = new Map();
   let progress = new Map(), views = new Map(), versions = new Map();
   let commands = new Map();
@@ -31,7 +34,8 @@ export function createCoordinator(config, bundle, {
     let previous = cached.get(selected);
     let revision = versions.get(runId);
     if (previous && previous.revision === revision) return previous.value;
-    let value = workerView(run, run.workers.map(worker => ({ id: worker.id,
+    let current = run.startedClock === undefined ? run : finishRunTimings(run, performance.now());
+    let value = workerView(current, run.workers.map(worker => ({ id: worker.id,
       view: progress.get(runId)?.get(worker.id), ...workers.get(worker.id)?.control.metadata(runId) })), selected, previous?.value);
     cached.set(selected, { revision, value });
     views.set(runId, cached);
@@ -77,33 +81,59 @@ export function createCoordinator(config, bundle, {
     if (receipt && receipt.digest !== digest) throw problem(409, 'Changed replay of an accepted request.');
     return receipt?.reply;
   };
-  let drainProject = (context) => {
-    let onDrain = workers.get(context.workerId)?.drain;
-    if (!onDrain) return Promise.resolve(null);
-    let scopes = drains.get(context.runId) ?? new Map();
-    if (scopes.has(context.executionId)) return scopes.get(context.executionId);
-    let work = Promise.resolve().then(async () => {
-      let startedAt = performance.now();
-      let deadline = AbortSignal.timeout(config.cleanupTimeout);
-      let controller = new AbortController();
-      let expired = Promise.withResolvers();
-      let abort = () => {
-        let error = new Error(`Project execution cleanup exceeded ${config.cleanupTimeout} ms. The callback must honor its abort signal; Dyno stopped waiting.`);
-        controller.abort(error); expired.reject(error);
-      };
-      deadline.addEventListener('abort', abort, { once: true });
-      try {
-        await Promise.race([onDrain({ ...context, signal: controller.signal }), expired.promise]);
-        return Object.freeze({ startedAt, finishedAt: performance.now(), status: 'passed' });
-      } catch (error) {
-        throw Object.assign(new Error(error.message, { cause: error }), {
-          projectCleanup: Object.freeze({ startedAt, finishedAt: performance.now(), status: 'failed' }),
-        });
-      } finally { deadline.removeEventListener('abort', abort); }
+  let preparation = (runId, executionId) => preparations.get(runId)?.get(executionId);
+  let abortPreparations = (runId, reason) => {
+    for (let operation of preparations.get(runId)?.values() ?? [])
+      if (!operation.span()) operation.abort(reason);
+  };
+  let prepareProject = (runId, workerId, assignment) => {
+    let worker = workers.get(workerId);
+    if (!worker.beforeExecution || assignment.test.skipReason) return;
+    if (failedWorkers.has(workerId)) throw problem(409, 'This worker cannot be reused after execution preparation was interrupted or failed. Restart Dyno.');
+    let scopes = preparations.get(runId) ?? new Map();
+    if (scopes.has(assignment.id)) return;
+    let context = { runId, workerId, executionId: assignment.id, test: assignment.test };
+    let budget = assignment.test.timeout ?? config.timeout;
+    let remaining = budget - (performance.now() - assignment.assignedAt);
+    let operation = projectOperation(async context => {
+      let value = await worker.beforeExecution(context);
+      return executionFixtures(value, worker.fixtures, context);
+    }, context, {
+      timeout: Math.max(1, remaining),
+      message: `Execution preparation exceeded the test's ${budget} ms timeout.`,
     });
-    scopes.set(context.executionId, work);
+    scopes.set(assignment.id, operation);
+    preparations.set(runId, scopes);
+  };
+  let applyPreparationTimings = run => {
+    for (let assignment of run.assignments) {
+      let span = preparation(run.runId, assignment.id)?.span();
+      if (span) run = recordProjectPreparation(run, assignment.id, span);
+    }
+    return run;
+  };
+  let drainProject = (context) => {
+    let scopes = drains.get(context.runId) ?? new Map();
+    if (scopes.has(context.executionId)) return scopes.get(context.executionId).result;
+    let worker = workers.get(context.workerId);
+    let preparing = preparation(context.runId, context.executionId);
+    if (!worker?.drain && !preparing) return Promise.resolve(null);
+    let operation = projectOperation(async input => {
+      // A cancelled wait does not prove the app callback stopped writing.
+      await preparing?.settled;
+      input.signal.throwIfAborted();
+      await worker.drain?.(input);
+    }, context, {
+      timeout: config.cleanupTimeout,
+      message: `Project execution cleanup exceeded ${config.cleanupTimeout} ms. The callback must honor its abort signal; Dyno stopped waiting.`,
+    });
+    let result = operation.result.then(() => operation.span(), error => {
+      throw Object.assign(new Error(error.message, { cause: error }), { projectCleanup: operation.span() });
+    });
+    void result.catch(() => {});
+    scopes.set(context.executionId, { ...operation, result });
     drains.set(context.runId, scopes);
-    return work;
+    return result;
   };
   let persist = (run) => {
     let work = Promise.resolve().then(() => onRun(run));
@@ -127,6 +157,10 @@ export function createCoordinator(config, bundle, {
   let commitTerminal = async (previous, candidate) => {
     let { run, event } = candidate;
     let failures = [];
+    abortPreparations(previous.runId, new Error('Execution ended.'));
+    await Promise.all([...preparations.get(previous.runId)?.values() ?? []].map(operation => operation.settled));
+    previous = applyPreparationTimings(previous);
+    run = applyPreparationTimings(run);
     if (event.type === 'fatal') {
       try { await retire(previous); }
       catch (error) { failures.push(`Native cleanup: ${error.message}`); }
@@ -143,6 +177,10 @@ export function createCoordinator(config, bundle, {
       stopping = true;
       failures.push(`${index < native.length ? (event.error ? 'Native cleanup' : 'Native browser cleanup failed') : 'Project execution cleanup failed'}: ${error.message}`);
       if (index >= native.length) onError(Object.assign(error, { phase: 'cleanup' }));
+    }
+    if (failures.length && run.managed && !retirements.has(run.runId)) {
+      try { await retire(previous); }
+      catch (error) { failures.push(`Native cleanup: ${error.message}`); }
     }
     if (failures.length) {
       let message = [event.error?.message, ...failures.filter(message => !event.error?.message?.includes(message))].filter(Boolean).join(' ');
@@ -174,6 +212,7 @@ export function createCoordinator(config, bundle, {
   };
   let stopRun = async (previous, error, stopped = false) => {
     if (!previous || terminal(previous)) return false;
+    abortPreparations(previous.runId, new Error(error?.message ?? 'Execution ended.'));
     let result = await commitTerminal(previous, acceptEvent(previous, {
       runId: previous.runId, type: 'fatal', stopped, partial: partial(previous), error,
     }));
@@ -181,12 +220,13 @@ export function createCoordinator(config, bundle, {
     return true;
   };
   let failRun = (runId, error) => {
+    abortPreparations(runId, error);
     serialize(runId, () => stopRun(runs.get(runId), { phase: 'runtime', message: error.message }))
       .then(stopped => { if (stopped && runId === primaryRun && runs.get(runId).managed) onError(error); }, onError);
   };
-  let register = (workerId, control, drain) => {
+  let register = (workerId, control, drain, beforeExecution, fixtures = {}) => {
     if (workers.has(workerId)) throw new Error('Worker gateway is already registered.');
-    workers.set(workerId, { control, drain });
+    workers.set(workerId, { control, drain, beforeExecution, fixtures });
   };
   let selection = input => {
     input ??= {};
@@ -207,7 +247,7 @@ export function createCoordinator(config, bundle, {
       let finished = [...runs.values()].find(run => terminal(run) && !queues.has(run.runId));
       if (!finished) throw problem(429, 'Dyno already has 20 active browser runs. Finish or close one before joining again.');
       for (let control of controls(finished.runId)) control.drop(finished.runId);
-      for (let map of [runs, bundles, receipts, drains, progress, views, versions, retirements]) map.delete(finished.runId);
+      for (let map of [runs, bundles, receipts, drains, preparations, progress, views, versions, retirements]) map.delete(finished.runId);
     }
     if (config.replay) selected = selection({ ids: config.replay.selected });
     let run = Object.freeze({ ...createRun(runId, { seed: config.seed, workers: ids, replay: config.replay }),
@@ -231,6 +271,8 @@ export function createCoordinator(config, bundle, {
     if (restarting) throw problem(409, 'This browser run is already restarting.');
     if (runId !== managedRun) throw problem(409, 'This browser run was replaced.');
     let previous = runs.get(runId);
+    abortPreparations(runId, new Error('Browser run replaced.'));
+    if ([...previous.workers].some(worker => failedWorkers.has(worker.id))) throw problem(409, 'Restart Dyno after execution preparation was interrupted or failed.');
     if (!terminal(previous)) publish(pauseRun(previous, true));
     onEvent({ type: 'restarting', runId, selection: selected });
     restarting = (async () => {
@@ -342,11 +384,13 @@ export function createCoordinator(config, bundle, {
       return work;
     },
     replaced(runId) {
+      abortPreparations(runId, new Error('Browser left the test run.'));
       return serialize(runId, () => stopRun(runs.get(runId), { message: 'Browser left the test run before completion.' }));
     },
     command(input, selected) {
       let run = runs.get(input.runId);
       if (!run) throw problem(404, 'Unknown test run.');
+      if (input.command === 'stop') abortPreparations(run.runId, new Error('Test run stopped.'));
       if (input.command === 'rerun' && run.replay) {
         if (input.ids.length && (input.ids.length !== run.replay.selected.length || input.ids.some(id => !run.replay.selected.includes(id))))
           throw problem(400, 'Queue replay uses its recorded selection. Start a regular run to select different tests.');
@@ -403,6 +447,7 @@ export function createCoordinator(config, bundle, {
           let reply = replay(input.runId, key, digest);
           if (reply) return reply;
           let previous = runs.get(input.runId);
+          if (failedWorkers.has(workerId)) throw problem(409, 'Restart Dyno after execution preparation was interrupted or failed.');
           let claimed = claimTest(previous, { workerId, executionId: randomUUID(), requestedAt, now: performance.now() });
           if (!claimed.assignment && !claimed.done && !claimed.run.paused) {
             pending = Promise.withResolvers();
@@ -412,9 +457,39 @@ export function createCoordinator(config, bundle, {
             return;
           }
           if (claimed.run !== previous) publish(claimed.run);
+          if (claimed.assignment) prepareProject(input.runId, workerId, claimed.assignment);
           return remember(input.runId, key, digest, JSON.stringify({ assignment: claimed.assignment, done: claimed.done, paused: claimed.run.paused }));
         });
-        if (reply) return reply;
+        if (reply) {
+          let selected = JSON.parse(reply);
+          let assignment = selected.assignment;
+          if (!assignment || assignment.test.skipReason) return reply;
+          let operation = preparation(input.runId, assignment.id);
+          try {
+            let prepared = operation ? await operation.result : { fixtures: workers.get(workerId).fixtures };
+            return await serialize(input.runId, () => {
+              requireOpen();
+              workers.get(workerId).control.authorize(input);
+              let run = runs.get(input.runId);
+              let current = run.assignments.find(item => item.id === assignment.id);
+              if (terminal(run) || !current || current.status === 'released')
+                throw problem(409, 'This test assignment has ended.');
+              let remaining = operation ? operation.deadline - performance.now() : undefined;
+              if (remaining !== undefined && remaining <= 0) throw new Error('Execution preparation used the test timeout before delivery.');
+              if (operation) publish(recordProjectPreparation(run, assignment.id, operation.span()));
+              return JSON.stringify({ ...selected, assignment: { ...assignment,
+                preparation: { ...prepared, ...(remaining === undefined ? {} : { remaining }) } } });
+            });
+          } catch (error) {
+            if (error.status === 409 && (!operation || operation.span()?.status === 'passed')) throw error;
+            if (operation && (operation.span()?.status === 'failed' || !error.status)) failedWorkers.add(workerId);
+            abortPreparations(input.runId, error);
+            await serialize(input.runId, () => stopRun(runs.get(input.runId), {
+              phase: 'preparation', message: error.message,
+            }));
+            throw error;
+          }
+        }
         let aborted = () => pending.reject(signal.reason);
         signal?.addEventListener('abort', aborted, { once: true });
         if (signal?.aborted) aborted();
@@ -453,6 +528,7 @@ export function createCoordinator(config, bundle, {
         let run = recordProjectCleanup(runs.get(input.runId), input.executionId, cleanup);
         publish(releaseTest(run, { workerId, executionId: input.executionId, now: performance.now() }));
         workers.get(workerId).control.releaseExecution(input.runId, input.executionId);
+        preparations.get(input.runId)?.delete(input.executionId);
         return remember(input.runId, key, digest, '{}');
       });
     },
@@ -506,6 +582,7 @@ export function createCoordinator(config, bundle, {
     },
     close({ error } = {}) {
       stopping = true;
+      for (let runId of runs.keys()) abortPreparations(runId, new Error('Dyno is shutting down.'));
       for (let runId of waiters.keys()) wake(runId);
       closing ??= (async () => {
         for (let command of commands.values()) { command.detach(); command.reject(problem(503, 'Dyno is shutting down.')); }
@@ -516,10 +593,17 @@ export function createCoordinator(config, bundle, {
         let failures = [];
         await Promise.allSettled([...queues.values()]);
         for (let previous of runs.values()) {
-          try { await stopRun(previous, { phase: 'runtime',
-            message: `Dyno stopped before the browser run completed.${error ? ' ' + error.message : ''}`,
-            ...(error?.stack ? { stack: error.stack } : {}) }); }
-          catch (error) { failures.push(error); }
+          if (terminal(previous) && !retirements.has(previous.runId)) {
+            try { await retire(previous); } catch (error) { failures.push(error); }
+          }
+          try {
+            // Active runs own retirement, draining and persistence together.
+            await stopRun(previous, { phase: 'runtime',
+              message: `Dyno stopped before the browser run completed.${error ? ' ' + error.message : ''}`,
+              ...(error?.stack ? { stack: error.stack } : {}) });
+          } catch (error) { failures.push(error); }
+          await Promise.all([...preparations.get(previous.runId)?.values() ?? []].map(operation => operation.settled));
+          await Promise.all([...drains.get(previous.runId)?.values() ?? []].map(operation => operation.settled));
         }
         await joining;
         let pending = await Promise.allSettled([...pendingReports]);
