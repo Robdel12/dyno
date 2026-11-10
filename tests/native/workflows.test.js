@@ -211,6 +211,9 @@ test('manual runs cannot invoke native input or borrow another run', {
   assert.deepEqual(first.capabilities.native, {
     keyboard: false,
     pointer: false,
+    wheel: false,
+    touch: false,
+    network: false,
     permissions: [],
     authenticator: false,
     offline: false,
@@ -347,3 +350,100 @@ describe('Cancelled native input', () => {
       assert.match(event.error.message, /Await.*native/);
   },
 );
+
+
+test('managed touch, typing, wheel input and fractional pixels preserve browser behavior', managedOptions, async t => {
+  let fixture = await project(t, {
+    config: { ...config, viewport: { width: 803, height: 601 }, browser: { ...config.browser, hasTouch: true, deviceScaleFactor: 1.25, userAgent: 'Dyno mobile acceptance' } },
+    source: `
+describe('Mobile native input', () => {
+  test('uses trusted touch and mouse input and browser scrolling', async ({app,I}) => {
+    await app.goto('/');
+    await I.assert(() => app.native.capabilities.touch && app.window.navigator.userAgent === 'Dyno mobile acceptance');
+    await I.find('Record trusted input').then.nativeTap();
+    await I.find('$(#touch-result)').text('true:1');
+    await I.find('Record trusted input').then.nativeClick();
+    await I.find('$(#trusted-result)').text('true:mouse');
+    await I.find('Name').then.focus();
+    await I.nativePress('ControlOrMeta+A');
+    await I.nativeType('Dyno keyboard');
+    await I.find('Save note').then.nativeClick();
+    await I.find('$(#saved)').text('Saved Dyno keyboard');
+    await I.nativeMove({x:400,y:400});
+    await I.nativeWheel({deltaX:0,deltaY:350});
+    await I.assert(() => app.window.scrollY > 0);
+    await app.window.scrollTo(0,0);
+    let image = await app.screenshot('Fractional mobile viewport');
+    await I.assert(() => Math.abs(image.width - 803 * 1.25) <= 1 && Math.abs(image.height - 601 * 1.25) <= 1 && image.pixelRatio === 1.25);
+    await I.find('Open destination').then.nativeTap();
+    await I.find('Destination ready').visible();
+  });
+});`,
+  });
+  let result = await fixture.run().completion;
+  passed(result, 1);
+  let attachment = result.events.find(event => event.type === 'attachment').attachment;
+  let png = PNG.sync.read(await readFile(attachment.path));
+  assert.equal(png.width, attachment.width);
+  assert.equal(png.height, attachment.height);
+  assert.ok(Math.abs(png.width - 803 * 1.25) <= 1);
+  assert.ok(Math.abs(png.height - 601 * 1.25) <= 1);
+  assert.deepEqual([...png.data.subarray(0, 4)], [255, 255, 255, 255]);
+});
+
+test('color schemes and external request blocking reset between tests', managedOptions, async t => {
+  let fixture = await project(t, {
+    config,
+    source: `
+describe('Managed environment cleanup', () => {
+  test('changes system appearance and guards the app network', async ({app,I}) => {
+    await app.native.setColorScheme('dark');
+    await app.native.blockExternalRequests();
+    await app.goto('/');
+    await I.assert(() => app.window.matchMedia('(prefers-color-scheme: dark)').matches);
+    let {url} = await (await app.request('/api/external-url')).json();
+    let rejected = false;
+    try { await app.window.fetch(url); } catch { rejected = true; }
+    let blocked = await app.native.blockedRequests();
+    await I.assert(() => rejected && blocked.length === 1 && blocked[0] === url && Object.isFrozen(blocked));
+    let response = await app.request('/api/status');
+    await I.assert(() => response.ok);
+  });
+  test('restores system appearance and external connectivity', async ({app,I}) => {
+    await app.goto('/');
+    await I.assert(() => !app.window.matchMedia('(prefers-color-scheme: dark)').matches);
+    let {url} = await (await app.request('/api/external-url')).json();
+    let response = await app.window.fetch(url);
+    await I.assert(() => response.ok);
+    let blocked = await app.native.blockedRequests();
+    await I.assert(() => blocked.length === 0);
+  });
+});`,
+  });
+  passed(await fixture.run().completion, 2);
+});
+
+
+test('mobile viewport contexts preserve touch and report unsupported wheel input', {
+  ...managedOptions,
+  skip: browserName === 'firefox' && 'Firefox does not support mobile viewport emulation',
+}, async t => {
+  let fixture = await project(t, {
+    config: { ...config, viewport: {width:393,height:727}, browser: { ...config.browser, isMobile:true, hasTouch:true } },
+    source: `
+describe('Mobile viewport', () => {
+  test('keeps the actual app size and touch semantics', async ({app,I}) => {
+    await app.goto('/');
+    await I.assert(() => app.window.innerWidth === 393 && app.window.innerHeight === 727, () => 'Actual app viewport: ' + app.window.innerWidth + 'x' + app.window.innerHeight);
+    await I.find('Record trusted input').then.nativeTap();
+    await I.find('$(#touch-result)').text('true:1');
+    if (!app.native.capabilities.wheel) {
+      let unavailable;
+      try { await I.nativeWheel({deltaX:0,deltaY:1}); } catch (error) { unavailable = error; }
+      await I.assert(() => /unavailable/.test(unavailable?.message));
+    }
+  });
+});`,
+  });
+  passed(await fixture.run().completion, 1);
+});

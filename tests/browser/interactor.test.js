@@ -294,3 +294,48 @@ test('published contact', async ({app,I}) => {
   assert.equal(result.code, 0, result.stdout + result.stderr);
   assert.equal(result.summary.passed, 1);
 });
+
+
+test('fill completes when selecting a date replaces the control during an HTTP update', { timeout: 30000 }, async t => {
+  let fixture = await project(t, {
+    source: `
+describe('Replacing date fields', () => {
+  test('selects and saves the new day once', async ({app,I}) => {
+    await app.goto('/remounting-date');
+    await I.find('$(input[type=date])').then.fill('2022-09-29');
+    await I.find('Image date').value('2022-09-29');
+    await I.find('Day saved: 2022-09-29').rendered();
+    let saved = await (await app.request('/api/lifecycle')).json();
+    await I.assert(() => JSON.stringify(saved) === JSON.stringify(['day:2022-09-29']));
+  });
+});`,
+  });
+  let result = await fixture.run().completion;
+  assert.equal(result.code, 0, result.stdout + result.stderr);
+  assert.equal(result.summary.passed, 1);
+});
+
+test('ready local interactions finish while the test context timers are suspended', { timeout: 30000 }, async t => {
+  let fixture = await project(t, { source: `
+    describe('Ready application', () => {
+      test('edits and reveals existing content without advancing timers', async ({ app, I }) => {
+        await app.goto('/interactor');
+        await I.find('Reveal note').visible();
+        let originalTimeout = globalThis.setTimeout;
+        globalThis.setTimeout = () => { throw new Error('The test context timers are suspended'); };
+        try {
+          let contact = I.scope('$(#work)');
+          await contact.find('Name').then.fill('Ready contact');
+          await contact.find('Name').value('Ready contact');
+          await I.find('Private note').not.visible();
+          await I.click('Reveal note');
+          await I.find('Private note').visible();
+        } finally {
+          globalThis.setTimeout = originalTimeout;
+        }
+      });
+    });` });
+  let result = await fixture.run().completion;
+  assert.equal(result.code, 0, result.stdout + result.stderr);
+  assert.equal(result.summary.passed, 1);
+});

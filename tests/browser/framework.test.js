@@ -344,3 +344,31 @@ test('isolated app', async ({app,I}) => {
   assert.equal(result.code, 0, result.stderr + result.stdout);
   assert.equal(result.summary.passed, 1);
 });
+
+
+test('API setup can omit cookies without signing the browser in or changing its session', { timeout: 30000 }, async t => {
+  let fixture = await project(t, {
+    source: `
+describe('Request credentials', () => {
+  test('honors cookie omission for requests and responses', async ({app,I}) => {
+    await app.goto('/');
+    let save = {method:'POST',body:JSON.stringify({name:'API fixture'})};
+    let response = await app.request('/api/save', {...save,credentials:'omit'});
+    await I.assert(() => response.ok);
+    let anonymous = await (await app.request('/api/cookie')).json();
+    await I.assert(() => !anonymous.cookie.includes('saved=yes'), 'API setup accepted a cookie despite credentials: omit');
+    await app.request('/api/save', save);
+    let signedIn = await (await app.request('/api/cookie')).json();
+    await I.assert(() => signedIn.cookie.includes('saved=yes'), 'Default requests should share the browser session');
+    let omitted = await (await app.request('/api/cookie', {credentials:'omit'})).json();
+    await I.assert(() => !omitted.cookie.includes('saved=yes'), 'An omitted request sent the browser session cookie');
+    await app.request('/api/logout', {method:'POST',credentials:'omit'});
+    let retained = await (await app.request('/api/cookie')).json();
+    await I.assert(() => retained.cookie.includes('saved=yes'), 'An omitted response cleared the browser session cookie');
+  });
+});`,
+  });
+  let result = await fixture.run().completion;
+  assert.equal(result.code, 0, result.stderr + result.stdout);
+  assert.equal(result.summary.passed, 1);
+});

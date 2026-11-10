@@ -186,7 +186,7 @@ test('a closed stdout consumer stops owned resources without an uncaught pipe er
 });
 
 
-test('the browser deadline stops registration that never completes and releases the app', { timeout: 90000 }, async t => {
+test('the browser deadline releases the app even when registration never completes', { timeout: 90000 }, async t => {
   let fixture = await project(t, { config: { runTimeout: 1500 }, source: `
     await new Promise(() => {});
     describe('Workflow', () => { test('never registered', () => {}); });

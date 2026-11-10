@@ -133,3 +133,25 @@ test('must not pretend to resize',()=>{throw new Error('Workflow started with th
     false
   );
 });
+
+
+test('managed runs can capture a tall real viewport without clipping long application pages', { timeout: 30000 }, async t => {
+  let fixture = await project(t, {
+    config: { viewport: {width:800,height:600} },
+    source: `
+describe('Tall viewport', () => {
+  test('resizes the actual app and preserves the entire image', async ({app,I}) => {
+    await app.goto('/visual');
+    await app.setViewport({width:800,height:12000});
+    await I.assert(() => app.window.innerWidth === 800 && app.window.innerHeight === 12000);
+    let image = await app.screenshot('Long application page');
+    await I.assert(() => image.width === 800 && image.height === 12000);
+    await app.setViewport({width:800,height:600});
+    await I.assert(() => app.window.innerHeight === 600);
+  });
+});`,
+  });
+  let result = await fixture.run().completion;
+  assert.equal(result.code, 0, result.stdout + result.stderr);
+  assert.equal(result.summary.passed, 1);
+});

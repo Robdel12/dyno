@@ -39,7 +39,9 @@
  * | `runTimeout` | `60000` | Headless browser opening and results deadline, after app readiness |
  * | `host`, `port` | `127.0.0.1`, `7357` | Gateway address; port 0 chooses a free port |
  * | `browser.name`, `path`, `args` | `chromium`, Playwright build, `[]` | Managed target, optional executable, and launch arguments |
- * | `browser.deviceScaleFactor` | `1` | Playwright pixel ratio: 1, 2, or 3 |
+ * | `browser.deviceScaleFactor` | `1` | Playwright pixel ratio from 1 to 3 |
+ * | `browser.isMobile`, `browser.hasTouch` | `false` | Emulate mobile viewport behavior and touch input |
+ * | `browser.userAgent` | Browser default | Override the managed browser user agent |
  * | `viewport` | Browser size; managed: 1280 × 800 | Required app viewport dimensions |
  * | `reportDir` | `.dyno/reports` | Saved JSON, JUnit, HTML, and copied images per browser run |
  * | `artifactsDir` | `.dyno/artifacts` | PNG output directory |
@@ -185,14 +187,47 @@ export function normalizeConfig(input, file, overrides = {}) {
       throw new Error('webServer.env must contain string values.');
   }
   let browser = input.browser ?? {};
-  keys(browser, ['name', 'path', 'args', 'deviceScaleFactor', 'locale', 'timezoneId'], 'browser');
+  keys(
+    browser,
+    [
+      'name',
+      'path',
+      'args',
+      'deviceScaleFactor',
+      'locale',
+      'timezoneId',
+      'isMobile',
+      'hasTouch',
+      'userAgent',
+    ],
+    'browser',
+  );
   let name = overrides.browser ?? browser.name ?? 'chromium';
   if (!browserNames.includes(name))
     throw new Error(
       `Unknown managed browser "${name}". Choose ${browserNames.join(', ')} or use --manual for other browsers.`,
     );
-  if (browser.deviceScaleFactor !== undefined && ![1, 2, 3].includes(browser.deviceScaleFactor))
-    throw new Error('browser.deviceScaleFactor must be 1, 2, or 3.');
+  if (
+    browser.deviceScaleFactor !== undefined &&
+    (!Number.isFinite(browser.deviceScaleFactor) ||
+      browser.deviceScaleFactor < 1 ||
+      browser.deviceScaleFactor > 3)
+  )
+    throw new Error('browser.deviceScaleFactor must be a finite number from 1 to 3.');
+  for (let key of ['isMobile', 'hasTouch'])
+    if (browser[key] !== undefined && typeof browser[key] !== 'boolean')
+      throw new Error(`browser.${key} must be a boolean.`);
+  if (browser.isMobile === true && name === 'firefox')
+    throw new Error('browser.isMobile is not supported with Firefox.');
+  if (
+    browser.userAgent !== undefined &&
+    (!text(browser.userAgent) ||
+      browser.userAgent.length > 1000 ||
+      /[\r\n]/.test(browser.userAgent))
+  )
+    throw new Error(
+      'browser.userAgent must be a non-empty string of at most 1000 characters without line breaks.',
+    );
   if (browser.locale !== undefined) {
     try {
       if (!text(browser.locale)) throw new Error();
@@ -252,9 +287,14 @@ export function normalizeConfig(input, file, overrides = {}) {
     browser: Object.freeze({
       name,
       ...(path ? { path } : {}),
-      ...(browser.deviceScaleFactor ? { deviceScaleFactor: browser.deviceScaleFactor } : {}),
+      ...(browser.deviceScaleFactor !== undefined
+        ? { deviceScaleFactor: browser.deviceScaleFactor }
+        : {}),
       ...(browser.locale ? { locale: browser.locale } : {}),
       ...(browser.timezoneId ? { timezoneId: browser.timezoneId } : {}),
+      ...(browser.isMobile !== undefined ? { isMobile: browser.isMobile } : {}),
+      ...(browser.hasTouch !== undefined ? { hasTouch: browser.hasTouch } : {}),
+      ...(browser.userAgent !== undefined ? { userAgent: browser.userAgent } : {}),
       args: Object.freeze([...(browser.args ?? [])]),
     }),
     viewport,

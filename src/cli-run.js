@@ -257,7 +257,8 @@ export async function runTests(options, { signal, output }) {
       deadline?.removeEventListener('abort', expired);
     }
   } catch (error) {
-    endingError = error instanceof Error ? error : new Error(error?.message ?? String(error));
+    let reason = runSignal.aborted ? runSignal.reason : error;
+    endingError = reason instanceof Error ? reason : new Error(reason?.message ?? String(reason));
     endingError.message = launchKeys.reduce((message, key) => message.replaceAll(key, '[private launch]'), endingError.message);
   } finally {
     controller.abort(new Error('Dyno is shutting down.'));

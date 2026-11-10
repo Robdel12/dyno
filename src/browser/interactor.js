@@ -143,7 +143,7 @@
  * await I.find('$(input[name=email])').value('rob@example.com');
  * ```
  *
- * `rendered()` checks displayed content, including below the fold. `visible()` also requires it to be in the viewport. `expectTimeout` sets the assertion deadline.
+ * `rendered()` checks displayed content, including below the fold. `visible()` also requires it to be in the viewport. Assertions retry until they match, then continue immediately. `expectTimeout` sets the assertion deadline.
  *
  * For changing browser state, use an assertion callback:
  *
@@ -291,7 +291,7 @@ Interactor.defineAction('click', function* click(selector) {
 Interactor.defineAction('fill', function* fill(value) {
   yield this.focus();
   yield this.assert(({ $ }) => !$.disabled && !$.readOnly, '#{this} is disabled or read-only');
-  yield ({ $, signal }) => {
+  return yield ({ $, signal }) => {
     signal?.throwIfAborted();
     if (!['input', 'textarea'].includes($.localName))
       throw new Error('fill requires an input or textarea');
@@ -302,14 +302,15 @@ Interactor.defineAction('fill', function* fill(value) {
         : window.HTMLInputElement.prototype;
     let setter = Object.getOwnPropertyDescriptor(prototype, 'value').set;
     setter.call($, String(value));
+    // Input handlers can replace the control. Finish this action on its original target.
+    dispatch($, 'input', {
+      cancelable: false,
+      inputType: 'insertReplacementText',
+      data: String(value),
+    }, signal);
+    dispatch($, 'change', { cancelable: false }, signal);
+    return $;
   };
-  yield this.trigger('input', {
-    cancelable: false,
-    inputType: 'insertReplacementText',
-    data: String(value),
-  });
-  yield this.trigger('change', { cancelable: false });
-  return ({ $ }) => $;
 });
 
 Interactor.defineAction('upload', function* upload(...files) {
@@ -341,8 +342,27 @@ Interactor.defineAction('nativePress', function* nativePress(key) {
   return yield ({ native }) => nativeBrowser(native).press(key);
 });
 
+Interactor.defineAction('nativeType', function* nativeType(text) {
+  return yield ({ native }) => nativeBrowser(native).type(text);
+});
+
 Interactor.defineAction('nativeMove', function* nativeMove(point) {
   return yield ({ native }) => nativeBrowser(native).move(point);
+});
+
+for (let [name, operation] of [['nativeClick', 'click'], ['nativeTap', 'tap']]) {
+  Interactor.defineAction(name, function* nativePointer(point) {
+    if (point !== undefined) return yield ({ native }) => nativeBrowser(native)[operation](point);
+    yield this.assert.rendered();
+    return yield async ({ $, native }) => {
+      await nativeBrowser(native)[operation]($);
+      return $;
+    };
+  });
+}
+
+Interactor.defineAction('nativeWheel', function* nativeWheel(delta) {
+  return yield ({ native }) => nativeBrowser(native).wheel(delta);
 });
 
 Interactor.defineAction('nativeHover', function* nativeHover(options) {
@@ -418,6 +438,31 @@ export function createInteractor(app, signal, timeout) {
     root: () => app.document.body,
     signal,
     native: app.native,
-    assert: { timeout },
+    // Retry mismatches; a match does not need an extra timer-based check.
+    assert: { timeout, reliability: 0 },
   });
 }
+
+/**
+ * Type text with the real keyboard into the focused app element.
+ *
+ * @api Interactor.nativeType
+ */
+
+/**
+ * Click the resolved element, or an explicit viewport point, with the real mouse. Use ordinary click for synthetic DOM interaction.
+ *
+ * @api Interactor.nativeClick
+ */
+
+/**
+ * Tap the resolved element, or an explicit viewport point, with real touch input. Requires managed touch support.
+ *
+ * @api Interactor.nativeTap
+ */
+
+/**
+ * Scroll with real wheel deltas beneath the current pointer. Move or hover the pointer first when targeting a scrollable panel.
+ *
+ * @api Interactor.nativeWheel
+ */

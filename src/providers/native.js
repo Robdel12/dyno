@@ -20,6 +20,8 @@ export function createNative({ context, page, capabilities, close }) {
   let client;
   let authenticator;
   let originalMotion;
+  let originalColorScheme;
+  let externalGuard;
   let dialog;
   let activeRequests = new Map();
   let consoleId = 0;
@@ -114,6 +116,10 @@ export function createNative({ context, page, capabilities, close }) {
       });
     if (changed.has('motion'))
       await restore(() => page.emulateMedia({ reducedMotion: originalMotion }));
+    if (changed.has('color-scheme'))
+      await restore(() => page.emulateMedia({ colorScheme: originalColorScheme }));
+    if (externalGuard) await restore(() => page.unroute('**/*', externalGuard.handler));
+    externalGuard = undefined;
     if (changed.has('permissions')) await restore(() => context.clearPermissions());
     if (changed.has('authenticator'))
       await restore(async () => {
@@ -127,6 +133,7 @@ export function createNative({ context, page, capabilities, close }) {
     client = undefined;
     authenticator = undefined;
     originalMotion = undefined;
+    originalColorScheme = undefined;
     changed = new Set();
     owner = undefined;
     if (failures.length) {
@@ -162,7 +169,7 @@ export function createNative({ context, page, capabilities, close }) {
     } catch (error) {
       if (
         !after ||
-        request.input.kind !== 'key' ||
+        !['key', 'click', 'tap'].includes(request.input.kind) ||
         !/execution context was destroyed|cannot find context|because of a navigation/i.test(
           error.message,
         )
@@ -174,7 +181,7 @@ export function createNative({ context, page, capabilities, close }) {
     let expected = { runId: request.runId, ...request.context };
     if (!sameExecution(actual, expected))
       throw new Error('The owned app page has moved to another test execution.');
-    let navigation = after && request.input.kind === 'key';
+    let navigation = after && ['key', 'click', 'tap'].includes(request.input.kind);
     if (
       !navigation &&
       (actual.documentId !== expected.documentId ||
@@ -190,9 +197,50 @@ export function createNative({ context, page, capabilities, close }) {
       case 'key':
         await page.keyboard.press(input.key);
         break;
+      case 'type':
+        await page.keyboard.type(input.text);
+        break;
       case 'pointer':
         await page.mouse.move(input.x, input.y);
         break;
+      case 'click':
+        await page.mouse.click(input.x, input.y);
+        break;
+      case 'tap':
+        await page.touchscreen.tap(input.x, input.y);
+        break;
+      case 'wheel':
+        await page.mouse.wheel(input.deltaX, input.deltaY);
+        break;
+      case 'color-scheme':
+        if (!changed.has('color-scheme')) {
+          originalColorScheme = await page.evaluate(() =>
+            matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light',
+          );
+          assertActive(request);
+        }
+        changed.add('color-scheme');
+        await page.emulateMedia({ colorScheme: input.value });
+        break;
+      case 'block-external': {
+        if (externalGuard) break;
+        let origin = new URL(page.url()).origin;
+        let records = Object.freeze([]);
+        let handler = async (route) => {
+          let url = new URL(route.request().url());
+          if (url.origin === origin || ['data:', 'blob:'].includes(url.protocol)) {
+            await route.fallback();
+            return;
+          }
+          records = Object.freeze([...records, url.href].slice(-1000));
+          await route.abort();
+        };
+        externalGuard = Object.freeze({ handler, read: () => records });
+        await page.route('**/*', handler);
+        break;
+      }
+      case 'blocked-requests':
+        return externalGuard?.read() ?? Object.freeze([]);
       case 'permissions':
         changed.add('permissions');
         await context.grantPermissions(input.permissions, { origin: new URL(page.url()).origin });
@@ -304,10 +352,10 @@ export function createNative({ context, page, capabilities, close }) {
         )
           throw new Error('Native input needs the current run, execution, document, and viewport.');
         let input = normalizeNative(request.input, capabilities);
-        if (input.kind === 'pointer' && (input.x >= binding.width || input.y >= binding.height))
+        if (['pointer', 'click', 'tap'].includes(input.kind) && (input.x >= binding.width || input.y >= binding.height))
           throw new Error('Native pointer coordinates must be inside the app viewport.');
         request = { ...request, input };
-        if (['key', 'pointer'].includes(input.kind)) await page.bringToFront();
+        if (['key', 'type', 'pointer', 'click', 'tap', 'wheel'].includes(input.kind)) await page.bringToFront();
         await check(request);
         assertActive(request);
         let next = { runId: request.runId, executionId: request.context.executionId };

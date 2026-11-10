@@ -33,8 +33,12 @@ export class Interactor<S extends AssertionDefinitions = {}> extends BrowserInte
   scope(selector?: Selector): this;
   fill(value: string | number): Chain<HTMLElement, this>;
   upload(...files: UploadFile[]): Chain<HTMLElement, this>;
+  nativeType(text: string): Chain<void, this>;
   nativePress(key: string): Chain<void, this>;
   nativeMove(point: NativePoint): Chain<void, this>;
+  nativeClick(point?: NativePoint): Chain<HTMLElement | void, this>;
+  nativeTap(point?: NativePoint): Chain<HTMLElement | void, this>;
+  nativeWheel(delta: NativeWheel): Chain<void, this>;
   nativeHover(options?: NativeHoverOptions): Chain<HTMLElement, this>;
   click: (...args: Parameters<BrowserInteractor['click']>) => ReturnType<BrowserInteractor['click']> & Chain<HTMLElement, this>;
   focus: (...args: Parameters<BrowserInteractor['focus']>) => ReturnType<BrowserInteractor['focus']> & Chain<HTMLElement, this>;
@@ -106,6 +110,10 @@ export interface NativePoint {
   readonly x: number;
   readonly y: number;
 }
+export interface NativeWheel {
+  readonly deltaX: number;
+  readonly deltaY: number;
+}
 export interface NativeHoverOptions {
   /** Position relative to the element's bounding box, in CSS pixels. */
   readonly position?: NativePoint;
@@ -123,6 +131,9 @@ export interface NativeConsoleMessage {
 export interface NativeCapabilities {
   readonly keyboard: boolean;
   readonly pointer: boolean;
+  readonly wheel: boolean;
+  readonly touch: boolean;
+  readonly network: boolean;
   readonly permissions: readonly string[];
   readonly authenticator: boolean;
   readonly offline: boolean;
@@ -132,8 +143,15 @@ export interface NativeCapabilities {
 }
 export interface NativeBrowser {
   readonly capabilities: NativeCapabilities;
+  type(text: string): Promise<void>;
   press(key: string): Promise<void>;
   move(point: NativePoint): Promise<void>;
+  click(target: Element | NativePoint): Promise<void>;
+  tap(target: Element | NativePoint): Promise<void>;
+  wheel(delta: NativeWheel): Promise<void>;
+  setColorScheme(value: 'light' | 'dark' | 'no-preference'): Promise<void>;
+  blockExternalRequests(): Promise<void>;
+  blockedRequests(): Promise<readonly string[]>;
   hover(element: Element, options?: NativeHoverOptions): Promise<void>;
   grantPermissions(permissions: readonly string[]): Promise<void>;
   enableVirtualAuthenticator(): Promise<void>;

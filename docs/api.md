@@ -49,6 +49,10 @@ Signatures: [browser types](../types/index.d.ts), [configuration](../types/confi
 | `UploadFile` | A browser file input fixture. `bytes` accepts a string, Blob or other BlobPart; `name` is the filename and `type` is an optional MIME type. |
 | `CustomInteractor` | The app-aware Interactor plus your named actions and assertions. Bind it inside each test so scopes and cancellation belong to that execution. |
 | `InteractorContext` | Interactor.js’s action/assertion context, available to custom definitions. Keep DOM access inside the supplied context. |
+| `Interactor.nativeType` | Type text with the real keyboard into the focused app element. |
+| `Interactor.nativeClick` | Click the resolved element, or an explicit viewport point, with the real mouse. Use ordinary click for synthetic DOM interaction. |
+| `Interactor.nativeTap` | Tap the resolved element, or an explicit viewport point, with real touch input. Requires managed touch support. |
+| `Interactor.nativeWheel` | Scroll with real wheel deltas beneath the current pointer. Move or hover the pointer first when targeting a scrollable panel. |
 
 ## App and screenshots
 
@@ -56,8 +60,8 @@ Signatures: [browser types](../types/index.d.ts), [configuration](../types/confi
 | --- | --- |
 | `Application` | Navigate and inspect your app from a test. Tests have their own context and read the app DOM directly. Fresh documents don't reset browser storage or backend data. |
 | `Application.goto` | Navigate to a same-origin app path and wait for its document bridge. Then use Interactor to wait for the UI you care about. |
-| `Application.request` | Fetch a same-origin URL using the browser session and test cancellation signal. Returns a standard Response. Use this for your app's test-only fixture endpoints; keep database factories in your project. |
-| `Application.setViewport` | Resize the actual managed viewport and wait for layout. Each dimension must be 1–8192 CSS pixels. Manual runs require the requested dimensions to already match. |
+| `Application.request` | Fetch options pass through, including `credentials: 'omit'` for API setup that should not change the browser session. Same-origin cookies are included by default. Dyno owns the cancellation signal. |
+| `Application.setViewport` | Resize the actual managed viewport and wait for layout. Each dimension must be 1–16384 CSS pixels. Manual runs require the requested dimensions to already match. |
 | `Application.screenshot` | Save an exact PNG of the app, excluding the reporter. Full-page and element captures are supported. Required capture fails when unavailable; explicitly optional capture can skip. |
 | `Application.pause` | Open the reporter and suspend the execution deadline until Continue. Requires `--ui` or `--manual`. App timers and network work keep running; cleanup cannot pause. |
 | `Application.document` | Read the current app document after navigation is ready. Resolve elements again after navigation. |
@@ -93,6 +97,14 @@ Signatures: [browser types](../types/index.d.ts), [configuration](../types/confi
 | `NativeHoverOptions` | Optionally choose a point inside the target element. Without it, Dyno chooses a visible point that receives pointer input. |
 | `NativeDialogOptions` | Accept or dismiss the next dialog opened by the callback. Optionally require a message and supply prompt text. |
 | `NativeConsoleMessage` | A captured console entry with its sequence ID, type and text. |
+| `NativeBrowser.type` | Type text with the real keyboard into the focused element. Prefer `I.nativeType` when composing native keyboard workflows. |
+| `NativeBrowser.click` | Click a connected element or a point in app viewport coordinates with the real mouse. Ordinary clicks stay in Interactor. |
+| `NativeBrowser.tap` | Tap a connected element or viewport point with a real touch event. Requires a managed context with `browser.hasTouch: true`. |
+| `NativeBrowser.wheel` | Send finite wheel deltas in CSS pixels under the current pointer. Mobile WebKit does not support wheel input. |
+| `NativeBrowser.setColorScheme` | Choose the app system color scheme: light, dark, or no-preference. Cleanup restores the original preference. |
+| `NativeBrowser.blockExternalRequests` | Block app-page HTTP requests outside the gateway origin. Data and blob URLs remain available. Does not cover service workers or WebSockets; resets between tests. |
+| `NativeBrowser.blockedRequests` | Read an immutable list of up to 1,000 recent URLs blocked by the external-request guard. |
+| `NativeWheel` | Horizontal and vertical wheel deltas in CSS pixels. Negative values scroll left or up. |
 
 ## Timings
 

@@ -256,7 +256,7 @@ async function operate(current, message) {
         signal,
       );
       signal.throwIfAborted();
-      if (message.input.kind !== 'key')
+      if (!['key', 'click', 'tap'].includes(message.input.kind))
         assertCurrent(current, message.documentId, revision, undefined, 'native input');
       else if (resource !== current || current.finished)
         throw new Error('Native input finished after its test execution ended.');

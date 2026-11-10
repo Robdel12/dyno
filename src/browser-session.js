@@ -13,6 +13,8 @@ export async function resolveSession(browser, { headless = true } = {}) {
     throw new Error(
       `Unknown browser "${name}". Choose ${browserNames.join(', ')} or use --manual.`,
     );
+  if (browser.isMobile === true && name === 'firefox')
+    throw new Error('browser.isMobile is not supported with Firefox.');
   let path = browser.path;
   if (path) {
     path = resolve(path);
@@ -51,6 +53,11 @@ export async function createBrowserPool(plan, { size = 1, signal, onExit = () =>
     throw new Error('Browser pool size must be between 1 and 32.');
   signal?.throwIfAborted();
   let server;
+  let channel = browserChannel(plan.name);
+  let executable = plan.path ? { executablePath: plan.path } : { channel };
+  let shell = plan.name === 'chromium' && plan.headless && !plan.path;
+  let limitedCaptureHeight = process.platform === 'darwin' &&
+    ['chromium', 'chrome', 'edge'].includes(plan.name) && !shell;
   try { server = await browserEngine(plan.name).launchServer({
     headless: plan.headless,
     args: plan.args,
@@ -63,8 +70,7 @@ export async function createBrowserPool(plan, { size = 1, signal, onExit = () =>
         'dom.timeout.enable_budget_timer_throttling': false,
       },
     } : {}),
-    ...(plan.path ? { executablePath: plan.path } :
-      browserChannel(plan.name) ? { channel: browserChannel(plan.name) } : {}),
+    ...executable,
   }); } catch (error) {
     let help = !plan.path && /executable.*doesn.t exist/i.test(error.message)
       ? ` Install its Playwright build with dyno install --browser ${plan.name}.` : '';
@@ -185,12 +191,21 @@ export async function createBrowserPool(plan, { size = 1, signal, onExit = () =>
           };
           let worker = Object.freeze({
             identity,
-            capabilities: Object.freeze({ screenshot: true, fullPage: true, hostViewport: true, native: nativeCapabilities(plan.name) }),
+            capabilities: Object.freeze({
+              screenshot: true,
+              fullPage: true,
+              hostViewport: true,
+              native: nativeCapabilities(plan.name, plan),
+            }),
             open: (url) => call('open', { url }),
             activate: () => call('activate'),
             retire: (url) => call('retire', { url }),
             resize: (size, operationSignal) => call('resize', size, operationSignal),
-            capture: async (options, operationSignal) => Buffer.from(await call('capture', options, operationSignal), 'base64'),
+            capture: async (options, operationSignal) => {
+              if (limitedCaptureHeight && options.pixelHeight > 16384)
+                throw new Error('This macOS Chromium provider does not support captures taller than 16384 physical pixels: it may return repeated content. Use Dyno’s default headless Chromium or another managed browser.');
+              return Buffer.from(await call('capture', options, operationSignal), 'base64');
+            },
             native: (input, operationSignal) => call('native', input, operationSignal),
             resetNative: async (input, operationSignal) => {
               try { await call('resetNative', input, operationSignal); }

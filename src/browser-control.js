@@ -88,6 +88,7 @@ function appImage(bytes, metrics, options) {
     throw problem(502, 'The browser did not return a supported PNG image.');
   let width = bytes.readUInt32BE(16),
     height = bytes.readUInt32BE(20);
+  if (width < 1 || height < 1) throw problem(502, 'Screenshot has invalid dimensions.');
   if (width * height > 64_000_000)
     throw problem(
       422,
@@ -107,22 +108,8 @@ function appImage(bytes, metrics, options) {
       409,
       `Screenshot dimensions do not match the app document, viewport, and pixel ratio: expected ${Math.round(expected.width * pixelRatio)} × ${Math.round(expected.height * pixelRatio)}, received ${width} × ${height}.`,
     );
-  let target = {
-    width: Math.round(
-      (options.clip?.width ?? (options.fullPage ? metrics.fullWidth : metrics.width)) * pixelRatio,
-    ),
-    height: Math.round(
-      (options.clip?.height ?? (options.fullPage ? metrics.fullHeight : metrics.height)) *
-        pixelRatio,
-    ),
-  };
-  if (target.width < 1 || target.height < 1 || target.width > width || target.height > height)
-    throw problem(409, 'The app viewport does not fit in the captured browser.');
-  if (target.width === width && target.height === height && options.mask.length === 0)
-    return { bytes, ...target, pixelRatio };
-  let source = PNG.sync.read(bytes);
-  let image = new PNG(target);
-  PNG.bitblt(source, image, 0, 0, target.width, target.height, 0, 0);
+  if (options.mask.length === 0) return { bytes, width, height, pixelRatio };
+  let image = PNG.sync.read(bytes);
   let color = Buffer.from(options.maskColor);
   for (let rectangle of options.mask) {
     if (rectangle.width === 0 || rectangle.height === 0) continue;
@@ -139,7 +126,7 @@ function appImage(bytes, metrics, options) {
     for (let y = top; y < bottom; y++)
       image.data.fill(color, (y * image.width + left) * 4, (y * image.width + right) * 4);
   }
-  return { bytes: PNG.sync.write(image), ...target, pixelRatio };
+  return { bytes: PNG.sync.write(image), width, height, pixelRatio };
 }
 
 export function createBrowserControl({ artifactsDir, workerId = '0', onReplaced = () => {}, getRun, getView, getAttachment, onView, onCommand, onCommandResult, onConnection = () => {} }) {
@@ -232,7 +219,7 @@ export function createBrowserControl({ artifactsDir, workerId = '0', onReplaced 
   let invalidate = (runId, endingRun = false) => {
     contexts.delete(runId);
     for (let request of nativeRequests.values())
-      if (request.runId === runId && (endingRun || request.kind !== 'key'))
+      if (request.runId === runId && (endingRun || !['key', 'click', 'tap'].includes(request.kind)))
         request.controller.abort(problem(409, 'The native input context ended.'));
     for (let record of records.values()) {
       if (record.runId !== runId || record.status === 'accepted') continue;
@@ -612,7 +599,7 @@ export function createBrowserControl({ artifactsDir, workerId = '0', onReplaced 
         if (
           canceled.has(canceledKey) ||
           current?.executionId !== input.context.executionId ||
-          (native.kind !== 'key' && !sameContext(current, input.context))
+          (!['key', 'click', 'tap'].includes(native.kind) && !sameContext(current, input.context))
         )
           throw problem(409, 'Native input finished after its test document ended.');
         send(result);
@@ -722,7 +709,7 @@ export function createBrowserControl({ artifactsDir, workerId = '0', onReplaced 
       let work = (async () => {
         try {
           let image = appImage(
-            await session.capture(options, record.controller.signal),
+            await session.capture({ ...options, pixelHeight: Math.ceil(imageHeight * metrics.pixelRatio) }, record.controller.signal),
             metrics,
             options,
           );

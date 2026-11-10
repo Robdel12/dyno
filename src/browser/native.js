@@ -12,6 +12,10 @@
  *
  * These work with scopes and custom interactors. `nativePress` uses the focused element; it doesn't focus a selector for you. Hover scrolls to a visible point that receives pointer input. Stale or covered targets fail. After an action navigates, assert on the destination with Interactor.
  *
+ * `nativeClick` and `nativeTap` also accept a point in app viewport coordinates. Without a point, they resolve the scoped element locally. Tap requires `browser.hasTouch: true`. Use `nativeType(text)` after focusing a field when keyboard events themselves are part of the behavior. `nativeWheel({ deltaX, deltaY })` scrolls beneath the current pointer.
+ *
+ * Use `setColorScheme('dark' | 'light' | 'no-preference')` for system appearance. `blockExternalRequests()` blocks app-page HTTP requests outside the gateway origin and records up to 1,000 recent URLs; `blockedRequests()` returns them. It doesn't block WebSockets, service-worker traffic, or companion requests. Both settings reset between tests.
+ *
  * ## Handle a dialog
  *
  * ```js
@@ -177,9 +181,9 @@ function receivesPointer(element, x, y) {
   return containsHit(element, hit);
 }
 
-function hoverPoint(element, position, document) {
+function pointerPoint(element, position, document) {
   if (element?.nodeType !== 1 || element.ownerDocument !== document || !element.isConnected)
-    throw new Error('Native hover needs a connected element from the current app document.');
+    throw new Error('Native pointer input needs a connected element from the current app document.');
   element.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' });
   let window = document.defaultView;
   let box = element.getBoundingClientRect();
@@ -193,7 +197,7 @@ function hoverPoint(element, position, document) {
       position.x >= box.width ||
       position.y >= box.height
     )
-      throw new Error('Native hover position must be a finite point inside the element.');
+      throw new Error('Native pointer position must be a finite point inside the element.');
     points = [{ x: box.left + position.x, y: box.top + position.y }];
   } else {
     points = [...element.getClientRects()].flatMap((rect) => {
@@ -225,7 +229,7 @@ function hoverPoint(element, position, document) {
       receivesPointer(element, x, y),
   );
   if (!point)
-    throw new Error('Native hover target has no visible point that receives pointer input.');
+    throw new Error('Native pointer target has no visible point that receives pointer input.');
   return point;
 }
 
@@ -245,7 +249,7 @@ export function createNative({
     measure('native', name, () => {
       signal.throwIfAborted();
       let normalized = normalizeNative(input, supported);
-      let allowBlank = !['key', 'pointer'].includes(normalized.kind);
+      let allowBlank = !['key', 'type', 'pointer', 'click', 'tap', 'wheel'].includes(normalized.kind);
       return operation(
         { operation: 'native', input: normalized },
         () => {
@@ -262,8 +266,16 @@ export function createNative({
         select,
       );
     });
+  let pointerInput = (kind, target) => {
+    if (target?.nodeType === 1)
+      return invoke(`Native ${kind} element`, { kind, x: 0, y: 0 }, document => ({
+        input: normalizeNative({ kind, ...pointerPoint(target, undefined, document) }, supported),
+      }));
+    return invoke(`Native ${kind} at ${target?.x}, ${target?.y}`, { kind, x: target?.x, y: target?.y });
+  };
   return Object.freeze({
     capabilities: supported,
+    type: (text) => invoke('Type with native keyboard', { kind: 'type', text }),
     press: (key) => invoke(`Press ${key}`, { kind: 'key', key }),
     move: (point) =>
       invoke(`Move pointer to ${point?.x}, ${point?.y}`, {
@@ -271,6 +283,12 @@ export function createNative({
         x: point?.x,
         y: point?.y,
       }),
+    click: (target) => pointerInput('click', target),
+    tap: (target) => pointerInput('tap', target),
+    wheel: (delta) => invoke('Scroll with native wheel', { kind: 'wheel', deltaX: delta?.deltaX, deltaY: delta?.deltaY }),
+    setColorScheme: (value) => invoke(`Set color scheme to ${value}`, { kind: 'color-scheme', value }),
+    blockExternalRequests: () => invoke('Block external app requests', { kind: 'block-external' }),
+    blockedRequests: () => invoke('Read blocked app requests', { kind: 'blocked-requests' }, undefined, urls => Object.freeze([...urls])),
     hover: (element, options = {}) =>
       invoke('Hover element', { kind: 'pointer', x: 0, y: 0 }, (document) => {
         if (
@@ -280,7 +298,7 @@ export function createNative({
           Object.keys(options).some((key) => key !== 'position')
         )
           throw new Error('Native hover options only accept an optional position.');
-        let point = hoverPoint(element, options.position, document);
+        let point = pointerPoint(element, options.position, document);
         return { input: normalizeNative({ kind: 'pointer', ...point }, supported) };
       }),
     grantPermissions: (permissions) =>
@@ -332,3 +350,51 @@ export function createNative({
       }),
   });
 }
+
+/**
+ * Type text with the real keyboard into the focused element. Prefer `I.nativeType` when composing native keyboard workflows.
+ *
+ * @api NativeBrowser.type
+ */
+
+/**
+ * Click a connected element or a point in app viewport coordinates with the real mouse. Ordinary clicks stay in Interactor.
+ *
+ * @api NativeBrowser.click
+ */
+
+/**
+ * Tap a connected element or viewport point with a real touch event. Requires a managed context with `browser.hasTouch: true`.
+ *
+ * @api NativeBrowser.tap
+ */
+
+/**
+ * Send finite wheel deltas in CSS pixels under the current pointer. Mobile WebKit does not support wheel input.
+ *
+ * @api NativeBrowser.wheel
+ */
+
+/**
+ * Choose the app system color scheme: light, dark, or no-preference. Cleanup restores the original preference.
+ *
+ * @api NativeBrowser.setColorScheme
+ */
+
+/**
+ * Block app-page HTTP requests outside the gateway origin. Data and blob URLs remain available. Does not cover service workers or WebSockets; resets between tests.
+ *
+ * @api NativeBrowser.blockExternalRequests
+ */
+
+/**
+ * Read an immutable list of up to 1,000 recent URLs blocked by the external-request guard.
+ *
+ * @api NativeBrowser.blockedRequests
+ */
+
+/**
+ * Horizontal and vertical wheel deltas in CSS pixels. Negative values scroll left or up.
+ *
+ * @api NativeWheel
+ */
