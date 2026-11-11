@@ -7,12 +7,9 @@ import { nativeCapabilities, normalizeNative } from './native.js';
 import { createObserver } from './observer.js';
 
 let problem = (status, message) => Object.assign(new Error(message), { status });
+let contextFields = Object.freeze(['executionId', 'documentId', 'revision', 'width', 'height']);
 let sameContext = (left, right) =>
-  left &&
-  right &&
-  ['executionId', 'documentId', 'revision', 'width', 'height'].every(
-    (key) => left[key] === right[key],
-  );
+  left && right && contextFields.every((key) => left[key] === right[key]);
 let commands = [
   'pause',
   'continue',
@@ -207,16 +204,20 @@ export function createBrowserControl({ artifactsDir, workerId = '0', onReplaced 
       throw problem(409, 'This managed browser has moved to another run.');
     return connection;
   };
-  let discard = async (record, includeCommitted = false) => {
+  let discard = async (
+    record,
+    includeCommitted = false,
+    reason = problem(409, 'Screenshot context ended.'),
+  ) => {
     if (record.status === 'accepted') return;
-    record.controller.abort(problem(409, 'Screenshot context ended.'));
+    record.controller.abort(reason);
     if (record.status !== 'committed' || includeCommitted) {
       records.delete(record.id);
       await rm(record.partial, { force: true });
       await rm(record.file, { force: true });
     }
   };
-  let invalidate = (runId, endingRun = false) => {
+  let invalidate = (runId, endingRun = false, reason) => {
     contexts.delete(runId);
     for (let request of nativeRequests.values())
       if (request.runId === runId && (endingRun || request.kind !== 'key'))
@@ -224,7 +225,7 @@ export function createBrowserControl({ artifactsDir, workerId = '0', onReplaced 
     for (let record of records.values()) {
       if (record.runId !== runId || record.status === 'accepted') continue;
       if (record.status === 'committed' && !endingRun) continue;
-      void track(discard(record, endingRun)).catch(() => {});
+      void track(discard(record, endingRun, reason)).catch(() => {});
     }
   };
   let active = (record) =>
@@ -468,7 +469,21 @@ export function createBrowserControl({ artifactsDir, workerId = '0', onReplaced 
             assignment.id === input.context.executionId && assignment.status !== 'released' && !run.tests[assignment.index].skipReason)))
           throw problem(409, 'This execution does not own an active test assignment.');
         let previous = contexts.get(input.runId);
-        if (!sameContext(previous, input.context)) invalidate(input.runId);
+        if (!sameContext(previous, input.context)) {
+          let changes = contextFields
+            .filter((key) => previous?.[key] !== input.context?.[key])
+            .map((key) => `${key}: ${previous?.[key] ?? 'none'} → ${input.context?.[key] ?? 'none'}`);
+          let describe = (viewport) =>
+            `${viewport?.width} × ${viewport?.height} at DPR ${viewport?.pixelRatio}`;
+          let viewportChange = input.viewportChange
+            ? ` Browser viewport: ${describe(input.viewportChange.previous)} → ${describe(input.viewportChange.measured)}.`
+            : '';
+          invalidate(
+            input.runId,
+            false,
+            problem(409, `Screenshot context changed (${changes.join(', ')}).${viewportChange}`),
+          );
+        }
         if (input.context) {
           if (
             !validViewport(input.context, Number.MAX_SAFE_INTEGER) ||

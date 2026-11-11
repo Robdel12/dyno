@@ -146,9 +146,11 @@ let context = (current) =>
         ...state.viewport,
       }
     : null;
-let syncContext = (current) => {
+let syncContext = (current, viewportChange) => {
   let value = context(current);
-  contextSync = contextSync.catch(() => {}).then(() => post('context', { context: value }));
+  contextSync = contextSync.catch(() => {}).then(() =>
+    post('context', { context: value, ...(viewportChange ? { viewportChange } : {}) }),
+  );
   return contextSync;
 };
 let assertCurrent = (current, documentId, revision, metrics, operation = 'screenshot') => {
@@ -418,9 +420,11 @@ window.addEventListener('message', (event) => {
   if (message.kind === 'resize' && message.executionId === resource?.id) {
     let measured = { ...appSize(), pixelRatio: appWindow.devicePixelRatio };
     if (Object.keys(measured).every((key) => measured[key] === observedViewport[key])) return;
+    let previous = observedViewport;
     observedViewport = measured;
     update({ type: 'browser.resized', viewport: appSize() });
-    if (runId) void syncContext(resource).catch((error) => console.error(error));
+    if (runId)
+      void syncContext(resource, { previous, measured }).catch((error) => console.error(error));
   }
 });
 window.addEventListener('pagehide', () => {

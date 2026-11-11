@@ -131,7 +131,11 @@ export async function createBrowserPool(plan, { size = 1, signal, onExit = () =>
         catch { /* Channel closure still rejects and removes this request below. */ }
       }
       requests.delete(id);
-      request.reject(new Error(`Browser ${method} cancelled or exceeded its deadline.`, { cause: deadline.reason }));
+      let reason = deadline.reason;
+      let message = reason?.name === 'TimeoutError'
+        ? `Browser ${method} exceeded its deadline.`
+        : `Browser ${method} cancelled: ${reason?.message ?? String(reason)}`;
+      request.reject(new Error(message.replaceAll(server.wsEndpoint(), '[private browser connection]'), { cause: reason }));
     };
     deadline.addEventListener('abort', abort, { once: true });
     try {
