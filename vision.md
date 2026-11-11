@@ -18,6 +18,6 @@ The CLI starts the app, bundles tests, serves the runner, and reports results. T
 
 Dyno owns the test run, its processes, and its output. Apps keep their own development servers and hot reload. Avoid an adapter for every framework or a large orchestration service.
 
-Ordinary interactions use DOM methods and synthetic events. When a workflow needs native browser defaults, use explicit managed capabilities. Real-device emulation and visual baseline comparison stay separate. URL-only execution is the goal across browsers; the current runner still needs modern browser APIs.
+Clicks, typing, app keyboard handlers, and scrolling belong in Interactor and custom interactors. Reserve managed input for browser defaults that DOM events cannot reproduce, such as Tab navigation and CSS hover. Real-device emulation and visual baseline comparison stay separate. URL-only execution is the goal across browsers; the current runner still needs modern browser APIs.
 
 Write docs and UI copy like you're helping another developer: short, concrete, and candid about limits. See the [guide](docs/guide.md) for current behavior and the [design guide](docs/design.md) for the reporter.

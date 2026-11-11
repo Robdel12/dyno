@@ -1,6 +1,10 @@
 /**
  * @guide native Native browser actions
- * Use native input when you're testing the browser's default behavior, such as Tab navigation or CSS hover. Keep ordinary clicks, fields, and assertions in Interactor.
+ * Interactor's `click`, `type`, `press`, and assertions run directly in the browser. Use `press` for app-defined keyboard handlers, such as chart arrows or search shortcuts. These don't need a driver.
+ *
+ * Use a custom Interactor action with the element's `scrollBy` or `scrollTo` for scrolling. App scroll handlers and lazy loading still run in the real browser.
+ *
+ * Use native input when you're testing browser defaults that synthetic events don't reproduce, such as Tab navigation or CSS hover.
  *
  * ```js
  * await I.find('Name').then.focus();
@@ -11,6 +15,8 @@
  * ```
  *
  * These work with scopes and custom interactors. `nativePress` uses the focused element; it doesn't focus a selector for you. Hover scrolls to a visible point that receives pointer input. Stale or covered targets fail. After an action navigates, assert on the destination with Interactor.
+ *
+ * Use `setColorScheme('dark' | 'light' | 'no-preference')` for system appearance. `blockExternalRequests()` blocks app-page HTTP requests outside the gateway origin and records up to 1,000 recent URLs; `blockedRequests()` returns them. It doesn't block WebSockets, service-worker traffic, or companion requests. Both settings reset between tests.
  *
  * ## Handle a dialog
  *
@@ -177,9 +183,9 @@ function receivesPointer(element, x, y) {
   return containsHit(element, hit);
 }
 
-function hoverPoint(element, position, document) {
+function pointerPoint(element, position, document) {
   if (element?.nodeType !== 1 || element.ownerDocument !== document || !element.isConnected)
-    throw new Error('Native hover needs a connected element from the current app document.');
+    throw new Error('Native pointer input needs a connected element from the current app document.');
   element.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' });
   let window = document.defaultView;
   let box = element.getBoundingClientRect();
@@ -193,7 +199,7 @@ function hoverPoint(element, position, document) {
       position.x >= box.width ||
       position.y >= box.height
     )
-      throw new Error('Native hover position must be a finite point inside the element.');
+      throw new Error('Native pointer position must be a finite point inside the element.');
     points = [{ x: box.left + position.x, y: box.top + position.y }];
   } else {
     points = [...element.getClientRects()].flatMap((rect) => {
@@ -225,7 +231,7 @@ function hoverPoint(element, position, document) {
       receivesPointer(element, x, y),
   );
   if (!point)
-    throw new Error('Native hover target has no visible point that receives pointer input.');
+    throw new Error('Native pointer target has no visible point that receives pointer input.');
   return point;
 }
 
@@ -271,6 +277,9 @@ export function createNative({
         x: point?.x,
         y: point?.y,
       }),
+    setColorScheme: (value) => invoke(`Set color scheme to ${value}`, { kind: 'color-scheme', value }),
+    blockExternalRequests: () => invoke('Block external app requests', { kind: 'block-external' }),
+    blockedRequests: () => invoke('Read blocked app requests', { kind: 'blocked-requests' }, undefined, urls => Object.freeze([...urls])),
     hover: (element, options = {}) =>
       invoke('Hover element', { kind: 'pointer', x: 0, y: 0 }, (document) => {
         if (
@@ -280,7 +289,7 @@ export function createNative({
           Object.keys(options).some((key) => key !== 'position')
         )
           throw new Error('Native hover options only accept an optional position.');
-        let point = hoverPoint(element, options.position, document);
+        let point = pointerPoint(element, options.position, document);
         return { input: normalizeNative({ kind: 'pointer', ...point }, supported) };
       }),
     grantPermissions: (permissions) =>
@@ -332,3 +341,21 @@ export function createNative({
       }),
   });
 }
+
+/**
+ * Choose the app system color scheme: light, dark, or no-preference. Cleanup restores the original preference.
+ *
+ * @api NativeBrowser.setColorScheme
+ */
+
+/**
+ * Block app-page HTTP requests outside the gateway origin. Data and blob URLs remain available. Does not cover service workers or WebSockets; resets between tests.
+ *
+ * @api NativeBrowser.blockExternalRequests
+ */
+
+/**
+ * Read an immutable list of up to 1,000 recent URLs blocked by the external-request guard.
+ *
+ * @api NativeBrowser.blockedRequests
+ */

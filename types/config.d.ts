@@ -23,9 +23,12 @@ export interface Config {
     readonly name?: 'chrome' | 'chromium' | 'edge' | 'firefox' | 'webkit';
     readonly path?: string;
     readonly args?: readonly string[];
-    readonly deviceScaleFactor?: 1 | 2 | 3;
+    readonly deviceScaleFactor?: number;
     readonly locale?: string;
     readonly timezoneId?: string;
+    readonly isMobile?: boolean;
+    readonly hasTouch?: boolean;
+    readonly userAgent?: string;
   };
   readonly webServer: {
     readonly url: string;

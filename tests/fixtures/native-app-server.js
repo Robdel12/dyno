@@ -4,13 +4,14 @@ let records = [];
 let statusReads = 0;
 let mediaPreference;
 let queuedNative = Promise.withResolvers(), cancelledNative = Promise.withResolvers();
-let html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Native fixture</title>
+let html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Native fixture</title>
 <style>
-body{font:16px system-ui;margin:24px}label{display:block;margin:12px 0}
+html{background:white}body{font:16px system-ui;margin:24px}label{display:block;margin:12px 0}
 #secret{position:absolute;left:600px;top:400px;width:60px;height:40px;background:rgb(200,10,20)}
 #hover{width:200px;height:80px;background:rgb(20,60,140);margin:16px 0}
 #hover:hover{background:rgb(20,160,80)}
 #tall{position:absolute;top:1600px;left:24px;width:160px}#tall>div{height:500px}
+@media(max-width:500px){#secret{display:none}}
 @media(min-height:1000px){#tall>div{background:rgb(1,2,3)!important}}
 </style></head><body>
 <h1>Native fixture</h1>
@@ -65,7 +66,13 @@ document.querySelector('#load').onclick=async()=>{
 
 let server = createServer(async (request, response) => {
   response.setHeader('Cache-Control', 'no-store');
+  response.setHeader('Access-Control-Allow-Origin', '*');
   let path = new URL(request.url, 'http://localhost').pathname;
+  if (path === '/api/external-url') {
+    response.setHeader('Content-Type', 'application/json');
+    response.end(JSON.stringify({ url: `http://127.0.0.1:${server.address().port}/api/status` }));
+    return;
+  }
   if (path === '/native-cancellation-gate.js') {
     response.setHeader('Content-Type', 'text/javascript');
     response.end(`

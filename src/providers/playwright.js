@@ -8,6 +8,9 @@ export async function open(browser, plan, viewport, onExit, onDiagnostic = () =>
     deviceScaleFactor: plan.deviceScaleFactor ?? 1,
     ...(plan.locale ? { locale: plan.locale } : {}),
     ...(plan.timezoneId ? { timezoneId: plan.timezoneId } : {}),
+    ...(plan.isMobile !== undefined ? { isMobile: plan.isMobile } : {}),
+    ...(plan.hasTouch !== undefined ? { hasTouch: plan.hasTouch } : {}),
+    ...(plan.userAgent !== undefined ? { userAgent: plan.userAgent } : {}),
   });
   try {
     context.on('requestfailed', (request) => {

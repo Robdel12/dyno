@@ -27,7 +27,7 @@ test('the packaged artifact installs and runs the documented first-test workflow
     'npm',
     [
       'install',
-      '--ignore-scripts',
+      '--ignore-scripts=false',
       '--no-audit',
       '--no-fund',
       '--cache',
@@ -91,7 +91,7 @@ test('a developer can install the checkout, initialize a project, and run its fi
     [
       'install',
       '--offline',
-      '--ignore-scripts',
+      '--ignore-scripts=false',
       '--no-audit',
       '--no-fund',
       '--cache',
@@ -143,7 +143,7 @@ test('an installed consumer typechecks suites, app APIs, config, fixtures, and i
     'npm',
     [
       'install',
-      '--ignore-scripts',
+      '--ignore-scripts=false',
       '--no-audit',
       '--no-fund',
       '--cache',

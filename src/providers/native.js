@@ -20,6 +20,8 @@ export function createNative({ context, page, capabilities, close }) {
   let client;
   let authenticator;
   let originalMotion;
+  let originalColorScheme;
+  let externalGuard;
   let dialog;
   let activeRequests = new Map();
   let consoleId = 0;
@@ -114,6 +116,10 @@ export function createNative({ context, page, capabilities, close }) {
       });
     if (changed.has('motion'))
       await restore(() => page.emulateMedia({ reducedMotion: originalMotion }));
+    if (changed.has('color-scheme'))
+      await restore(() => page.emulateMedia({ colorScheme: originalColorScheme }));
+    if (externalGuard) await restore(() => page.unroute('**/*', externalGuard.handler));
+    externalGuard = undefined;
     if (changed.has('permissions')) await restore(() => context.clearPermissions());
     if (changed.has('authenticator'))
       await restore(async () => {
@@ -127,6 +133,7 @@ export function createNative({ context, page, capabilities, close }) {
     client = undefined;
     authenticator = undefined;
     originalMotion = undefined;
+    originalColorScheme = undefined;
     changed = new Set();
     owner = undefined;
     if (failures.length) {
@@ -193,6 +200,35 @@ export function createNative({ context, page, capabilities, close }) {
       case 'pointer':
         await page.mouse.move(input.x, input.y);
         break;
+      case 'color-scheme':
+        if (!changed.has('color-scheme')) {
+          originalColorScheme = await page.evaluate(() =>
+            matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light',
+          );
+          assertActive(request);
+        }
+        changed.add('color-scheme');
+        await page.emulateMedia({ colorScheme: input.value });
+        break;
+      case 'block-external': {
+        if (externalGuard) break;
+        let origin = new URL(page.url()).origin;
+        let records = Object.freeze([]);
+        let handler = async (route) => {
+          let url = new URL(route.request().url());
+          if (url.origin === origin || ['data:', 'blob:'].includes(url.protocol)) {
+            await route.fallback();
+            return;
+          }
+          records = Object.freeze([...records, url.href].slice(-1000));
+          await route.abort();
+        };
+        externalGuard = Object.freeze({ handler, read: () => records });
+        await page.route('**/*', handler);
+        break;
+      }
+      case 'blocked-requests':
+        return externalGuard?.read() ?? Object.freeze([]);
       case 'permissions':
         changed.add('permissions');
         await context.grantPermissions(input.permissions, { origin: new URL(page.url()).origin });

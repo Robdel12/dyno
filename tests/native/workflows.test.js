@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { PNG } from 'pngjs';
 import { project, repository, reportPayload, claimAssignment } from '../helpers/project.js';
+import { runURL } from '../helpers/manual.js';
 
 let browserName = process.env.DYNO_TEST_BROWSER ?? 'chromium';
 let chromiumOnly = browserName === 'chromium';
@@ -211,6 +212,7 @@ test('manual runs cannot invoke native input or borrow another run', {
   assert.deepEqual(first.capabilities.native, {
     keyboard: false,
     pointer: false,
+    network: false,
     permissions: [],
     authenticator: false,
     offline: false,
@@ -347,3 +349,136 @@ describe('Cancelled native input', () => {
       assert.match(event.error.message, /Await.*native/);
   },
 );
+
+
+test('URL-only custom interactors save and scroll without managed capabilities', managedOptions, async t => {
+  let fixture = await project(t, {
+    config: { ...config, viewport: undefined },
+    source: `
+import { defineInteractor } from 'dyno';
+let Contact = defineInteractor({actions: {
+  *save(name) {
+    yield this.find('Name').then.type(name, {replace:true});
+    yield this.click('Save note');
+  },
+  *scroll(top) {
+    yield ({$}) => $.ownerDocument.defaultView.scrollTo({top,behavior:'instant'});
+  }
+}});
+describe('Browser-local workflows', () => {
+  test('uses the form and scrolls from an ordinary URL', async ({app,I}) => {
+    await app.goto('/');
+    await I.assert(() => !app.native.capabilities.keyboard && !app.native.capabilities.pointer);
+    await Contact(I).save('URL user');
+    await I.find('$(#saved)').text('Saved URL user');
+    let records = await (await app.request('/api/records')).json();
+    await I.assert(() => records.length === 1 && records[0].name === 'URL user');
+    await Contact(I).scroll(350);
+    await I.assert(() => app.window.scrollY > 0);
+  });
+});`,
+  });
+  let result = await runURL(t, fixture);
+  assert.equal(result.summary?.passed, 1, result.stdout + result.stderr);
+  assert.equal(result.summary?.failed, 0, result.stdout + result.stderr);
+  let outcome = result.events.find(event => event.type === 'test');
+  assert.equal(outcome.timings.entries.some(entry => entry.kind === 'native'), false);
+});
+
+test('local Interactor actions compose in a fractional browser context', managedOptions, async t => {
+  let fixture = await project(t, {
+    config: { ...config, viewport: { width: 803, height: 601 }, browser: { ...config.browser, hasTouch: true, deviceScaleFactor: 1.25, userAgent: 'Dyno mobile acceptance' } },
+    source: `
+import { defineInteractor } from 'dyno';
+let Contact = defineInteractor({actions: {
+  *save(name) {
+    yield this.find('Name').then.type(name, {replace:true});
+    yield this.click('Save note');
+  },
+  *scroll(top) {
+    yield ({$}) => $.ownerDocument.defaultView.scrollTo({top,behavior:'instant'});
+  }
+}});
+describe('Local interactions', () => {
+  test('saves through the UI and scrolls without native actions', async ({app,I}) => {
+    await app.goto('/');
+    await I.assert(() => app.window.navigator.userAgent === 'Dyno mobile acceptance');
+    await Contact(I).save('Dyno keyboard');
+    await I.find('$(#saved)').text('Saved Dyno keyboard');
+    let records = await (await app.request('/api/records')).json();
+    await I.assert(() => records.length === 1 && records[0].name === 'Dyno keyboard');
+    await Contact(I).scroll(350);
+    await I.assert(() => app.window.scrollY > 0);
+    await Contact(I).scroll(0);
+    let image = await app.screenshot('Fractional mobile viewport');
+    await I.assert(() => Math.abs(image.width - 803 * 1.25) <= 1 && Math.abs(image.height - 601 * 1.25) <= 1 && image.pixelRatio === 1.25);
+    await I.click('Open destination');
+    await I.find('Destination ready').visible();
+  });
+});`,
+  });
+  let result = await fixture.run().completion;
+  passed(result, 1);
+  let attachment = result.events.find(event => event.type === 'attachment').attachment;
+  let png = PNG.sync.read(await readFile(attachment.path));
+  assert.equal(png.width, attachment.width);
+  assert.equal(png.height, attachment.height);
+  assert.ok(Math.abs(png.width - 803 * 1.25) <= 1);
+  assert.ok(Math.abs(png.height - 601 * 1.25) <= 1);
+  // Sample app content inside the viewport; WebKit can anti-alias its outer corner.
+  let background = (10 * png.width + 10) * 4;
+  assert.deepEqual([...png.data.subarray(background, background + 4)], [255, 255, 255, 255]);
+});
+
+test('color schemes and external request blocking reset between tests', managedOptions, async t => {
+  let fixture = await project(t, {
+    config,
+    source: `
+describe('Managed environment cleanup', () => {
+  test('changes system appearance and guards the app network', async ({app,I}) => {
+    await app.native.setColorScheme('dark');
+    await app.native.blockExternalRequests();
+    await app.goto('/');
+    await I.assert(() => app.window.matchMedia('(prefers-color-scheme: dark)').matches);
+    let {url} = await (await app.request('/api/external-url')).json();
+    let rejected = false;
+    try { await app.window.fetch(url); } catch { rejected = true; }
+    let blocked = await app.native.blockedRequests();
+    await I.assert(() => rejected && blocked.length === 1 && blocked[0] === url && Object.isFrozen(blocked));
+    let response = await app.request('/api/status');
+    await I.assert(() => response.ok);
+  });
+  test('restores system appearance and external connectivity', async ({app,I}) => {
+    await app.goto('/');
+    await I.assert(() => !app.window.matchMedia('(prefers-color-scheme: dark)').matches);
+    let {url} = await (await app.request('/api/external-url')).json();
+    let response = await app.window.fetch(url);
+    await I.assert(() => response.ok);
+    let blocked = await app.native.blockedRequests();
+    await I.assert(() => blocked.length === 0);
+  });
+});`,
+  });
+  passed(await fixture.run().completion, 2);
+});
+
+
+test('mobile viewport contexts keep layout and ordinary Interactor interaction', {
+  ...managedOptions,
+  skip: browserName === 'firefox' && 'Firefox does not support mobile viewport emulation',
+}, async t => {
+  let fixture = await project(t, {
+    config: { ...config, viewport: {width:393,height:727}, browser: { ...config.browser, isMobile:true, hasTouch:true } },
+    source: `
+describe('Mobile viewport', () => {
+  test('keeps the actual app size and saves through the mobile UI', async ({app,I}) => {
+    await app.goto('/');
+    await I.assert(() => app.window.innerWidth === 393 && app.window.innerHeight === 727, () => 'Actual app viewport: ' + app.window.innerWidth + 'x' + app.window.innerHeight);
+    await I.find('Name').then.fill('Mobile user');
+    await I.click('Save note');
+    await I.find('$(#saved)').text('Saved Mobile user');
+  });
+});`,
+  });
+  passed(await fixture.run().completion, 1);
+});

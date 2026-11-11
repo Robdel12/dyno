@@ -7,6 +7,7 @@ export function nativeCapabilities(name = null) {
   return Object.freeze({
     keyboard: managed,
     pointer: managed,
+    network: managed,
     permissions: chromium
       ? clipboard
       : name === 'webkit'
@@ -28,6 +29,9 @@ let properties = Object.freeze({
   'remove-authenticator': ['kind'],
   offline: ['kind', 'offline'],
   motion: ['kind', 'value'],
+  'color-scheme': ['kind', 'value'],
+  'block-external': ['kind'],
+  'blocked-requests': ['kind'],
   dialog: ['kind', 'action', 'message', 'text'],
   'dialog-result': ['kind'],
   'dialog-cancel': ['kind'],
@@ -40,6 +44,9 @@ let requiredCapability = Object.freeze({
   'remove-authenticator': 'authenticator',
   offline: 'offline',
   motion: 'media',
+  'color-scheme': 'media',
+  'block-external': 'network',
+  'blocked-requests': 'network',
   dialog: 'dialogs',
   'dialog-result': 'dialogs',
   'dialog-cancel': 'dialogs',
@@ -120,6 +127,10 @@ export function normalizeNative(input, capabilities) {
     case 'motion':
       if (!['reduce', 'no-preference'].includes(input.value))
         throw invalid('Native reduced motion must be reduce or no-preference.');
+      return Object.freeze({ kind: input.kind, value: input.value });
+    case 'color-scheme':
+      if (!['light', 'dark', 'no-preference'].includes(input.value))
+        throw invalid('Native color scheme must be light, dark, or no-preference.');
       return Object.freeze({ kind: input.kind, value: input.value });
     default:
       return Object.freeze({ kind: input.kind });

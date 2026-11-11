@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { PNG } from 'pngjs';
+import { chromium } from 'playwright-core';
 import { project, exec } from '../helpers/project.js';
 
 let name = process.env.DYNO_CAPTURE_BROWSER ?? 'chromium';
@@ -13,6 +14,54 @@ let browser = {
   name,
   ...(process.env.DYNO_CAPTURE_PATH ? { path: process.env.DYNO_CAPTURE_PATH } : {}),
 };
+
+test('full-page images preserve content beyond 16384 device pixels without resizing', managedOptions, async t => {
+  let colors = [[180, 40, 90], [20, 160, 80], [20, 60, 140], [210, 130, 20],
+    [90, 30, 160], [30, 170, 180], [190, 70, 30], [60, 110, 50]];
+  let source = `
+describe('Long-page pixels', () => {
+  test('captures every part of the record', async ({app, I}) => {
+    await app.goto('/visual');
+    app.document.documentElement.style.cssText = 'margin:0;padding:0;scrollbar-width:none';
+    app.document.body.style.cssText = 'margin:0;padding:0;width:393px';
+    let bands = ${JSON.stringify(colors)}.map(color => {
+      let band = app.document.createElement('section');
+      band.style.cssText = 'height:1000px;background:rgb(' + color.join(',') + ')';
+      return band;
+    });
+    app.document.body.replaceChildren(...bands);
+    await app.screenshot('complete long record', {fullPage:true});
+    await I.assert(() => app.window.innerWidth === 393 && app.window.innerHeight === 727 && app.window.scrollY === 0);
+  });
+});`;
+  let config = { browser: { ...browser, deviceScaleFactor: 2.75 }, viewport: { width: 393, height: 727 } };
+  let fixture = await project(t, { config, source });
+  let result = await fixture.run().completion;
+  assert.equal(result.code, 0, result.stdout + result.stderr);
+  let attachment = result.events.find(event => event.type === 'attachment').attachment;
+  let image = PNG.sync.read(await readFile(attachment.path));
+  assert.ok(image.height > 16384);
+  assert.ok(Math.abs(image.width - 393 * 2.75) <= 1);
+  assert.ok(Math.abs(image.height - 8000 * 2.75) <= 1);
+  for (let [index, color] of colors.entries()) {
+    let offset = (Math.round((index * 1000 + 500) * 2.75) * image.width + 10) * 4;
+    assert.deepEqual([...image.data.subarray(offset, offset + 4)], [...color, 255], `Missing page content in band ${index + 1}`);
+  }
+  if (process.platform === 'darwin' && name === 'chromium') {
+    let unsupported = await fixture.run(['--browser-path', chromium.executablePath()]).completion;
+    assert.equal(unsupported.summary?.failed, 1, unsupported.stdout + unsupported.stderr);
+    assert.match(unsupported.events.find(event => event.type === 'test').error.message, /16384 physical pixels/);
+    assert.equal(unsupported.events.some(event => event.type === 'attachment'), false);
+    let fractional = await project(t, {
+      config: { ...config, browser: { ...browser, path: chromium.executablePath(), deviceScaleFactor: 16384.25 / 8000 } },
+      source,
+    });
+    let boundary = await fractional.run().completion;
+    assert.equal(boundary.summary?.failed, 1, boundary.stdout + boundary.stderr);
+    assert.match(boundary.events.find(event => event.type === 'test').error.message, /16384 physical pixels/);
+    assert.equal(boundary.events.some(event => event.type === 'attachment'), false);
+  }
+});
 
 test(
   'managed capture saves real app pixels after local actions and responsive resize',
@@ -276,6 +325,84 @@ test('captures device pixels', async ({ app }) => {
     assert.equal(image.width, 640);
     assert.equal(image.height, 480);
     assert.equal(attachment.pixelRatio, 2);
+  },
+);
+
+test(
+  'WebKit element capture preserves painted fractional device-pixel edges',
+  { ...managedOptions, skip: name !== 'webkit' },
+  async (t) => {
+    let fixture = await project(t, {
+      config: { browser: { ...browser, deviceScaleFactor: 2.75 }, viewport: { width: 800, height: 600 } },
+      source: `
+describe('Fractional element capture', () => {
+test('saves every painted edge', async ({ app }) => {
+  await app.goto('/visual');
+  app.document.documentElement.style.cssText = 'margin:0;padding:0;scrollbar-width:none;background:white';
+  app.document.body.style.cssText = 'margin:0;padding:0;width:800px;height:600px;background:white';
+  let element = app.document.createElement('div');
+  element.style.cssText = 'position:absolute;box-sizing:border-box;left:11.125px;top:21.125px;width:30.75px;height:22.75px;background:rgb(255,240,100);border:1px solid;border-color:rgb(255,0,0) rgb(0,0,255) rgb(0,200,0) rgb(0,0,0)';
+  app.document.body.replaceChildren(element);
+  await app.screenshot('fractional painted element', { element });
+});
+});`,
+    });
+    let result = await fixture.run().completion;
+    assert.equal(result.code, 0, result.stdout + result.stderr);
+    let attachment = result.events.find(event => event.type === 'attachment').attachment;
+    let image = PNG.sync.read(await readFile(attachment.path));
+    assert.deepEqual([image.width, image.height], [86, 64]);
+    assert.equal(attachment.width, image.width);
+    assert.equal(attachment.height, image.height);
+    assert.equal(attachment.pixelRatio, 2.75);
+    let pixel = (x, y) => [...image.data.subarray((y * image.width + x) * 4, (y * image.width + x) * 4 + 4)];
+    assert.notDeepEqual(pixel(85, 10), [255, 255, 255, 255], 'The rightmost painted column was lost');
+    assert.notDeepEqual(pixel(10, 63), [255, 255, 255, 255], 'The bottom painted row was lost');
+  },
+);
+
+test(
+  'WebKit viewport, full-page and masked captures preserve fractional device-pixel bounds',
+  { ...managedOptions, skip: name !== 'webkit' },
+  async (t) => {
+    let fixture = await project(t, {
+      config: { browser: { ...browser, deviceScaleFactor: 1.25 }, viewport: { width: 803, height: 601 } },
+      source: `
+describe('Fractional page capture', () => {
+test('keeps partial edge pixels while masking the app', async ({ app }) => {
+  await app.goto('/visual');
+  app.document.documentElement.style.cssText = 'margin:0;padding:0;scrollbar-width:none;background:rgb(20,160,80)';
+  app.document.body.style.cssText = 'margin:0;padding:0;width:803px;height:701px;background:rgb(20,160,80)';
+  let secret = app.document.createElement('div');
+  secret.style.cssText = 'position:absolute;left:20px;top:20px;width:20px;height:20px;background:rgb(200,10,20)';
+  app.document.body.replaceChildren(secret);
+  await app.screenshot('fractional viewport');
+  await app.screenshot('fractional full page', { fullPage: true });
+  await app.screenshot('fractional masked viewport', { mask: [secret], maskColor: '#112233' });
+});
+});`,
+    });
+    let result = await fixture.run().completion;
+    assert.equal(result.code, 0, result.stdout + result.stderr);
+    let attachments = result.events.filter(event => event.type === 'attachment').map(event => event.attachment);
+    assert.equal(attachments.length, 3);
+    let images = await Promise.all(attachments.map(async attachment => PNG.sync.read(await readFile(attachment.path))));
+    for (let [index, image] of images.entries()) {
+      assert.deepEqual([image.width, image.height], [1004, index === 1 ? 877 : 752]);
+      assert.equal(attachments[index].width, image.width);
+      assert.equal(attachments[index].height, image.height);
+      assert.equal(attachments[index].pixelRatio, 1.25);
+    }
+    let pixel = (image, x, y) => [...image.data.subarray((y * image.width + x) * 4, (y * image.width + x) * 4 + 4)];
+    assert.deepEqual(pixel(images[0], 10, 750), [20, 160, 80, 255], 'The last fully covered viewport row must stay painted');
+    let edge = pixel(images[0], 10, 751);
+    // WebKit can paint partial alpha or leave this fractional row transparent.
+    if (edge[3] > 0)
+      assert.ok(edge[1] > edge[2] && edge[2] > edge[0], 'A painted fractional edge must keep its green background');
+    assert.deepEqual(pixel(images[2], 10, 751), edge, 'Masking changed the partial viewport edge');
+    assert.deepEqual(pixel(images[0], 37, 37), [200, 10, 20, 255]);
+    assert.deepEqual(pixel(images[2], 37, 37), [17, 34, 51, 255]);
+    assert.deepEqual(pixel(images[1], 10, 875), [20, 160, 80, 255]);
   },
 );
 

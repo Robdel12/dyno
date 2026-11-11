@@ -260,6 +260,25 @@ let server = http.createServer(async (request, response) => {
     response.end(JSON.stringify(lifecycle));
     return;
   }
+  if (request.url === '/remounting-date') {
+    response.writeHead(200, { 'Content-Type': 'text/html' });
+    response.end(`<!doctype html><meta name="viewport" content="width=device-width"><h1>Archive date</h1>
+      <form><label for="archive-day">Image date</label><input id="archive-day" type="date" value="2022-09-28"></form><output role="status">Choose a date</output>
+      <script>document.addEventListener('input', async event => {
+        if (event.target.id !== 'archive-day') return;
+        let input = event.target;
+        let form = input.parentElement;
+        let replacement = input.cloneNode();
+        replacement.value = input.value;
+        input.remove();
+        document.querySelector('output').textContent = 'Loading date';
+        let response = await fetch('/api/lifecycle', {method:'POST',body:'day:'+replacement.value});
+        if (!response.ok) throw new Error('Could not save the archive date');
+        form.append(replacement);
+        document.querySelector('output').textContent = 'Day saved: '+replacement.value;
+      });</script>`);
+    return;
+  }
   if (request.url === '/api/logout') { response.writeHead(200, { 'Set-Cookie': 'saved=; Max-Age=0; HttpOnly; Path=/' }); response.end('signed out'); return; }
   if (request.url === '/api/crash') { response.end('stopping'); queueMicrotask(() => process.exit(9)); return; }
   if (request.url === '/missing-page' || request.url === '/unavailable-page') {

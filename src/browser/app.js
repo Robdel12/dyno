@@ -10,12 +10,14 @@ import { fixtureOperationName, snapshotJson, readFixtureResponse, fixtureRequest
  */
 
 /**
+ * Fetch options pass through, including `credentials: 'omit'` for API setup that should not change the browser session. Same-origin cookies are included by default. Dyno owns the cancellation signal.
+ *
  * @api Application.request
  * Fetch a same-origin URL using the browser session and test cancellation signal. Returns a standard Response. Use this for your app's test-only fixture endpoints; keep database factories in your project.
  */
 
 /**
- * Resize the actual managed viewport and wait for layout. Each dimension must be 1–8192 CSS pixels. Manual runs require the requested dimensions to already match.
+ * Resize the actual managed viewport and wait for layout. Each dimension must be 1–16384 CSS pixels. Manual runs require the requested dimensions to already match.
  *
  * @api Application.setViewport
  */
@@ -564,7 +566,7 @@ export function createApp(
       if (url.origin !== location.origin)
         throw new Error('app.request requires a same-origin path.');
       return measure('request', `${init.method ?? 'GET'} ${url.pathname}`, () =>
-        fetch(url, { ...init, credentials: 'same-origin', signal }),
+        fetch(url, { credentials: 'same-origin', ...init, signal }),
       );
     },
   });

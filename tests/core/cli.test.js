@@ -6,6 +6,8 @@ import { once } from 'node:events';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { project, exec, repository, launch } from '../helpers/project.js';
+import { normalizeConfig } from '../../src/config.js';
+import { nativeCapabilities, normalizeNative } from '../../src/native.js';
 
 let cli = join(repository, 'bin/dyno.js');
 let eventsFrom = (stdout) =>
@@ -202,6 +204,15 @@ test('config typos and unsafe profile overrides fail before app startup', {
     { timeuot: 1000 },
     { timeout: 2147483648 },
     { browser: { name: 'netscape' } },
+    { browser: { deviceScaleFactor: 0.99 } },
+    { browser: { deviceScaleFactor: 3.01 } },
+    { browser: { deviceScaleFactor: '2.5' } },
+    { browser: { isMobile: 'true' } },
+    { browser: { hasTouch: 1 } },
+    { browser: { userAgent: '' } },
+    { browser: { userAgent: 'agent\nforged' } },
+    { browser: { userAgent: 'a'.repeat(1001) } },
+    { browser: { name: 'firefox', isMobile: true } },
     { browser: { locale: 'not_a_locale' } },
     { browser: { timezoneId: 'Unknown/Nowhere' } },
     { browser: { provider: 'playwright' } },
@@ -222,6 +233,62 @@ test('config typos and unsafe profile overrides fail before app startup', {
     assert.equal(result.events.at(-1).type, 'error');
     await assert.rejects(readFile(join(fixture.directory, 'app-started.txt')), { code: 'ENOENT' });
   }
+});
+
+test('config keeps fractional pixel ratios and managed context options immutable', () => {
+  let config = normalizeConfig(
+    {
+      browser: {
+        deviceScaleFactor: 1.25,
+        isMobile: true,
+        hasTouch: true,
+        userAgent: 'Dyno Mobile Test',
+      },
+      webServer: { url: 'http://localhost:3000' },
+    },
+    '/project/dyno.config.js',
+  );
+  assert.deepEqual(config.browser, {
+    name: 'chromium',
+    deviceScaleFactor: 1.25,
+    isMobile: true,
+    hasTouch: true,
+    userAgent: 'Dyno Mobile Test',
+    args: [],
+  });
+  assert.equal(Object.isFrozen(config.browser), true);
+  assert.equal(Object.isFrozen(config.browser.args), true);
+});
+
+test('native input validates browser-only operations and rejects overlapping DOM actions', () => {
+  let chromium = nativeCapabilities('chromium');
+  assert.equal(chromium.network, true);
+  for (let name of ['chromium', 'firefox', 'webkit']) {
+    let capabilities = nativeCapabilities(name);
+    assert.equal(capabilities.network, true);
+  }
+
+  for (let input of [
+    { kind: 'key', key: 'Tab' },
+    { kind: 'pointer', x: 8.5, y: 12 },
+    { kind: 'color-scheme', value: 'dark' },
+    { kind: 'block-external' },
+    { kind: 'blocked-requests' },
+  ]) {
+    let normalized = normalizeNative(input, chromium);
+    assert.deepEqual(normalized, input);
+    assert.equal(Object.isFrozen(normalized), true);
+  }
+
+  for (let [input, capabilities] of [
+    [{ kind: 'type', text: 'Ordinary text' }, chromium],
+    [{ kind: 'click', x: 1, y: 1 }, chromium],
+    [{ kind: 'tap', x: 1, y: 1 }, chromium],
+    [{ kind: 'wheel', deltaX: 0, deltaY: 1 }, chromium],
+    [{ kind: 'color-scheme', value: 'system' }, chromium],
+    [{ kind: 'block-external', enabled: true }, chromium],
+  ])
+    assert.throws(() => normalizeNative(input, capabilities));
 });
 
 test('unsupported managed browsers fail before starting an app', { timeout: 10000 }, async (t) => {

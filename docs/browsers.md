@@ -13,6 +13,8 @@ npx dyno --browser webkit
 
 Runs never download browsers. On Linux, `dyno install --with-deps` also installs [system dependencies](https://playwright.dev/docs/browsers#install-system-dependencies) and may need administrator access. Use `dyno browsers` to see downloaded builds and paths.
 
+Headless Chromium uses Playwright's default headless shell. On macOS, Chromium `--ui`, Chrome, Edge and custom Chromium executables reject captures taller than 16,384 physical pixels. Full Chromium can repeat content beyond that height while reporting valid dimensions. Use default headless Chromium for long-page images. This is a conservative support limit; some custom builds may work beyond it.
+
 ## Choose a browser
 
 | Browser | How to run |
@@ -36,15 +38,16 @@ Use `app.native.capabilities` to choose browser-specific coverage explicitly. Re
 | Feature | Chromium / Chrome / Edge | Firefox | WebKit | Manual URL |
 | --- | --- | --- | --- | --- |
 | Native keys and pointer | Yes | Yes | Yes | Unavailable |
+| App HTTP request guard | Yes | Yes | Yes | Unavailable |
 | Dialogs and browser console | Yes | Yes | Yes | Unavailable |
-| Reduced motion | Yes | Yes | Yes | Unavailable |
+| Color scheme and reduced motion | Yes | Yes | Yes | Unavailable |
 | Clipboard permission grants | Read/write | Unavailable | Read only | Unavailable |
 | Virtual authenticator | Yes | Unavailable | Unavailable | Unavailable |
 | App network offline | Yes | Unavailable | Unavailable | Unavailable |
 
 Native state resets between tests. Cookies, storage, and backend cleanup remain your project's responsibility. Chromium offline keeps companion HTTP connected, but can change its `navigator.onLine` too.
 
-Set `browser.locale` and `browser.timezoneId` when creating managed contexts. `browser.deviceScaleFactor` accepts 1, 2, or 3. A mobile-sized viewport still uses a desktop browser; it doesn't emulate a phone's input or OS.
+Set `browser.locale` and `browser.timezoneId` when creating managed contexts. `browser.deviceScaleFactor` accepts finite values from 1 to 3, including fractional ratios. Set `browser.hasTouch` for touch input, `browser.isMobile` for mobile viewport behavior, and `browser.userAgent` when needed. Firefox does not support `isMobile`. These are browser context settings; they do not reproduce a phone’s OS or hardware.
 
 ## Custom executables
 

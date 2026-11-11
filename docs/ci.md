@@ -10,6 +10,7 @@
 | Package | `npm run test:package` | Fresh tarball and checkout installs, init, and a real Chromium test on Node 26 |
 | Browser | `npm run test:browser -- firefox` | Real app, gateway, viewport, and process workflows in Chromium, Firefox, and WebKit on Linux and macOS, using Node 24 |
 | Execution | `npm run test:execution -- firefox` | Native concurrency, ownership, queue replay, seeded order, suite hooks, cleanup, pause, watch and replacement workflows in all three engines on Linux and macOS |
+| Project | `npm run test:project -- firefox` | Project resource acquisition, fixture transport and per-execution preparation in all three engines on Linux and macOS |
 | Reporter | `npm run test:reporter -- firefox` | Inspection, output, timings, reruns, and portable saved reports in all three engines on Linux and macOS |
 | Native | `npm run test:native -- firefox` | Native defaults, capabilities, state restoration, dialogs, diagnostics, and cancellation in all three engines on Linux and macOS |
 | Capture | `npm run test:capture` | Actual pixels and capture lifecycle in Chromium, Firefox, and WebKit on Linux and macOS, using Node 24 |
@@ -21,11 +22,11 @@ node bin/dyno.js install --browser firefox
 npm run test:browser -- firefox
 ```
 
-Tests live under `tests/core`, `tests/package`, `tests/browser`, `tests/execution`, `tests/reporter`, `tests/capture`, and `tests/native`. The runner discovers every `.test.js` file in the selected directory and rejects test files outside these suites. Keep browser-free checks in core and browser workflows in the relevant feature suite. Tests use real CLI, server, and Playwright browser boundaries; these groups only decide where they run.
+Tests live under `tests/core`, `tests/package`, `tests/browser`, `tests/execution`, `tests/project`, `tests/reporter`, `tests/capture`, and `tests/native`. The runner discovers every `.test.js` file in the selected directory and rejects test files outside these suites. Keep browser-free checks in core and browser workflows in the relevant feature suite. Tests use real CLI, server, and Playwright browser boundaries; these groups only decide where they run.
 
-Core checks and actionlint workflow validation run first. Browser and package suites run in parallel once core passes. Documentation runs separately. Browser, execution, reporter, native, and capture suites have separate jobs so each complete suite has its own budget. Each test job has a hard five-minute cap, including setup. Browser and execution checks run up to three independent files together; each owns its app, gateway, browser profiles, and fixture directory. Tests inside a file stay sequential. Reporter, native, capture, and package suites stay sequential. The macOS process-group check runs once in core instead of repeating for each browser. There are no retries or extra sleeps.
+Core checks and actionlint workflow validation run first. Browser and package suites run in parallel once core passes. Documentation runs separately. Browser, execution, project, reporter, native, and capture suites have separate jobs so each complete suite has its own budget. Each test job has a hard five-minute cap, including setup. Browser and execution checks run up to three independent files together; each owns its app, gateway, browser profiles, and fixture directory. Tests inside a file stay sequential. Project, reporter, native, capture, and package suites stay sequential. The macOS process-group check runs once in core instead of repeating for each browser. There are no retries or extra sleeps.
 
-Execution and reporter checks have their own suites because the combined macOS Firefox browser suite reached 288–294 seconds, leaving no room for setup under the five-minute cap. Every test and engine/OS combination remains covered. Product suites and benchmarks keep their configured execution; this grouping only changes Dyno's own CI.
+Execution and reporter checks have their own suites because the combined macOS Firefox browser suite reached 288–294 seconds. Project setup and preparation now have their own suite after execution exhausted the same cap. Every test and engine/OS combination remains covered. Product suites and benchmarks keep their configured execution; this grouping only changes Dyno's own CI.
 
 ## Results and setup
 

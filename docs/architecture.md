@@ -14,7 +14,7 @@ Every command shares cancellation, including browser installation. Shutdown canc
 
 The exported `Interactor` and each test's `I` use the same app-aware class. Its public Interactor extension points supply app-realm events/files, form replacement, rendered assertions, and dynamic scopes. Scopes create independent contexts with the same assertion settings and signal; they resolve their roots again after navigation. Interactor.js still owns selectors, chaining, retries, and stability checks. Apps keep domain page objects and fixture I/O.
 
-`defineInteractor({ actions, assertions })` registers native extensions on a private subclass with its own assertion class. Its returned function binds that definition to an existing Interactor and optional selector. Definitions never register methods on `I` or siblings. Binding and `scope()` share one context-copy path; neither caches app elements. The small subclass isolates native registration rather than introducing another interaction engine.
+`defineInteractor({ actions, assertions })` registers actions and assertions through Interactor's public API on a private subclass with its own assertion class. Its returned function binds that definition to an existing Interactor and optional selector. Definitions never register methods on `I` or siblings. Binding and `scope()` share one context-copy path; neither caches app elements. The small subclass keeps registrations independent.
 
 ## App and test windows
 
@@ -129,7 +129,7 @@ CLI lifecycle intervals use a separate session clock. Each report saves a runnin
 
 ## Native browser operations
 
-Rare native keys, pointer movement, permissions, media, offline transport, and virtual authenticators use the existing runtime message, controller queue, authenticated gateway, and owned worker. Interactor resolves DOM targets locally. No exposed SDK binding, driver selector, or generic evaluation API enters the app.
+Interactor owns clicks, typing, app keyboard handlers, and scrolling through local actions. The managed input surface is limited to real keys for browser defaults and pointer movement for CSS hover. Permissions, media, offline transport, and virtual authenticators use the same runtime message, controller queue, authenticated gateway, and owned worker. Interactor resolves DOM targets locally. No exposed SDK binding, driver selector, or generic evaluation API enters the app.
 
 Requests carry execution and document identity. The worker checks the original page bridge immediately before dispatch. Geometry stays tied to that document; keys may navigate within their execution. Cancellation rejects queued requests and late results, but cannot undo delivered input. The checks detect races rather than making browser input atomic.
 

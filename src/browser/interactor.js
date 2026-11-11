@@ -77,7 +77,7 @@
  */
 
 /**
- * Send a real key to the focused app element. Requires managed keyboard support; ordinary Interactor `press` uses synthetic events.
+ * Send a real key to the focused app element when browser defaults matter, such as Tab navigation. Requires managed keyboard support. Use upstream `press` for app-defined keyboard handlers; it runs directly in the browser.
  *
  * @api Interactor.nativePress
  */
@@ -143,7 +143,7 @@
  * await I.find('$(input[name=email])').value('rob@example.com');
  * ```
  *
- * `rendered()` checks displayed content, including below the fold. `visible()` also requires it to be in the viewport. `expectTimeout` sets the assertion deadline.
+ * `rendered()` checks displayed content, including below the fold. `visible()` also requires it to be in the viewport. Assertions retry until they match, then continue immediately. `expectTimeout` sets the assertion deadline.
  *
  * For changing browser state, use an assertion callback:
  *
@@ -256,8 +256,8 @@ function isDisplayed(element, minimumOpacity = 0) {
   return true;
 }
 
-// Interactor.js 3.6.2's defaults use the runner's Event/MouseEvent/document.
-// Its public extensions keep those three operations in the target element's realm.
+// Explicit click triggers need MouseEvent coordinates, including canvas actions.
+// Check cancellation at the DOM boundary before dispatching an event.
 Interactor.defineAction('trigger', function* trigger(eventName, properties) {
   return yield ({ $, signal }) => dispatch($, eventName, properties, signal);
 });
@@ -291,7 +291,7 @@ Interactor.defineAction('click', function* click(selector) {
 Interactor.defineAction('fill', function* fill(value) {
   yield this.focus();
   yield this.assert(({ $ }) => !$.disabled && !$.readOnly, '#{this} is disabled or read-only');
-  yield ({ $, signal }) => {
+  return yield ({ $, signal }) => {
     signal?.throwIfAborted();
     if (!['input', 'textarea'].includes($.localName))
       throw new Error('fill requires an input or textarea');
@@ -302,14 +302,15 @@ Interactor.defineAction('fill', function* fill(value) {
         : window.HTMLInputElement.prototype;
     let setter = Object.getOwnPropertyDescriptor(prototype, 'value').set;
     setter.call($, String(value));
+    // Input handlers can replace the control. Finish this action on its original target.
+    dispatch($, 'input', {
+      cancelable: false,
+      inputType: 'insertReplacementText',
+      data: String(value),
+    }, signal);
+    dispatch($, 'change', { cancelable: false }, signal);
+    return $;
   };
-  yield this.trigger('input', {
-    cancelable: false,
-    inputType: 'insertReplacementText',
-    data: String(value),
-  });
-  yield this.trigger('change', { cancelable: false });
-  return ({ $ }) => $;
 });
 
 Interactor.defineAction('upload', function* upload(...files) {
@@ -362,15 +363,6 @@ Interactor.defineAssertion(
   '#{this} is rendered',
 );
 
-Interactor.defineAssertion(
-  'focused',
-  () =>
-    ({ $ }) =>
-      $ === $.ownerDocument.activeElement,
-  '#{this} is not focused',
-  '#{this} is focused',
-);
-
 // DOM focus works in a background app tab too. Browser window activation is
 // outside local interaction; focus() and the focused assertion check the element.
 Interactor.defineAssertion(
@@ -418,6 +410,7 @@ export function createInteractor(app, signal, timeout) {
     root: () => app.document.body,
     signal,
     native: app.native,
-    assert: { timeout },
+    // Retry mismatches; a match does not need an extra timer-based check.
+    assert: { timeout, reliability: 0 },
   });
 }

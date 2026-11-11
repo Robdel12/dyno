@@ -91,7 +91,7 @@ await I.find(/Contact saved/).rendered();
 await I.find('$(input[name=email])').value('rob@example.com');
 ```
 
-`rendered()` checks displayed content, including below the fold. `visible()` also requires it to be in the viewport. `expectTimeout` sets the assertion deadline.
+`rendered()` checks displayed content, including below the fold. `visible()` also requires it to be in the viewport. Assertions retry until they match, then continue immediately. `expectTimeout` sets the assertion deadline.
 
 For changing browser state, use an assertion callback:
 
@@ -263,7 +263,9 @@ Dyno gives each test 10 seconds, including hooks and document startup. Interacto
 | `runTimeout` | `60000` | Headless browser opening and results deadline, after app readiness |
 | `host`, `port` | `127.0.0.1`, `7357` | Gateway address; port 0 chooses a free port |
 | `browser.name`, `path`, `args` | `chromium`, Playwright build, `[]` | Managed target, optional executable, and launch arguments |
-| `browser.deviceScaleFactor` | `1` | Playwright pixel ratio: 1, 2, or 3 |
+| `browser.deviceScaleFactor` | `1` | Playwright pixel ratio from 1 to 3 |
+| `browser.isMobile`, `browser.hasTouch` | `false` | Emulate mobile viewport behavior and touch input |
+| `browser.userAgent` | Browser default | Override the managed browser user agent |
 | `viewport` | Browser size; managed: 1280 × 800 | Required app viewport dimensions |
 | `reportDir` | `.dyno/reports` | Saved JSON, JUnit, HTML, and copied images per browser run |
 | `artifactsDir` | `.dyno/artifacts` | PNG output directory |
@@ -606,7 +608,11 @@ Manual runs use the actual window. A browser can't reliably resize its own tab, 
 
 ## Native browser actions
 
-Use native input when you're testing the browser's default behavior, such as Tab navigation or CSS hover. Keep ordinary clicks, fields, and assertions in Interactor.
+Interactor's `click`, `type`, `press`, and assertions run directly in the browser. Use `press` for app-defined keyboard handlers, such as chart arrows or search shortcuts. These don't need a driver.
+
+Use a custom Interactor action with the element's `scrollBy` or `scrollTo` for scrolling. App scroll handlers and lazy loading still run in the real browser.
+
+Use native input when you're testing browser defaults that synthetic events don't reproduce, such as Tab navigation or CSS hover.
 
 ```js
 await I.find('Name').then.focus();
@@ -617,6 +623,8 @@ await I.nativeMove({ x: 0, y: 0 });
 ```
 
 These work with scopes and custom interactors. `nativePress` uses the focused element; it doesn't focus a selector for you. Hover scrolls to a visible point that receives pointer input. Stale or covered targets fail. After an action navigates, assert on the destination with Interactor.
+
+Use `setColorScheme('dark' | 'light' | 'no-preference')` for system appearance. `blockExternalRequests()` blocks app-page HTTP requests outside the gateway origin and records up to 1,000 recent URLs; `blockedRequests()` returns them. It doesn't block WebSockets, service-worker traffic, or companion requests. Both settings reset between tests.
 
 ### Handle a dialog
 

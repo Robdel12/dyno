@@ -123,6 +123,7 @@ export interface NativeConsoleMessage {
 export interface NativeCapabilities {
   readonly keyboard: boolean;
   readonly pointer: boolean;
+  readonly network: boolean;
   readonly permissions: readonly string[];
   readonly authenticator: boolean;
   readonly offline: boolean;
@@ -134,6 +135,9 @@ export interface NativeBrowser {
   readonly capabilities: NativeCapabilities;
   press(key: string): Promise<void>;
   move(point: NativePoint): Promise<void>;
+  setColorScheme(value: 'light' | 'dark' | 'no-preference'): Promise<void>;
+  blockExternalRequests(): Promise<void>;
+  blockedRequests(): Promise<readonly string[]>;
   hover(element: Element, options?: NativeHoverOptions): Promise<void>;
   grantPermissions(permissions: readonly string[]): Promise<void>;
   enableVirtualAuthenticator(): Promise<void>;
