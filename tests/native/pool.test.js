@@ -252,7 +252,7 @@ test('cancelling queued viewport work closes the pool before it can be reused', 
   let cancel = new AbortController();
   let resizing = workers[0].resize({ width: 400, height: 300 }, cancel.signal);
   cancel.abort(new Error('Viewport request ended'));
-  await assert.rejects(resizing, /cancelled/);
+  await assert.rejects(resizing, /cancelled: Viewport request ended/);
   await assert.rejects(opening);
   await assert.rejects(workers[1].open(origin), /closed/);
   await assert.rejects(pool.createWorker('c'), /closed/);
