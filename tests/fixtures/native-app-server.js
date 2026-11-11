@@ -21,13 +21,10 @@ html{background:white}body{font:16px system-ui;margin:24px}label{display:block;m
 <button id="remove">Remove saved note</button><output id="removed"></output>
 <button id="copy">Copy token</button><output id="copied"></output>
 <button id="load">Load status</button><output id="network"></output>
-<button id="trusted">Record trusted input</button><output id="trusted-result"></output><output id="touch-result"></output>
 <div id="hover">Hover target</div><a href="/destination">Open destination</a>
 <div style="height:900px"></div>
 <section id="tall"><div style="background:rgb(180,40,90)"></div><div style="background:rgb(20,160,80)"></div><div style="background:rgb(20,60,140)"></div></section>
 <script>
-document.querySelector('#trusted').onclick=event=>document.querySelector('#trusted-result').textContent=event.isTrusted+':'+event.pointerType;
-document.querySelector('#trusted').addEventListener('touchend',event=>document.querySelector('#touch-result').textContent=event.isTrusted+':'+event.changedTouches.length);
 window.viewportChanges=[];
 window.viewportObservationStage='startup';
 window.viewportSnapshot=()=>({

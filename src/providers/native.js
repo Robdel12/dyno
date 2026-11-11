@@ -169,7 +169,7 @@ export function createNative({ context, page, capabilities, close }) {
     } catch (error) {
       if (
         !after ||
-        !['key', 'click', 'tap'].includes(request.input.kind) ||
+        request.input.kind !== 'key' ||
         !/execution context was destroyed|cannot find context|because of a navigation/i.test(
           error.message,
         )
@@ -181,7 +181,7 @@ export function createNative({ context, page, capabilities, close }) {
     let expected = { runId: request.runId, ...request.context };
     if (!sameExecution(actual, expected))
       throw new Error('The owned app page has moved to another test execution.');
-    let navigation = after && ['key', 'click', 'tap'].includes(request.input.kind);
+    let navigation = after && request.input.kind === 'key';
     if (
       !navigation &&
       (actual.documentId !== expected.documentId ||
@@ -197,20 +197,8 @@ export function createNative({ context, page, capabilities, close }) {
       case 'key':
         await page.keyboard.press(input.key);
         break;
-      case 'type':
-        await page.keyboard.type(input.text);
-        break;
       case 'pointer':
         await page.mouse.move(input.x, input.y);
-        break;
-      case 'click':
-        await page.mouse.click(input.x, input.y);
-        break;
-      case 'tap':
-        await page.touchscreen.tap(input.x, input.y);
-        break;
-      case 'wheel':
-        await page.mouse.wheel(input.deltaX, input.deltaY);
         break;
       case 'color-scheme':
         if (!changed.has('color-scheme')) {
@@ -352,10 +340,10 @@ export function createNative({ context, page, capabilities, close }) {
         )
           throw new Error('Native input needs the current run, execution, document, and viewport.');
         let input = normalizeNative(request.input, capabilities);
-        if (['pointer', 'click', 'tap'].includes(input.kind) && (input.x >= binding.width || input.y >= binding.height))
+        if (input.kind === 'pointer' && (input.x >= binding.width || input.y >= binding.height))
           throw new Error('Native pointer coordinates must be inside the app viewport.');
         request = { ...request, input };
-        if (['key', 'type', 'pointer', 'click', 'tap', 'wheel'].includes(input.kind)) await page.bringToFront();
+        if (['key', 'pointer'].includes(input.kind)) await page.bringToFront();
         await check(request);
         assertActive(request);
         let next = { runId: request.runId, executionId: request.context.executionId };

@@ -45,10 +45,10 @@ test('observes property-only changes and completes actions that replace their ta
 test('follows full-document links and explicit redirects without stale reads', async ({app, I}) => {
   await app.goto('/');
   await I.click('Other page');
-  await I.find('Other page').visible();
+  await I.find('"Other page" $(h1)').visible();
   await app.goto('/redirect');
   await I.assert(() => app.window.location.pathname === '/other', 'Expected the other page URL');
-  await I.find('Other page').visible();
+  await I.find('"Other page" $(h1)').visible();
 });
 });`,
     });

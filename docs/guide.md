@@ -608,7 +608,11 @@ Manual runs use the actual window. A browser can't reliably resize its own tab, 
 
 ## Native browser actions
 
-Use native input when you're testing the browser's default behavior, such as Tab navigation or CSS hover. Keep ordinary clicks, fields, and assertions in Interactor.
+Interactor's `click`, `type`, `press`, and assertions run directly in the browser. Use `press` for app-defined keyboard handlers, such as chart arrows or search shortcuts. These don't need a driver.
+
+Use a custom Interactor action with the element's `scrollBy` or `scrollTo` for scrolling. App scroll handlers and lazy loading still run in the real browser.
+
+Use native input when you're testing browser defaults that synthetic events don't reproduce, such as Tab navigation or CSS hover.
 
 ```js
 await I.find('Name').then.focus();
@@ -619,8 +623,6 @@ await I.nativeMove({ x: 0, y: 0 });
 ```
 
 These work with scopes and custom interactors. `nativePress` uses the focused element; it doesn't focus a selector for you. Hover scrolls to a visible point that receives pointer input. Stale or covered targets fail. After an action navigates, assert on the destination with Interactor.
-
-`nativeClick` and `nativeTap` also accept a point in app viewport coordinates. Without a point, they resolve the scoped element locally. Tap requires `browser.hasTouch: true`. Use `nativeType(text)` after focusing a field when keyboard events themselves are part of the behavior. `nativeWheel({ deltaX, deltaY })` scrolls beneath the current pointer.
 
 Use `setColorScheme('dark' | 'light' | 'no-preference')` for system appearance. `blockExternalRequests()` blocks app-page HTTP requests outside the gateway origin and records up to 1,000 recent URLs; `blockedRequests()` returns them. It doesn't block WebSockets, service-worker traffic, or companion requests. Both settings reset between tests.
 

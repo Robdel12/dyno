@@ -219,7 +219,7 @@ export function createBrowserControl({ artifactsDir, workerId = '0', onReplaced 
   let invalidate = (runId, endingRun = false) => {
     contexts.delete(runId);
     for (let request of nativeRequests.values())
-      if (request.runId === runId && (endingRun || !['key', 'click', 'tap'].includes(request.kind)))
+      if (request.runId === runId && (endingRun || request.kind !== 'key'))
         request.controller.abort(problem(409, 'The native input context ended.'));
     for (let record of records.values()) {
       if (record.runId !== runId || record.status === 'accepted') continue;
@@ -599,7 +599,7 @@ export function createBrowserControl({ artifactsDir, workerId = '0', onReplaced 
         if (
           canceled.has(canceledKey) ||
           current?.executionId !== input.context.executionId ||
-          (!['key', 'click', 'tap'].includes(native.kind) && !sameContext(current, input.context))
+          (native.kind !== 'key' && !sameContext(current, input.context))
         )
           throw problem(409, 'Native input finished after its test document ended.');
         send(result);

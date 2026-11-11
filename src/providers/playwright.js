@@ -31,7 +31,7 @@ export async function open(browser, plan, viewport, onExit, onDiagnostic = () =>
     let native = createNative({
       context,
       page,
-      capabilities: nativeCapabilities(plan.name, plan),
+      capabilities: nativeCapabilities(plan.name),
       close: stop,
     });
     return Object.freeze({

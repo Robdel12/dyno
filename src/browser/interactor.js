@@ -77,7 +77,7 @@
  */
 
 /**
- * Send a real key to the focused app element. Requires managed keyboard support; ordinary Interactor `press` uses synthetic events.
+ * Send a real key to the focused app element when browser defaults matter, such as Tab navigation. Requires managed keyboard support. Use upstream `press` for app-defined keyboard handlers; it runs directly in the browser.
  *
  * @api Interactor.nativePress
  */
@@ -256,8 +256,8 @@ function isDisplayed(element, minimumOpacity = 0) {
   return true;
 }
 
-// Interactor.js 3.6.2's defaults use the runner's Event/MouseEvent/document.
-// Its public extensions keep those three operations in the target element's realm.
+// Explicit click triggers need MouseEvent coordinates, including canvas actions.
+// Check cancellation at the DOM boundary before dispatching an event.
 Interactor.defineAction('trigger', function* trigger(eventName, properties) {
   return yield ({ $, signal }) => dispatch($, eventName, properties, signal);
 });
@@ -342,27 +342,8 @@ Interactor.defineAction('nativePress', function* nativePress(key) {
   return yield ({ native }) => nativeBrowser(native).press(key);
 });
 
-Interactor.defineAction('nativeType', function* nativeType(text) {
-  return yield ({ native }) => nativeBrowser(native).type(text);
-});
-
 Interactor.defineAction('nativeMove', function* nativeMove(point) {
   return yield ({ native }) => nativeBrowser(native).move(point);
-});
-
-for (let [name, operation] of [['nativeClick', 'click'], ['nativeTap', 'tap']]) {
-  Interactor.defineAction(name, function* nativePointer(point) {
-    if (point !== undefined) return yield ({ native }) => nativeBrowser(native)[operation](point);
-    yield this.assert.rendered();
-    return yield async ({ $, native }) => {
-      await nativeBrowser(native)[operation]($);
-      return $;
-    };
-  });
-}
-
-Interactor.defineAction('nativeWheel', function* nativeWheel(delta) {
-  return yield ({ native }) => nativeBrowser(native).wheel(delta);
 });
 
 Interactor.defineAction('nativeHover', function* nativeHover(options) {
@@ -380,15 +361,6 @@ Interactor.defineAssertion(
       isDisplayed($) && [...$.getClientRects()].some((rect) => rect.width > 0 && rect.height > 0),
   '#{this} is not rendered',
   '#{this} is rendered',
-);
-
-Interactor.defineAssertion(
-  'focused',
-  () =>
-    ({ $ }) =>
-      $ === $.ownerDocument.activeElement,
-  '#{this} is not focused',
-  '#{this} is focused',
 );
 
 // DOM focus works in a background app tab too. Browser window activation is
@@ -442,27 +414,3 @@ export function createInteractor(app, signal, timeout) {
     assert: { timeout, reliability: 0 },
   });
 }
-
-/**
- * Type text with the real keyboard into the focused app element.
- *
- * @api Interactor.nativeType
- */
-
-/**
- * Click the resolved element, or an explicit viewport point, with the real mouse. Use ordinary click for synthetic DOM interaction.
- *
- * @api Interactor.nativeClick
- */
-
-/**
- * Tap the resolved element, or an explicit viewport point, with real touch input. Requires managed touch support.
- *
- * @api Interactor.nativeTap
- */
-
-/**
- * Scroll with real wheel deltas beneath the current pointer. Move or hover the pointer first when targeting a scrollable panel.
- *
- * @api Interactor.nativeWheel
- */

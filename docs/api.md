@@ -42,17 +42,13 @@ Signatures: [browser types](../types/index.d.ts), [configuration](../types/confi
 | `Interactor.scope` | Bind an independent root that resolves again after navigation. Create scopes before chaining; a missing root fails instead of searching elsewhere. |
 | `Interactor.fill` | Replace an editable input or textarea value and dispatch input/change events. Empty strings and numeric inputs work. Use upstream `type` when individual keystrokes matter. |
 | `Interactor.upload` | Select files and dispatch input/change events. Pass no files to clear the selection. File bytes can come from a project fixture endpoint. |
-| `Interactor.nativePress` | Send a real key to the focused app element. Requires managed keyboard support; ordinary Interactor `press` uses synthetic events. |
+| `Interactor.nativePress` | Send a real key to the focused app element when browser defaults matter, such as Tab navigation. Requires managed keyboard support. Use upstream `press` for app-defined keyboard handlers; it runs directly in the browser. |
 | `Interactor.nativeMove` | Move the native pointer in app viewport coordinates. Useful for moving away from a hovered element. |
 | `Interactor.nativeHover` | Move the native pointer over the resolved element. An optional position is relative to its bounding box in CSS pixels. |
 | `defineInteractor` | Define reusable component actions and assertions. Keep definitions in your app’s test support or beside the component, then bind them to the test’s `I`. Share definitions, never bound instances. |
 | `UploadFile` | A browser file input fixture. `bytes` accepts a string, Blob or other BlobPart; `name` is the filename and `type` is an optional MIME type. |
 | `CustomInteractor` | The app-aware Interactor plus your named actions and assertions. Bind it inside each test so scopes and cancellation belong to that execution. |
 | `InteractorContext` | Interactor.js’s action/assertion context, available to custom definitions. Keep DOM access inside the supplied context. |
-| `Interactor.nativeType` | Type text with the real keyboard into the focused app element. |
-| `Interactor.nativeClick` | Click the resolved element, or an explicit viewport point, with the real mouse. Use ordinary click for synthetic DOM interaction. |
-| `Interactor.nativeTap` | Tap the resolved element, or an explicit viewport point, with real touch input. Requires managed touch support. |
-| `Interactor.nativeWheel` | Scroll with real wheel deltas beneath the current pointer. Move or hover the pointer first when targeting a scrollable panel. |
 
 ## App and screenshots
 
@@ -97,14 +93,9 @@ Signatures: [browser types](../types/index.d.ts), [configuration](../types/confi
 | `NativeHoverOptions` | Optionally choose a point inside the target element. Without it, Dyno chooses a visible point that receives pointer input. |
 | `NativeDialogOptions` | Accept or dismiss the next dialog opened by the callback. Optionally require a message and supply prompt text. |
 | `NativeConsoleMessage` | A captured console entry with its sequence ID, type and text. |
-| `NativeBrowser.type` | Type text with the real keyboard into the focused element. Prefer `I.nativeType` when composing native keyboard workflows. |
-| `NativeBrowser.click` | Click a connected element or a point in app viewport coordinates with the real mouse. Ordinary clicks stay in Interactor. |
-| `NativeBrowser.tap` | Tap a connected element or viewport point with a real touch event. Requires a managed context with `browser.hasTouch: true`. |
-| `NativeBrowser.wheel` | Send finite wheel deltas in CSS pixels under the current pointer. Mobile WebKit does not support wheel input. |
 | `NativeBrowser.setColorScheme` | Choose the app system color scheme: light, dark, or no-preference. Cleanup restores the original preference. |
 | `NativeBrowser.blockExternalRequests` | Block app-page HTTP requests outside the gateway origin. Data and blob URLs remain available. Does not cover service workers or WebSockets; resets between tests. |
 | `NativeBrowser.blockedRequests` | Read an immutable list of up to 1,000 recent URLs blocked by the external-request guard. |
-| `NativeWheel` | Horizontal and vertical wheel deltas in CSS pixels. Negative values scroll left or up. |
 
 ## Timings
 

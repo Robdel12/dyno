@@ -40,6 +40,7 @@
     "test:core": "node scripts/test.js core",
     "test:browser": "node scripts/test.js browser",
     "test:execution": "node scripts/test.js execution",
+    "test:project": "node scripts/test.js project",
     "test:reporter": "node scripts/test.js reporter",
     "test:package": "node scripts/test.js package",
     "test:capture": "node scripts/test.js capture",
@@ -54,7 +55,7 @@
     "@jridgewell/trace-mapping": "0.3.31",
     "commander": "15.0.0",
     "esbuild": "0.28.2",
-    "interactor.js": "3.6.2",
+    "interactor.js": "git+https://github.com/wwilsman/interactor.js.git#d22e523485359a924cedfbc32ee3912c80319dbb",
     "parse5": "8.0.0",
     "playwright-core": "1.64.1",
     "pngjs": "7.0.0"

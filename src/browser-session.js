@@ -195,7 +195,7 @@ export async function createBrowserPool(plan, { size = 1, signal, onExit = () =>
               screenshot: true,
               fullPage: true,
               hostViewport: true,
-              native: nativeCapabilities(plan.name, plan),
+              native: nativeCapabilities(plan.name),
             }),
             open: (url) => call('open', { url }),
             activate: () => call('activate'),

@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { PNG } from 'pngjs';
 import { project, repository, reportPayload, claimAssignment } from '../helpers/project.js';
+import { runURL } from '../helpers/manual.js';
 
 let browserName = process.env.DYNO_TEST_BROWSER ?? 'chromium';
 let chromiumOnly = browserName === 'chromium';
@@ -211,8 +212,6 @@ test('manual runs cannot invoke native input or borrow another run', {
   assert.deepEqual(first.capabilities.native, {
     keyboard: false,
     pointer: false,
-    wheel: false,
-    touch: false,
     network: false,
     permissions: [],
     authenticator: false,
@@ -352,30 +351,68 @@ describe('Cancelled native input', () => {
 );
 
 
-test('managed touch, typing, wheel input and fractional pixels preserve browser behavior', managedOptions, async t => {
+test('URL-only custom interactors save and scroll without managed capabilities', managedOptions, async t => {
+  let fixture = await project(t, {
+    config: { ...config, viewport: undefined },
+    source: `
+import { defineInteractor } from 'dyno';
+let Contact = defineInteractor({actions: {
+  *save(name) {
+    yield this.find('Name').then.type(name, {replace:true});
+    yield this.click('Save note');
+  },
+  *scroll(top) {
+    yield ({$}) => $.ownerDocument.defaultView.scrollTo({top,behavior:'instant'});
+  }
+}});
+describe('Browser-local workflows', () => {
+  test('uses the form and scrolls from an ordinary URL', async ({app,I}) => {
+    await app.goto('/');
+    await I.assert(() => !app.native.capabilities.keyboard && !app.native.capabilities.pointer);
+    await Contact(I).save('URL user');
+    await I.find('$(#saved)').text('Saved URL user');
+    let records = await (await app.request('/api/records')).json();
+    await I.assert(() => records.length === 1 && records[0].name === 'URL user');
+    await Contact(I).scroll(350);
+    await I.assert(() => app.window.scrollY > 0);
+  });
+});`,
+  });
+  let result = await runURL(t, fixture);
+  assert.equal(result.summary?.passed, 1, result.stdout + result.stderr);
+  assert.equal(result.summary?.failed, 0, result.stdout + result.stderr);
+  let outcome = result.events.find(event => event.type === 'test');
+  assert.equal(outcome.timings.entries.some(entry => entry.kind === 'native'), false);
+});
+
+test('local Interactor actions compose in a fractional browser context', managedOptions, async t => {
   let fixture = await project(t, {
     config: { ...config, viewport: { width: 803, height: 601 }, browser: { ...config.browser, hasTouch: true, deviceScaleFactor: 1.25, userAgent: 'Dyno mobile acceptance' } },
     source: `
-describe('Mobile native input', () => {
-  test('uses trusted touch and mouse input and browser scrolling', async ({app,I}) => {
+import { defineInteractor } from 'dyno';
+let Contact = defineInteractor({actions: {
+  *save(name) {
+    yield this.find('Name').then.type(name, {replace:true});
+    yield this.click('Save note');
+  },
+  *scroll(top) {
+    yield ({$}) => $.ownerDocument.defaultView.scrollTo({top,behavior:'instant'});
+  }
+}});
+describe('Local interactions', () => {
+  test('saves through the UI and scrolls without native actions', async ({app,I}) => {
     await app.goto('/');
-    await I.assert(() => app.native.capabilities.touch && app.window.navigator.userAgent === 'Dyno mobile acceptance');
-    await I.find('Record trusted input').then.nativeTap();
-    await I.find('$(#touch-result)').text('true:1');
-    await I.find('Record trusted input').then.nativeClick();
-    await I.find('$(#trusted-result)').text('true:mouse');
-    await I.find('Name').then.focus();
-    await I.nativePress('ControlOrMeta+A');
-    await I.nativeType('Dyno keyboard');
-    await I.find('Save note').then.nativeClick();
+    await I.assert(() => app.window.navigator.userAgent === 'Dyno mobile acceptance');
+    await Contact(I).save('Dyno keyboard');
     await I.find('$(#saved)').text('Saved Dyno keyboard');
-    await I.nativeMove({x:400,y:400});
-    await I.nativeWheel({deltaX:0,deltaY:350});
+    let records = await (await app.request('/api/records')).json();
+    await I.assert(() => records.length === 1 && records[0].name === 'Dyno keyboard');
+    await Contact(I).scroll(350);
     await I.assert(() => app.window.scrollY > 0);
-    await app.window.scrollTo(0,0);
+    await Contact(I).scroll(0);
     let image = await app.screenshot('Fractional mobile viewport');
     await I.assert(() => Math.abs(image.width - 803 * 1.25) <= 1 && Math.abs(image.height - 601 * 1.25) <= 1 && image.pixelRatio === 1.25);
-    await I.find('Open destination').then.nativeTap();
+    await I.click('Open destination');
     await I.find('Destination ready').visible();
   });
 });`,
@@ -388,7 +425,9 @@ describe('Mobile native input', () => {
   assert.equal(png.height, attachment.height);
   assert.ok(Math.abs(png.width - 803 * 1.25) <= 1);
   assert.ok(Math.abs(png.height - 601 * 1.25) <= 1);
-  assert.deepEqual([...png.data.subarray(0, 4)], [255, 255, 255, 255]);
+  // Sample app content inside the viewport; WebKit can anti-alias its outer corner.
+  let background = (10 * png.width + 10) * 4;
+  assert.deepEqual([...png.data.subarray(background, background + 4)], [255, 255, 255, 255]);
 });
 
 test('color schemes and external request blocking reset between tests', managedOptions, async t => {
@@ -424,7 +463,7 @@ describe('Managed environment cleanup', () => {
 });
 
 
-test('mobile viewport contexts preserve touch and report unsupported wheel input', {
+test('mobile viewport contexts keep layout and ordinary Interactor interaction', {
   ...managedOptions,
   skip: browserName === 'firefox' && 'Firefox does not support mobile viewport emulation',
 }, async t => {
@@ -432,16 +471,12 @@ test('mobile viewport contexts preserve touch and report unsupported wheel input
     config: { ...config, viewport: {width:393,height:727}, browser: { ...config.browser, isMobile:true, hasTouch:true } },
     source: `
 describe('Mobile viewport', () => {
-  test('keeps the actual app size and touch semantics', async ({app,I}) => {
+  test('keeps the actual app size and saves through the mobile UI', async ({app,I}) => {
     await app.goto('/');
     await I.assert(() => app.window.innerWidth === 393 && app.window.innerHeight === 727, () => 'Actual app viewport: ' + app.window.innerWidth + 'x' + app.window.innerHeight);
-    await I.find('Record trusted input').then.nativeTap();
-    await I.find('$(#touch-result)').text('true:1');
-    if (!app.native.capabilities.wheel) {
-      let unavailable;
-      try { await I.nativeWheel({deltaX:0,deltaY:1}); } catch (error) { unavailable = error; }
-      await I.assert(() => /unavailable/.test(unavailable?.message));
-    }
+    await I.find('Name').then.fill('Mobile user');
+    await I.click('Save note');
+    await I.find('$(#saved)').text('Saved Mobile user');
   });
 });`,
   });

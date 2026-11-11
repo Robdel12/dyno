@@ -38,8 +38,6 @@ Use `app.native.capabilities` to choose browser-specific coverage explicitly. Re
 | Feature | Chromium / Chrome / Edge | Firefox | WebKit | Manual URL |
 | --- | --- | --- | --- | --- |
 | Native keys and pointer | Yes | Yes | Yes | Unavailable |
-| Wheel | Yes | Yes | Desktop contexts only | Unavailable |
-| Touch (`browser.hasTouch`) | Yes | Yes | Yes | Unavailable |
 | App HTTP request guard | Yes | Yes | Yes | Unavailable |
 | Dialogs and browser console | Yes | Yes | Yes | Unavailable |
 | Color scheme and reduced motion | Yes | Yes | Yes | Unavailable |

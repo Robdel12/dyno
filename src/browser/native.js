@@ -1,6 +1,10 @@
 /**
  * @guide native Native browser actions
- * Use native input when you're testing the browser's default behavior, such as Tab navigation or CSS hover. Keep ordinary clicks, fields, and assertions in Interactor.
+ * Interactor's `click`, `type`, `press`, and assertions run directly in the browser. Use `press` for app-defined keyboard handlers, such as chart arrows or search shortcuts. These don't need a driver.
+ *
+ * Use a custom Interactor action with the element's `scrollBy` or `scrollTo` for scrolling. App scroll handlers and lazy loading still run in the real browser.
+ *
+ * Use native input when you're testing browser defaults that synthetic events don't reproduce, such as Tab navigation or CSS hover.
  *
  * ```js
  * await I.find('Name').then.focus();
@@ -11,8 +15,6 @@
  * ```
  *
  * These work with scopes and custom interactors. `nativePress` uses the focused element; it doesn't focus a selector for you. Hover scrolls to a visible point that receives pointer input. Stale or covered targets fail. After an action navigates, assert on the destination with Interactor.
- *
- * `nativeClick` and `nativeTap` also accept a point in app viewport coordinates. Without a point, they resolve the scoped element locally. Tap requires `browser.hasTouch: true`. Use `nativeType(text)` after focusing a field when keyboard events themselves are part of the behavior. `nativeWheel({ deltaX, deltaY })` scrolls beneath the current pointer.
  *
  * Use `setColorScheme('dark' | 'light' | 'no-preference')` for system appearance. `blockExternalRequests()` blocks app-page HTTP requests outside the gateway origin and records up to 1,000 recent URLs; `blockedRequests()` returns them. It doesn't block WebSockets, service-worker traffic, or companion requests. Both settings reset between tests.
  *
@@ -249,7 +251,7 @@ export function createNative({
     measure('native', name, () => {
       signal.throwIfAborted();
       let normalized = normalizeNative(input, supported);
-      let allowBlank = !['key', 'type', 'pointer', 'click', 'tap', 'wheel'].includes(normalized.kind);
+      let allowBlank = !['key', 'pointer'].includes(normalized.kind);
       return operation(
         { operation: 'native', input: normalized },
         () => {
@@ -266,16 +268,8 @@ export function createNative({
         select,
       );
     });
-  let pointerInput = (kind, target) => {
-    if (target?.nodeType === 1)
-      return invoke(`Native ${kind} element`, { kind, x: 0, y: 0 }, document => ({
-        input: normalizeNative({ kind, ...pointerPoint(target, undefined, document) }, supported),
-      }));
-    return invoke(`Native ${kind} at ${target?.x}, ${target?.y}`, { kind, x: target?.x, y: target?.y });
-  };
   return Object.freeze({
     capabilities: supported,
-    type: (text) => invoke('Type with native keyboard', { kind: 'type', text }),
     press: (key) => invoke(`Press ${key}`, { kind: 'key', key }),
     move: (point) =>
       invoke(`Move pointer to ${point?.x}, ${point?.y}`, {
@@ -283,9 +277,6 @@ export function createNative({
         x: point?.x,
         y: point?.y,
       }),
-    click: (target) => pointerInput('click', target),
-    tap: (target) => pointerInput('tap', target),
-    wheel: (delta) => invoke('Scroll with native wheel', { kind: 'wheel', deltaX: delta?.deltaX, deltaY: delta?.deltaY }),
     setColorScheme: (value) => invoke(`Set color scheme to ${value}`, { kind: 'color-scheme', value }),
     blockExternalRequests: () => invoke('Block external app requests', { kind: 'block-external' }),
     blockedRequests: () => invoke('Read blocked app requests', { kind: 'blocked-requests' }, undefined, urls => Object.freeze([...urls])),
@@ -352,30 +343,6 @@ export function createNative({
 }
 
 /**
- * Type text with the real keyboard into the focused element. Prefer `I.nativeType` when composing native keyboard workflows.
- *
- * @api NativeBrowser.type
- */
-
-/**
- * Click a connected element or a point in app viewport coordinates with the real mouse. Ordinary clicks stay in Interactor.
- *
- * @api NativeBrowser.click
- */
-
-/**
- * Tap a connected element or viewport point with a real touch event. Requires a managed context with `browser.hasTouch: true`.
- *
- * @api NativeBrowser.tap
- */
-
-/**
- * Send finite wheel deltas in CSS pixels under the current pointer. Mobile WebKit does not support wheel input.
- *
- * @api NativeBrowser.wheel
- */
-
-/**
  * Choose the app system color scheme: light, dark, or no-preference. Cleanup restores the original preference.
  *
  * @api NativeBrowser.setColorScheme
@@ -391,10 +358,4 @@ export function createNative({
  * Read an immutable list of up to 1,000 recent URLs blocked by the external-request guard.
  *
  * @api NativeBrowser.blockedRequests
- */
-
-/**
- * Horizontal and vertical wheel deltas in CSS pixels. Negative values scroll left or up.
- *
- * @api NativeWheel
  */

@@ -1,14 +1,12 @@
 let clipboard = Object.freeze(['clipboard-read', 'clipboard-write']);
 let none = Object.freeze([]);
 
-export function nativeCapabilities(name = null, plan = {}) {
+export function nativeCapabilities(name = null) {
   let chromium = ['chromium', 'chrome', 'edge'].includes(name);
   let managed = chromium || ['firefox', 'webkit'].includes(name);
   return Object.freeze({
     keyboard: managed,
     pointer: managed,
-    wheel: managed && !(name === 'webkit' && plan.isMobile === true),
-    touch: managed && plan.hasTouch === true,
     network: managed,
     permissions: chromium
       ? clipboard
@@ -25,11 +23,7 @@ export function nativeCapabilities(name = null, plan = {}) {
 
 let properties = Object.freeze({
   key: ['kind', 'key'],
-  type: ['kind', 'text'],
   pointer: ['kind', 'x', 'y'],
-  click: ['kind', 'x', 'y'],
-  tap: ['kind', 'x', 'y'],
-  wheel: ['kind', 'deltaX', 'deltaY'],
   permissions: ['kind', 'permissions'],
   authenticator: ['kind'],
   'remove-authenticator': ['kind'],
@@ -45,11 +39,7 @@ let properties = Object.freeze({
 });
 let requiredCapability = Object.freeze({
   key: 'keyboard',
-  type: 'keyboard',
   pointer: 'pointer',
-  click: 'pointer',
-  wheel: 'wheel',
-  tap: 'touch',
   authenticator: 'authenticator',
   'remove-authenticator': 'authenticator',
   offline: 'offline',
@@ -90,22 +80,12 @@ export function normalizeNative(input, capabilities) {
       )
         throw invalid('Native keyboard input needs a key or key combination of 1–100 characters.');
       return Object.freeze({ kind: input.kind, key: input.key });
-    case 'type':
-      if (typeof input.text !== 'string' || input.text.length > 10000 || input.text.includes('\0'))
-        throw invalid('Native typing needs text of at most 10,000 characters without null bytes.');
-      return Object.freeze({ kind: input.kind, text: input.text });
     case 'pointer':
-    case 'click':
-    case 'tap':
       if (![input.x, input.y].every((value) => Number.isFinite(value) && value >= 0))
         throw invalid(
           'Native pointer coordinates must be finite, nonnegative viewport coordinates.',
         );
       return Object.freeze({ kind: input.kind, x: input.x, y: input.y });
-    case 'wheel':
-      if (![input.deltaX, input.deltaY].every(Number.isFinite))
-        throw invalid('Native wheel deltas must be finite numbers.');
-      return Object.freeze({ kind: input.kind, deltaX: input.deltaX, deltaY: input.deltaY });
     case 'permissions': {
       if (
         !Array.isArray(input.permissions) ||

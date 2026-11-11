@@ -260,25 +260,17 @@ test('config keeps fractional pixel ratios and managed context options immutable
   assert.equal(Object.isFrozen(config.browser.args), true);
 });
 
-test('native input validation keeps pointer, touch, media, and network capabilities explicit', () => {
-  let chromium = nativeCapabilities('chromium', { hasTouch: true });
-  assert.equal(chromium.touch, true);
-  assert.equal(chromium.wheel, true);
-  assert.equal(nativeCapabilities('webkit', { isMobile: true }).wheel, false);
+test('native input validates browser-only operations and rejects overlapping DOM actions', () => {
+  let chromium = nativeCapabilities('chromium');
   assert.equal(chromium.network, true);
-  assert.equal(nativeCapabilities('chromium').touch, false);
-  assert.equal(nativeCapabilities('firefox', { hasTouch: true }).touch, true);
-  assert.equal(nativeCapabilities(null, { hasTouch: true }).touch, false);
   for (let name of ['chromium', 'firefox', 'webkit']) {
-    let capabilities = nativeCapabilities(name, { hasTouch: true });
+    let capabilities = nativeCapabilities(name);
     assert.equal(capabilities.network, true);
   }
 
   for (let input of [
-    { kind: 'type', text: 'Native text' },
-    { kind: 'click', x: 8.5, y: 12 },
-    { kind: 'tap', x: 8.5, y: 12 },
-    { kind: 'wheel', deltaX: -30000, deltaY: 30000 },
+    { kind: 'key', key: 'Tab' },
+    { kind: 'pointer', x: 8.5, y: 12 },
     { kind: 'color-scheme', value: 'dark' },
     { kind: 'block-external' },
     { kind: 'blocked-requests' },
@@ -289,10 +281,10 @@ test('native input validation keeps pointer, touch, media, and network capabilit
   }
 
   for (let [input, capabilities] of [
-    [{ kind: 'type', text: 'bad\0text' }, chromium],
-    [{ kind: 'tap', x: 1, y: 1 }, { ...chromium, touch: false }],
-    [{ kind: 'wheel', deltaX: 0, deltaY: Infinity }, chromium],
-    [{ kind: 'wheel', deltaX: '1', deltaY: 1 }, chromium],
+    [{ kind: 'type', text: 'Ordinary text' }, chromium],
+    [{ kind: 'click', x: 1, y: 1 }, chromium],
+    [{ kind: 'tap', x: 1, y: 1 }, chromium],
+    [{ kind: 'wheel', deltaX: 0, deltaY: 1 }, chromium],
     [{ kind: 'color-scheme', value: 'system' }, chromium],
     [{ kind: 'block-external', enabled: true }, chromium],
   ])
