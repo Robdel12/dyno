@@ -12,7 +12,7 @@ let problem = (status, message) => Object.assign(new Error(message), { status })
 // Network/process handles stay here. The run value remains the only source of
 // catalog, assignment, resource and outcome state.
 export function createCoordinator(config, bundle, {
-  workerIds = ['0'], onEvent = () => {}, onRun = async () => {}, onError = () => {}, rebuild,
+  workerIds = ['0'], onEvent = () => {}, onRun = async () => {}, onError = () => {}, rebuild, automatic = false,
 } = {}) {
   let runs = new Map(), bundles = new Map(), workers = new Map();
   let queues = new Map(), receipts = new Map(), drains = new Map(), preparations = new Map();
@@ -240,7 +240,7 @@ export function createCoordinator(config, bundle, {
     });
     return Object.freeze(Object.fromEntries(entries));
   };
-  let create = (snapshot, ids, managed, selected, runId = randomUUID()) => {
+  let create = (snapshot, ids, managed, selected, runId = randomUUID(), seed = config.seed) => {
     if (config.replay && JSON.stringify(snapshot.fingerprint) !== JSON.stringify(config.replay.source))
       throw new Error('The replay source fingerprint changed. Record a new schedule for these tests.');
     while (runs.size >= 20) {
@@ -250,7 +250,7 @@ export function createCoordinator(config, bundle, {
       for (let map of [runs, bundles, receipts, drains, preparations, progress, views, versions, retirements]) map.delete(finished.runId);
     }
     if (config.replay) selected = selection({ ids: config.replay.selected });
-    let run = Object.freeze({ ...createRun(runId, { seed: config.seed, workers: ids, replay: config.replay }),
+    let run = Object.freeze({ ...createRun(runId, { seed, workers: ids, replay: config.replay }),
       managed, selection: selected, source: snapshot.fingerprint, startedAt: new Date().toISOString() });
     bundles.set(runId, snapshot);
     if (managed) {
@@ -266,7 +266,7 @@ export function createCoordinator(config, bundle, {
     publish(run);
     return run;
   };
-  let restart = (runId, selected) => {
+  let restart = (runId, selected, seed = config.seed) => {
     requireOpen();
     if (restarting) throw problem(409, 'This browser run is already restarting.');
     if (runId !== managedRun) throw problem(409, 'This browser run was replaced.');
@@ -281,9 +281,10 @@ export function createCoordinator(config, bundle, {
       requireOpen();
       let snapshot = rebuild ? await rebuild() : bundle;
       requireOpen();
-      let run = create(snapshot, workerIds, true, selected);
+      let run = create(snapshot, workerIds, true, selected, randomUUID(), seed);
       primaryRun = run.runId;
       await Promise.all(run.workers.map(worker => workers.get(worker.id).lifecycle.open()));
+      return run.runId;
     })().catch(async error => {
       try {
         await serialize(runId, () => stopRun(runs.get(runId), { phase: 'runtime', message: error.message }));
@@ -295,6 +296,14 @@ export function createCoordinator(config, bundle, {
   };
   return Object.freeze({
     register, requireOpen, serialize,
+    async advance(runId, seed) {
+      // The completion event fires inside serialization. Let its request settle
+      // before replacing the run and reopening its workers.
+      await serialize(runId, () => {
+        if (runs.get(runId)?.status !== 'completed') throw problem(409, 'Only a completed run can advance.');
+      });
+      return restart(runId, runs.get(runId).selection, seed);
+    },
     lifecycle(workerId, lifecycle) {
       workers.set(workerId, { ...workers.get(workerId), lifecycle });
     },
@@ -390,6 +399,8 @@ export function createCoordinator(config, bundle, {
     command(input, selected) {
       let run = runs.get(input.runId);
       if (!run) throw problem(404, 'Unknown test run.');
+      if (automatic && run.managed && ['rerun', 'reload'].includes(input.command))
+        throw problem(409, 'Repeated runs control their own selection. Stop the CLI command before rerunning tests.');
       if (input.command === 'stop') abortPreparations(run.runId, new Error('Test run stopped.'));
       if (input.command === 'rerun' && run.replay) {
         if (input.ids.length && (input.ids.length !== run.replay.selected.length || input.ids.some(id => !run.replay.selected.includes(id))))

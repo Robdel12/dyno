@@ -833,7 +833,7 @@ try {
       (state.phase === 'pausing' || (state.pauseOnFailure && status === 'failed'))
     )
       await paused();
-    if (reported.workRemaining) await parkApp(runner.id);
+    if (reported.workRemaining || settings.releaseFinal) await parkApp(runner.id);
   }
   let failed = state.tests.filter((test) => test.status === 'failed').length;
   let skipped = state.tests.filter((test) => test.status === 'skipped').length;

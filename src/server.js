@@ -43,6 +43,7 @@ export async function createGateway(
     beforeExecution,
     rebuild,
     interactive = false,
+    releaseFinal = false,
     coordinator,
     workerId = '0',
   } = {},
@@ -97,6 +98,7 @@ export async function createGateway(
     files: bundle.files,
     fixtures,
     interactive,
+    releaseFinal,
     appURL: config.webServer.url,
     viewport: config.viewport,
     managedViewport: defaultViewport,
@@ -220,14 +222,18 @@ export async function createGateway(
               );
         }
         if (route === 'bridge.js') return send('text/javascript', bundle.bridge);
-        if (route === 'settings')
+        if (route === 'settings') {
+          let run = coordinator.get(url.searchParams.get('run'));
           return send(
             'application/json',
             JSON.stringify({
               ...settings,
+              ...(run ? { seed: run.seed } : {}),
+              releaseFinal: releaseFinal && Boolean(run?.managed),
               files: coordinator.bundle(url.searchParams.get('run'))?.files ?? bundle.files,
             }),
           );
+        }
         if (route === 'results' && request.method === 'GET')
           return send('application/json', JSON.stringify(coordinator.values()));
         if (['assignment', 'released'].includes(route) && request.method === 'POST') {

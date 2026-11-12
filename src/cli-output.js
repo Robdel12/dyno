@@ -65,6 +65,24 @@ export function createCLIOutput({ json, stdout = process.stdout, stderr = proces
           break;
         case 'fatal': log(`Browser run failed: ${event.error?.message ?? 'Unknown error'}`); break;
         case 'watch': log(`Watch: ${event.message ?? event.status}`); break;
+        case 'repeat-start':
+          line(`Repeating ${event.requested} rounds; browser storage and project worker resources are reused.`);
+          if (event.seed !== null) line(`Root seed: ${event.seed}`);
+          line(`Reproduce: ${event.command}`);
+          break;
+        case 'repeat-round': line(`\nRound ${event.round}/${event.requested}`); break;
+        case 'repeat-complete':
+          line(`\nRepeated runs: ${event.status} · ${event.completed}/${event.requested} rounds completed · ${event.failedRounds} with failures`);
+          for (let test of event.tests)
+            line(`${testTitle(test)}: ${test.passed} passed, ${test.failed} failed, ${test.skipped} skipped, ${test.notRun} not run`);
+          if (event.firstFailure) {
+            line(`First failure: round ${event.firstFailure.round} · ${event.firstFailure.error?.message ?? 'Run interrupted'}`);
+            if (event.firstFailureReplay) line(`Replay this round: ${event.firstFailureReplay}`);
+            line(`Rerun through failure: ${event.prefixCommand}`);
+          }
+          if (event.reason) log(`Repeated runs stopped: ${event.reason}`);
+          line(`Repeated-run report: ${event.html}`);
+          break;
         case 'report-saved': line(`Report: ${event.html}`); break;
         case 'browser-stopped':
           if (!event.graceful) log('Browser required forced cleanup. See session.json for timings.');

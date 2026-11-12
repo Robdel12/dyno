@@ -27,6 +27,27 @@
  *
  * The CLI also prints a separate reporter URL. Open it in another tab if you'd rather keep the app uncovered. A completed interactive run keeps each worker's last app available; rerun an earlier test to inspect it again.
  *
+ * ## Repeat while developing
+ *
+ * Exercise a workflow repeatedly, or vary the order of a whole selection:
+ *
+ * ```sh
+ * dyno --test 'checkout' --repeat 100
+ * dyno --suite Checkout --repeat 100 --random
+ * dyno --suite Checkout --repeat 100 --seed checkout-race
+ * dyno --repeat 100 --replay .dyno/reports/<run-id>/schedule.json
+ * ```
+ *
+ * `--repeat N` runs the complete selection N times, including the first run. It supports managed headless runs; combining it with `--ui`, `--manual`, or `--watch` fails before startup. Tests keep their normal hooks and per-execution fixture preparation. Setup runs once, and browser storage, servers, and project worker resources survive between rounds. Keep scenario reset and backend cleanup in your project.
+ *
+ * Each automatic execution removes its test runtime and parks the app before project draining, including the final test. A round must finish cleanup and save its results before the next starts. Each round gets its own `runTimeout`. A failed test stays in the batch result while later rounds continue; cleanup, browser, preparation, persistence, or deadline failures stop repetition. Ctrl-C saves accepted partial results and stops further rounds.
+ *
+ * Without a seed, rounds use declared priority. With `--seed`, round one uses that literal seed and later rounds derive repeatable seeds from it. `--random` generates and prints a root seed; pass it to `--seed` to reproduce the series. The count does not affect seed derivation, so rerunning through the first failing round preserves the prefix. Repeated `--replay` keeps the recorded worker queues fixed.
+ *
+ * The summary prints commands to replay the first failing round and rerun the original selection through it. A focused rerun can remove the predecessor that caused a failure. A round-only replay also omits state accumulated in earlier rounds. Seeds reproduce priority, and schedules reproduce queues; neither controls app randomness, backend data, or asynchronous timing. Keep app code and data stable while collecting results. Dyno pins the test bundle, not the running application.
+ *
+ * See [saved reports](guide.md#saved-reports) for batch counts, schedules, images, and evidence limits. Passing many times is evidence under those conditions; it does not prove a test can never fail.
+ *
  * ## Bring your own browser
  *
  * ```sh
@@ -62,6 +83,11 @@ function port(value) {
 function workers(value) {
   if (!/^\d+$/.test(value) || Number(value) < 1 || Number(value) > 32)
     throw new InvalidArgumentError('must be a whole number between 1 and 32');
+  return Number(value);
+}
+function repeat(value) {
+  if (!/^\d+$/.test(value) || !Number.isSafeInteger(Number(value)) || Number(value) < 1)
+    throw new InvalidArgumentError('must be a positive safe integer');
   return Number(value);
 }
 function appOptions(command) {
@@ -102,6 +128,8 @@ Tests, actions, and assertions execute in the browser. Use --manual for Safari a
         .map(([key, value]) => [key, Array.isArray(value) ? Object.freeze([...value]) : value])));
     });
   appOptions(command('run', 'Run tests (the default command)', { isDefault: true }))
+    .addOption(new Option('--repeat <number>', 'Repeat the complete selection; seeded rounds vary reproducibly (headless only)')
+      .argParser(repeat).conflicts(['ui', 'manual', 'watch']))
     .addOption(new Option('--workers <number>', 'Isolated browser workers (1); concurrent runs require project worker setup').argParser(workers))
     .addOption(valueOption('--replay <path>', 'Replay recorded worker queues from schedule.json').conflicts(['seed', 'random', 'test', 'id', 'file', 'suite', 'watch']))
     .addOption(valueOption('--seed <value>', 'Run in a repeatable randomized order'))

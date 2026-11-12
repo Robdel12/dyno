@@ -21,6 +21,16 @@ npx dyno install
 
 `init` adds a config and an example test without overwriting existing files. Commit your lockfile so local runs and CI use the same Dyno revision.
 
+Dyno currently pins Interactor fixes that are not yet on the registry. pnpm 11 blocks Git subdependencies and their prepare builds by default. Projects that permit this Git source need the following in `pnpm-workspace.yaml`, alongside their existing build entries:
+
+```yaml
+blockExoticSubdeps: false
+allowBuilds:
+  interactor.js: true
+```
+
+`blockExoticSubdeps` changes the project's whole dependency-source policy; the build permission above only allows Interactor. See [pnpm's source policy](https://pnpm.io/settings#blockexoticsubdeps) before choosing that setting.
+
 ### Point it at your app
 
 In `dyno.config.js`, set the command that starts your app and the URL it serves:
@@ -431,6 +441,27 @@ Turn on **Pause on failure** in Run options to inspect a failing app. Continue h
 
 The CLI also prints a separate reporter URL. Open it in another tab if you'd rather keep the app uncovered. A completed interactive run keeps each worker's last app available; rerun an earlier test to inspect it again.
 
+### Repeat while developing
+
+Exercise a workflow repeatedly, or vary the order of a whole selection:
+
+```sh
+dyno --test 'checkout' --repeat 100
+dyno --suite Checkout --repeat 100 --random
+dyno --suite Checkout --repeat 100 --seed checkout-race
+dyno --repeat 100 --replay .dyno/reports/<run-id>/schedule.json
+```
+
+`--repeat N` runs the complete selection N times, including the first run. It supports managed headless runs; combining it with `--ui`, `--manual`, or `--watch` fails before startup. Tests keep their normal hooks and per-execution fixture preparation. Setup runs once, and browser storage, servers, and project worker resources survive between rounds. Keep scenario reset and backend cleanup in your project.
+
+Each automatic execution removes its test runtime and parks the app before project draining, including the final test. A round must finish cleanup and save its results before the next starts. Each round gets its own `runTimeout`. A failed test stays in the batch result while later rounds continue; cleanup, browser, preparation, persistence, or deadline failures stop repetition. Ctrl-C saves accepted partial results and stops further rounds.
+
+Without a seed, rounds use declared priority. With `--seed`, round one uses that literal seed and later rounds derive repeatable seeds from it. `--random` generates and prints a root seed; pass it to `--seed` to reproduce the series. The count does not affect seed derivation, so rerunning through the first failing round preserves the prefix. Repeated `--replay` keeps the recorded worker queues fixed.
+
+The summary prints commands to replay the first failing round and rerun the original selection through it. A focused rerun can remove the predecessor that caused a failure. A round-only replay also omits state accumulated in earlier rounds. Seeds reproduce priority, and schedules reproduce queues; neither controls app randomness, backend data, or asynchronous timing. Keep app code and data stable while collecting results. Dyno pins the test bundle, not the running application.
+
+See [saved reports](guide.md#saved-reports) for batch counts, schedules, images, and evidence limits. Passing many times is evidence under those conditions; it does not prove a test can never fail.
+
 ### Bring your own browser
 
 ```sh
@@ -501,9 +532,17 @@ Each folder includes `run.json`, `junit.xml`, `schedule.json`, and `session.json
 
 Runs are `completed` or `interrupted`; tests without accepted results are `not-run`. Failures retain their phase and source context. JUnit adds an error case for interruption, so an unfinished run can't look green.
 
-Dyno saves results before reporting completion, including accepted outcomes on signals, browser loss, and app failure. A force kill or machine failure can't flush results. Storage errors fail the CLI, and partially written folders aren't published as reports. A source image removed before saving appears as **Screenshot unavailable**.
+Dyno saves results before reporting completion, including accepted outcomes on signals, browser loss, and app failure. A force kill or machine failure can't flush results. Storage errors fail the CLI, and partially written run folders aren't published as reports. A source image removed before saving appears as **Screenshot unavailable**.
 
 Reports contain test output and source excerpts. Dyno doesn't save config, fixtures, connection keys, or launch tokens in them.
+
+### Repeated-run reports
+
+`--repeat` writes `.dyno/reports/repeat-<session-id>/`. Open its `index.html` for aggregate counts and the first failure. `batch.json` records the root seed, test-bundle fingerprint, browser identity, original selection, and observed outcomes. Skipped and unfinished tests stay separate from passes. The batch's `junit.xml` gives each test execution its round number, so a later pass cannot replace an earlier failure.
+
+`rounds.jsonl` records completed and interrupted rounds, per-test outcomes, and paths to their worker schedules under `schedules/`. Full portable reports and images are retained under `runs/` for failed or interrupted rounds and the final round. Successful intermediate rounds keep compact evidence; their screenshots are discarded. Session timing lives once in the batch folder.
+
+Round evidence and retained reports share a 256 MiB budget. Reaching it stops repetition, marks unavailable evidence explicitly, and preserves accepted counts in `batch.json`. The aggregate summary, final compact outcome record, and session timing are saved outside that budget so a limit cannot hide a failure or stop reason. Batch metadata updates after each saved round; HTML and JUnit are finalized on shutdown. Storage failures also fail the command. Copy the whole batch folder to keep its relative report and image links; printed commands refer to the original local paths.
 
 ## Understand where time goes
 
