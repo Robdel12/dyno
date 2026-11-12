@@ -240,7 +240,7 @@ export function createCoordinator(config, bundle, {
     });
     return Object.freeze(Object.fromEntries(entries));
   };
-  let create = (snapshot, ids, managed, selected, runId = randomUUID()) => {
+  let create = (snapshot, ids, managed, selected, runId = randomUUID(), seed = config.seed) => {
     if (config.replay && JSON.stringify(snapshot.fingerprint) !== JSON.stringify(config.replay.source))
       throw new Error('The replay source fingerprint changed. Record a new schedule for these tests.');
     while (runs.size >= 20) {
@@ -250,7 +250,7 @@ export function createCoordinator(config, bundle, {
       for (let map of [runs, bundles, receipts, drains, preparations, progress, views, versions, retirements]) map.delete(finished.runId);
     }
     if (config.replay) selected = selection({ ids: config.replay.selected });
-    let run = Object.freeze({ ...createRun(runId, { seed: config.seed, workers: ids, replay: config.replay }),
+    let run = Object.freeze({ ...createRun(runId, { seed, workers: ids, replay: config.replay }),
       managed, selection: selected, source: snapshot.fingerprint, startedAt: new Date().toISOString() });
     bundles.set(runId, snapshot);
     if (managed) {
@@ -266,7 +266,7 @@ export function createCoordinator(config, bundle, {
     publish(run);
     return run;
   };
-  let restart = (runId, selected) => {
+  let restart = (runId, selected, seed = config.seed) => {
     requireOpen();
     if (restarting) throw problem(409, 'This browser run is already restarting.');
     if (runId !== managedRun) throw problem(409, 'This browser run was replaced.');
@@ -281,9 +281,10 @@ export function createCoordinator(config, bundle, {
       requireOpen();
       let snapshot = rebuild ? await rebuild() : bundle;
       requireOpen();
-      let run = create(snapshot, workerIds, true, selected);
+      let run = create(snapshot, workerIds, true, selected, randomUUID(), seed);
       primaryRun = run.runId;
       await Promise.all(run.workers.map(worker => workers.get(worker.id).lifecycle.open()));
+      return run.runId;
     })().catch(async error => {
       try {
         await serialize(runId, () => stopRun(runs.get(runId), { phase: 'runtime', message: error.message }));
@@ -295,6 +296,14 @@ export function createCoordinator(config, bundle, {
   };
   return Object.freeze({
     register, requireOpen, serialize,
+    async advance(runId, seed) {
+      // The completion event fires inside serialization. Let its request settle
+      // before replacing the run and reopening its workers.
+      await serialize(runId, () => {
+        if (runs.get(runId)?.status !== 'completed') throw problem(409, 'Only a completed run can advance.');
+      });
+      return restart(runId, runs.get(runId).selection, seed);
+    },
     lifecycle(workerId, lifecycle) {
       workers.set(workerId, { ...workers.get(workerId), lifecycle });
     },

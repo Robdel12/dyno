@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import { networkInterfaces } from 'node:os';
+import { join } from 'node:path';
+import { rm } from 'node:fs/promises';
 import { configOverrides } from './cli.js';
 import { loadConfig } from './config.js';
 import { buildSuite } from './build.js';
@@ -15,6 +17,8 @@ import { createWatchSession } from './watch-session.js';
 import { createReportWriter } from './reports.js';
 import { createTimings } from './browser/timings.js';
 import { readReplay } from './schedule.js';
+import { createRepeat, repeatSeed, acceptRepeatRound, finishRepeat, repeatCommand } from './repeat.js';
+import { createRepeatWriter } from './repeat-reports.js';
 
 async function duringStartup(signal, start) {
   let controller = new AbortController();
@@ -63,9 +67,15 @@ export async function runTests(options, { signal, output }) {
   let browserPlan = options.manual ? null : await measure('Resolve browser', () => resolveSession(config.browser, { headless: !options.ui }));
   let cleanups = createCleanup();
   let cleanup = (name, work) => cleanups.add(() => sessionTimings.measure('lifecycle', name, work));
-  let { promise: finished, resolve: complete, reject: failed } = Promise.withResolvers();
-  finished.catch(() => {});
+  let pending = Promise.withResolvers();
+  pending.promise.catch(() => {});
+  let failed = error => {
+    pending.reject(error);
+    controller.abort(error);
+  };
   let endingError;
+  let finalizationErrors = [];
+  let batch, batchWriter, batchReason;
   let watcher, coordinator;
   let instances = [];
   let launchKeys = [];
@@ -74,6 +84,22 @@ export async function runTests(options, { signal, output }) {
   });
   let savedRuns = 0;
   let saveRun = async (run) => {
+    if (batch && coordinator.isPrimary(run.runId)) {
+      let next = acceptRepeatRound(batch, run);
+      if (next === batch) return;
+      batch = next;
+      let result = await batchWriter.save(batch, run);
+      // Portable failure/final reports own retained images. Successful
+      // intermediate captures must not accumulate outside the evidence budget.
+      for (let image of run.outcomes.flatMap(outcome => outcome.attachments ?? []))
+        if (image.status === 'captured') await rm(image.path, { force: true });
+      if (result.saved) { savedRuns++; output.event({ type: 'report-saved', ...result.saved }); }
+      if (result.limited) {
+        batchReason = 'evidence-limit';
+        throw new Error('Repeated-run evidence reached 256 MiB. Accepted counts were saved; no further rounds will start.');
+      }
+      return;
+    }
     let result = await writer.save(run, sessionSnapshot('running'));
     savedRuns++;
     output.event({ type: 'report-saved', ...result });
@@ -87,11 +113,11 @@ export async function runTests(options, { signal, output }) {
     if (coordinator?.isPrimary(event.runId)) watcher?.observe(event);
     output.event(event, { persistent });
     if (coordinator?.isPrimary(event.runId) && !persistent) {
-      if (event.type === 'complete') complete(event);
+      if (event.type === 'complete') pending.resolve(event);
       if (event.type === 'fatal') failed(new Error(event.error?.message ?? 'Browser runtime failed.'));
     }
   };
-  let aborted = () => failed(runSignal.reason);
+  let aborted = () => pending.reject(runSignal.reason);
   runSignal.addEventListener('abort', aborted, { once: true });
   if (runSignal.aborted) aborted();
   try {
@@ -180,7 +206,7 @@ export async function runTests(options, { signal, output }) {
           onDrain: project.drain ? context => sessionTimings.measure('lifecycle',
             ('Project cleanup: ' + [...context.test.suites, context.test.name].join(' › ')).slice(0, 200),
             () => project.drain(context), { signal: context.signal }) : undefined,
-          interactive: Boolean(options.ui || options.manual), onEvent: report,
+          interactive: Boolean(options.ui || options.manual), releaseFinal: options.repeat !== undefined, onEvent: report,
         }));
         let instance = { id, gateway, browser, launchKey, config: project.config };
         instances = [...instances, instance];
@@ -225,6 +251,18 @@ export async function runTests(options, { signal, output }) {
     let browserInfo = browserPlan
       ? { ...first.browser.identity, path: browserPlan.path, isolated: browserPlan.isolated }
       : null;
+    if (options.repeat !== undefined) {
+      batch = createRepeat({ id: sessionId, count: options.repeat, seed: config.seed, source: bundle.fingerprint,
+        workers: config.workers, replay: Boolean(replay), browser: browserInfo,
+        selection: Object.freeze(replay ? { ids: replay.selected } :
+          { test: options.test, ids: options.id, files: options.file, suites: options.suite }),
+        command: repeatCommand(options, { seed: config.seed, count: options.repeat, workers: config.workers }) });
+      batchWriter = await createRepeatWriter(join(config.reportDir, 'repeat-' + sessionId), {
+        redact: value => launchKeys.reduce((text, key) => text.replaceAll(key, '[private launch]'), value)
+      });
+      output.event({ type: 'repeat-start', batchId: batch.id, requested: batch.requested, seed: batch.seed,
+        resources: batch.resources, command: batch.command, browser: browserInfo });
+    }
     output.event({
       type: 'ready', url: captureURL(first).href, appURL: first.config.webServer.url,
       workers: instances.map(instance => ({ id: instance.id, url: captureURL(instance).href, appURL: instance.config.webServer.url })),
@@ -238,23 +276,34 @@ export async function runTests(options, { signal, output }) {
             output.line(`Device: ${gateway.url.replace(/127\.0\.0\.1|\[::1\]/, entry.address)}`);
         }
     }
-    let deadline = persistent ? null : AbortSignal.timeout(config.runTimeout);
     let expired = () => {
       let message = `No complete browser result within ${config.runTimeout} ms. The browser may be disconnected, blocked, or stuck.`;
       let output = instances.map(instance => instance.browser?.logs?.trim()).filter(Boolean).join('\n');
       controller.abort(new Error(output ? `${message}\nBrowser output:\n${output}` : message));
     };
-    deadline?.addEventListener('abort', expired, { once: true });
-    try {
-      if (browserPlan) await measure('Open browsers', () => Promise.all(instances.map(instance => {
-        let url = captureURL(instance);
-        url.hash = new URLSearchParams({ launch: instance.launchKey }).toString();
-        return instance.browser.open(url.href);
-      })));
-      let summary = await sessionTimings.measure('lifecycle', 'Browser results', () => finished, { signal: runSignal });
-      exitCode = summary.failed ? 1 : 0;
-    } finally {
-      deadline?.removeEventListener('abort', expired);
+    let previous;
+    for (let number = 1; number <= (options.repeat ?? 1); number++) {
+      runSignal.throwIfAborted();
+      if (number > 1) {
+        pending = Promise.withResolvers();
+        pending.promise.catch(() => {});
+      }
+      let deadline = persistent ? null : AbortSignal.timeout(config.runTimeout);
+      deadline?.addEventListener('abort', expired, { once: true });
+      try {
+        if (batch) output.event({ type: 'repeat-round', batchId: batch.id, round: number,
+          requested: batch.requested, seed: repeatSeed(batch, number) });
+        if (number > 1) await coordinator.advance(previous.runId, repeatSeed(batch, number));
+        else if (browserPlan) await measure('Open browsers', () => Promise.all(instances.map(instance => {
+          let url = captureURL(instance);
+          url.hash = new URLSearchParams({ launch: instance.launchKey }).toString();
+          return instance.browser.open(url.href);
+        })));
+        previous = await sessionTimings.measure('lifecycle', 'Browser results', () => pending.promise, { signal: runSignal });
+        if (previous.failed) exitCode = 1;
+      } finally {
+        deadline?.removeEventListener('abort', expired);
+      }
     }
   } catch (error) {
     let reason = runSignal.aborted ? runSignal.reason : error;
@@ -264,18 +313,37 @@ export async function runTests(options, { signal, output }) {
     controller.abort(new Error('Dyno is shutting down.'));
     for (let error of await sessionTimings.measure('lifecycle', 'Cleanup', () => cleanups.run())) {
       output.event({ type: 'error', phase: 'cleanup', message: error.message });
+      finalizationErrors.push(error.message);
       exitCode = 1;
     }
     let session = sessionSnapshot(exitCode ? 'failed' : signal.aborted ? 'interrupted' : endingError ? 'failed' : 'completed', sessionTimings.end());
     try { await writer.finishSession(session); }
     catch (error) {
       exitCode = 1;
+      finalizationErrors.push(error.message);
       session = Object.freeze({ ...session, status: 'failed' });
       output.event({ type: 'error', phase: 'report', message: error.message });
     }
-    output.event({ type: 'session-timing', ...session }, { savedRuns });
+    if (batchWriter) {
+      let reason = [batchReason ?? (signal.aborted ? signal.reason.message : endingError?.message), ...finalizationErrors]
+        .filter(Boolean).join(' ') || undefined;
+      batch = finishRepeat(batch, reason);
+      try {
+        let prefixCommand = batch.firstFailure ? repeatCommand(options, { seed: batch.seed,
+          count: batch.firstFailure.round, workers: config.workers }) : undefined;
+        let saved = await batchWriter.finish(batch, session, { prefixCommand });
+        output.event({ type: 'repeat-complete', ...batch, ...saved,
+          ...(prefixCommand ? { prefixCommand } : {}) });
+      } catch (error) {
+        exitCode = 1;
+        finalizationErrors.push(error.message);
+        output.event({ type: 'error', phase: 'report', message: error.message });
+      }
+    }
+    output.event({ type: 'session-timing', ...session }, { savedRuns: batchWriter ? 0 : savedRuns });
     runSignal.removeEventListener('abort', aborted);
   }
+  if (signal.aborted && !finalizationErrors.length) signal.throwIfAborted();
   if (endingError && !signal.aborted) throw endingError;
   if (exitCode) return exitCode;
   signal.throwIfAborted();
