@@ -21,6 +21,16 @@ npx dyno install
 
 `init` adds a config and an example test without overwriting existing files. Commit your lockfile so local runs and CI use the same Dyno revision.
 
+Dyno currently pins Interactor fixes that are not yet on the registry. pnpm 11 blocks Git subdependencies and their prepare builds by default. Projects that permit this Git source need the following in `pnpm-workspace.yaml`, alongside their existing build entries:
+
+```yaml
+blockExoticSubdeps: false
+allowBuilds:
+  interactor.js: true
+```
+
+`blockExoticSubdeps` changes the project's whole dependency-source policy; the build permission above only allows Interactor. See [pnpm's source policy](https://pnpm.io/settings#blockexoticsubdeps) before choosing that setting.
+
 ### Point it at your app
 
 In `dyno.config.js`, set the command that starts your app and the URL it serves:
