@@ -55,13 +55,22 @@ export function finishRepeat(batch, reason) {
 let quote = value => `'${String(value).replaceAll("'", "'\\''")}'`;
 
 // Commands are display text. They are never executed by Dyno.
-export function repeatCommand(options, { seed, count, workers }) {
+function runArguments(options) {
   let args = ['dyno'];
-  for (let key of ['config', 'browser', 'browserPath', 'test', 'replay', 'host', 'port'])
+  for (let key of ['config', 'browser', 'browserPath', 'test', 'replay', 'host', 'port', 'reportDir'])
     if (options[key] !== undefined) args.push('--' + key.replace(/[A-Z]/g, value => '-' + value.toLowerCase()), quote(options[key]));
   for (let key of ['id', 'file', 'suite'])
     for (let value of options[key] ?? []) args.push('--' + key, quote(value));
+  return args;
+}
+
+export function repeatCommand(options, { seed, count, workers }) {
+  let args = runArguments(options);
   args.push('--workers', String(workers), '--repeat', String(count));
   if (seed !== null && !options.replay) args.push('--seed', quote(seed));
   return args.join(' ');
+}
+
+export function replayCommand(options, path) {
+  return runArguments({ ...options, replay: path, test: undefined, id: [], file: [], suite: [] }).join(' ');
 }

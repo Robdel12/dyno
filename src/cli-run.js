@@ -170,6 +170,7 @@ export async function runTests(options, { signal, output }) {
     });
     let workerIds = Array.from({ length: config.workers }, (_, index) => String(index));
     coordinator = createCoordinator(config, bundle, {
+      automatic: options.repeat !== undefined,
       workerIds, onEvent: report, onRun: saveRun,
       onError: error => {
         output.event({ type: 'error', phase: error.phase ?? 'report', message: error.message });
@@ -258,6 +259,7 @@ export async function runTests(options, { signal, output }) {
           { test: options.test, ids: options.id, files: options.file, suites: options.suite }),
         command: repeatCommand(options, { seed: config.seed, count: options.repeat, workers: config.workers }) });
       batchWriter = await createRepeatWriter(join(config.reportDir, 'repeat-' + sessionId), {
+        options,
         redact: value => launchKeys.reduce((text, key) => text.replaceAll(key, '[private launch]'), value)
       });
       output.event({ type: 'repeat-start', batchId: batch.id, requested: batch.requested, seed: batch.seed,

@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { createReport } from './report-model.js';
 import { createReportWriter } from './reports.js';
 import { escapeMarkup } from './report-format.js';
+import { replayCommand } from './repeat.js';
 
 export let repeatEvidenceLimit = 256 * 1024 * 1024;
 
@@ -41,13 +42,14 @@ let cases = entry => entry.tests.map(test => {
   return `<testcase name="${x(test.name)} (round ${entry.round})" classname="${x([test.file, ...test.suites].join(' › '))}">${result}</testcase>\n`;
 }).join('');
 
-export async function createRepeatWriter(directory, { redact = value => value, limit = repeatEvidenceLimit } = {}) {
+export async function createRepeatWriter(directory, { redact = value => value, limit = repeatEvidenceLimit, options = {} } = {}) {
   await mkdir(directory, { recursive: true });
   let ledger = join(directory, 'rounds.jsonl');
   await writeFile(ledger, '');
   let writer = createReportWriter(join(directory, 'runs'), { redact });
   let used = 0;
   let limited = false;
+  let unavailable;
   let firstFailureReplay;
   return Object.freeze({
     async save(batch, run) {
@@ -59,11 +61,12 @@ export async function createRepeatWriter(directory, { redact = value => value, l
       let retain = report.status === 'interrupted' || report.summary.failed > 0 || batch.rounds === batch.requested;
       if (retain) entry.report = `runs/${run.runId}/index.html`;
       entry.schedule = `schedules/${run.runId}.json`;
-      entry.replay = `dyno --replay '${join(directory, entry.schedule).replaceAll("'", "'\\''")}'`;
+      entry.replay = replayCommand(options, join(directory, entry.schedule));
       let schedule = redact(JSON.stringify(report.schedule) + '\n');
       let line = redact(JSON.stringify(entry) + '\n');
       let lineBytes = Buffer.byteLength(line) + Buffer.byteLength(schedule);
       let saved;
+      let storageError;
       if (used + lineBytes > limit) limited = true;
       if (retain && !limited) {
         try {
@@ -72,41 +75,45 @@ export async function createRepeatWriter(directory, { redact = value => value, l
           saved = await writer.save(run, undefined, { maxBytes: limit - used - lineBytes });
           used += saved.bytes;
         } catch (error) {
-          if (error.code !== 'DYNO_EVIDENCE_LIMIT') throw error;
-          limited = true;
+          if (error.code === 'DYNO_EVIDENCE_LIMIT') limited = true;
+          else storageError = error;
         }
       }
-      if (limited) {
+      if (!limited && !storageError) {
+        try {
+          await mkdir(join(directory, 'schedules'), { recursive: true });
+          await replaceFile(join(directory, entry.schedule), schedule);
+          used += Buffer.byteLength(schedule);
+        } catch (error) { storageError = error; }
+      }
+      if (limited || storageError) {
         // Always preserve accepted counts in batch.json, even when a report
         // cannot fit. Never claim the missing evidence was saved.
         delete entry.schedule;
-        delete entry.report;
+        if (!saved) delete entry.report;
         delete entry.replay;
         entry = { ...entry, tests: entry.tests.map(({ error, ...test }) => ({ ...test,
           ...(error ? { error: { message: error.message, phase: error.phase } } : {}) })),
-          evidenceUnavailable: 'The batch evidence limit was reached.' };
+          evidenceUnavailable: storageError?.message ?? 'The batch evidence limit was reached.' };
+        unavailable = entry.evidenceUnavailable;
       }
       line = redact(JSON.stringify(entry) + '\n');
-      if (!limited) {
-        await mkdir(join(directory, 'schedules'), { recursive: true });
-        await writeFile(join(directory, entry.schedule), schedule);
-        used += Buffer.byteLength(line) + Buffer.byteLength(schedule);
+      if (!limited && !storageError) {
+        used += Buffer.byteLength(line);
         if (saved && batch.firstFailure?.runId === run.runId) firstFailureReplay = entry.replay;
       }
       // One final compact outcome record is stop metadata, outside the budget,
       // so accepted failures still have matching JUnit cases at the limit.
       await appendFile(ledger, line);
       await replaceFile(join(directory, 'batch.json'), redact(JSON.stringify({ ...batch, evidenceBytes: used,
-        evidenceLimit: limit, ...(limited ? { evidenceUnavailable: entry.evidenceUnavailable } : {}) }, null, 2) + '\n'));
+        evidenceLimit: limit, ...(entry.evidenceUnavailable ? { evidenceUnavailable: entry.evidenceUnavailable } : {}) }, null, 2) + '\n'));
+      if (storageError) throw storageError;
       return { saved, limited, evidenceBytes: used };
     },
     async finish(batch, session, { prefixCommand } = {}) {
       let metadata = { ...batch, evidenceBytes: used, evidenceLimit: limit,
         ...(prefixCommand ? { prefixCommand } : {}), ...(firstFailureReplay ? { firstFailureReplay } : {}),
-        ...(limited ? { evidenceUnavailable: 'The batch evidence limit was reached.' } : {}) };
-      await replaceFile(join(directory, 'batch.json'), redact(JSON.stringify(metadata, null, 2) + '\n'));
-      await replaceFile(join(directory, 'session.json'), redact(JSON.stringify(session, null, 2) + '\n'));
-      await replaceFile(join(directory, 'index.html'), redact(overview(metadata)));
+        ...(unavailable ? { evidenceUnavailable: unavailable } : {}) };
       let temporary = join(directory, '.junit-' + randomUUID());
       let input;
       let destination;
@@ -135,6 +142,11 @@ export async function createRepeatWriter(directory, { redact = value => value, l
         await input?.close(); await destination?.close();
         await rm(temporary, { force: true });
       }
+      await replaceFile(join(directory, 'session.json'), redact(JSON.stringify(session, null, 2) + '\n'));
+      await replaceFile(join(directory, 'index.html'), redact(overview(metadata)));
+      // Terminal batch metadata is the commit marker: no successful status
+      // becomes durable until all final artifacts have been published.
+      await replaceFile(join(directory, 'batch.json'), redact(JSON.stringify(metadata, null, 2) + '\n'));
       return { directory, json: join(directory, 'batch.json'), html: join(directory, 'index.html'),
         ledger, junit: join(directory, 'junit.xml'), ...(firstFailureReplay ? { firstFailureReplay } : {}) };
     }

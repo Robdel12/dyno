@@ -1,8 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile, readdir } from 'node:fs/promises';
+import { readFile, readdir, rename } from 'node:fs/promises';
 import { join } from 'node:path';
-import { project } from '../helpers/project.js';
+import { project, launch, repository } from '../helpers/project.js';
 
 let json = async path => JSON.parse(await readFile(path, 'utf8'));
 async function evidence(result) {
@@ -263,4 +263,67 @@ test('interrupting after a failed round preserves the signal exit and the earlie
   assert.equal(batch.tests[0].notRun, 1);
   assert.equal(batch.firstFailure.round, 1);
   assert.equal(result.events.filter(event => event.type === 'repeat-round').length, 2);
+});
+
+test('printed replay commands preserve explicit config, browser and report overrides', { timeout: 90000 }, async t => {
+  let fixture = await project(t, {
+    config: { setup: './setup.js' },
+    files: { 'setup.js': `export default()=>{let execution=0;return {beforeExecution:()=>({fixtures:{execution:++execution}})}};` },
+    source: `describe('Replay context',()=>{test('fails on a fresh project',async({app,I,fixtures})=>{
+      await app.goto('/');await I.find('Fixture app').visible();await I.assert(()=>fixtures.execution>1,'Fresh project failure');
+    });});`
+  });
+  let config = "custom run's.config.js";
+  await rename(join(fixture.directory, 'dyno.config.js'), join(fixture.directory, config));
+  let result = await fixture.run(['--config', config, '--browser', process.env.DYNO_TEST_BROWSER ?? 'chromium',
+    '--report-dir', 'custom reports', '--repeat', '2']).completion;
+  assert.equal(result.code, 1, result.stdout + result.stderr);
+  let { event } = await evidence(result);
+  assert.ok(event.prefixCommand.includes("--report-dir 'custom reports'"));
+  let command = 'dyno() { exec "$DYNO_TEST_NODE" "$DYNO_TEST_CLI" "$@"; }\n' + event.firstFailureReplay + ' --json';
+  let replay = launch('/bin/sh', ['-c', command], fixture.directory, t.signal,
+    { env: { ...process.env, DYNO_TEST_NODE: process.execPath, DYNO_TEST_CLI: join(repository, 'bin/dyno.js') } });
+  t.after(() => replay.stop());
+  let reproduced = await replay.completion;
+  assert.equal(reproduced.code, 1, reproduced.stdout + reproduced.stderr);
+  assert.equal(reproduced.summary?.failed, 1, reproduced.stdout + reproduced.stderr);
+  assert.match(reproduced.events.find(event => event.type === 'test').error.message, /Fresh project failure/);
+  assert.ok(reproduced.events.find(event => event.type === 'report-saved').directory.includes('custom reports'));
+});
+
+test('automatic batches reject reporter replacements and stop when project draining expires', { timeout: 90000 }, async t => {
+  let fixture = await project(t, {
+    config: { setup: './setup.js', cleanupTimeout: 1000 },
+    files: { 'setup.js': `export default({config})=>({drain:async({signal})=>{
+      await fetch(config.webServer.url+'/api/release-browser',{signal});
+    }});` }
+  });
+  let session = fixture.run(['--repeat', '5']);
+  let ready = await session.waitForEvent('ready');
+  let captured = await session.waitForEvent('capture');
+  let replacement = await fetch(new URL('control', ready.url), { method: 'POST', signal: t.signal,
+    body: JSON.stringify({ runId: captured.runId, command: 'rerun', ids: [] }) });
+  assert.equal(replacement.status, 409);
+  assert.match(await replacement.text(), /Repeated runs control their own selection/);
+  let result = await session.completion;
+  assert.equal(result.code, 1, result.stdout + result.stderr);
+  let { batch } = await evidence(result);
+  assert.equal(batch.tests[0].passed, 1);
+  assert.equal(batch.status, 'interrupted');
+  assert.match(batch.reason, /cleanup exceeded 1000 ms/);
+  assert.equal(result.events.filter(event => event.type === 'repeat-round').length, 1);
+});
+
+test('all-skipped rounds preserve skip counts without executing hooks or project preparation', { timeout: 90000 }, async t => {
+  let fixture = await project(t, {
+    config: { setup: './setup.js' },
+    files: { 'setup.js': `export default()=>({beforeExecution:()=>{throw new Error('Skipped preparation ran')},drain:()=>{throw new Error('Skipped cleanup ran')}});` },
+    source: `describe('Skipped selection',()=>{beforeEach(()=>{throw new Error('Skipped hook ran')});test.skip('later');});`
+  });
+  let result = await fixture.run(['--repeat', '3']).completion;
+  assert.equal(result.code, 0, result.stdout + result.stderr);
+  let { batch } = await evidence(result);
+  assert.equal(batch.completed, 3);
+  assert.equal(batch.tests[0].skipped, 3);
+  assert.equal(batch.tests[0].passed, 0);
 });

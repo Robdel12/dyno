@@ -40,6 +40,7 @@
     "test:core": "node scripts/test.js core",
     "test:browser": "node scripts/test.js browser",
     "test:execution": "node scripts/test.js execution",
+    "test:repeat": "node scripts/test.js repeat",
     "test:project": "node scripts/test.js project",
     "test:reporter": "node scripts/test.js reporter",
     "test:package": "node scripts/test.js package",

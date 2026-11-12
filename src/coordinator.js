@@ -12,7 +12,7 @@ let problem = (status, message) => Object.assign(new Error(message), { status })
 // Network/process handles stay here. The run value remains the only source of
 // catalog, assignment, resource and outcome state.
 export function createCoordinator(config, bundle, {
-  workerIds = ['0'], onEvent = () => {}, onRun = async () => {}, onError = () => {}, rebuild,
+  workerIds = ['0'], onEvent = () => {}, onRun = async () => {}, onError = () => {}, rebuild, automatic = false,
 } = {}) {
   let runs = new Map(), bundles = new Map(), workers = new Map();
   let queues = new Map(), receipts = new Map(), drains = new Map(), preparations = new Map();
@@ -399,6 +399,8 @@ export function createCoordinator(config, bundle, {
     command(input, selected) {
       let run = runs.get(input.runId);
       if (!run) throw problem(404, 'Unknown test run.');
+      if (automatic && run.managed && ['rerun', 'reload'].includes(input.command))
+        throw problem(409, 'Repeated runs control their own selection. Stop the CLI command before rerunning tests.');
       if (input.command === 'stop') abortPreparations(run.runId, new Error('Test run stopped.'));
       if (input.command === 'rerun' && run.replay) {
         if (input.ids.length && (input.ids.length !== run.replay.selected.length || input.ids.some(id => !run.replay.selected.includes(id))))

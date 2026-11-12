@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rm, writeFile, mkdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createRepeat, repeatSeed, acceptRepeatRound, finishRepeat, repeatCommand } from '../../src/repeat.js';
@@ -76,4 +76,37 @@ test('the evidence budget preserves accepted counts and publishes an explicit in
   assert.equal((junit.match(/<testcase /g) ?? []).length, 2);
   assert.equal((junit.match(/<failure /g) ?? []).length, 1);
   assert.equal((await readdir(directory)).some(name => name.startsWith('.')), false);
+});
+
+test('a schedule storage failure preserves the accepted round and its JUnit failure', async t => {
+  let directory = await mkdtemp(join(tmpdir(), 'dyno-repeat-storage-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  let writer = await createRepeatWriter(directory);
+  await writeFile(join(directory, 'schedules'), 'This file blocks the schedule directory.');
+  let first = run(1, 'root', { fail: true });
+  let state = acceptRepeatRound(batch(1), first);
+  await assert.rejects(writer.save(state, first), /schedules/);
+  let paths = await writer.finish(finishRepeat(state, 'Schedule storage failed'), {});
+  let entry = JSON.parse((await readFile(paths.ledger, 'utf8')).trim());
+  assert.equal(entry.tests[0].status, 'failed');
+  assert.match(entry.tests[0].error.message, /Expected confirmation/);
+  assert.equal(entry.schedule, undefined);
+  let junit = await readFile(paths.junit, 'utf8');
+  assert.match(junit, /failures="1"/);
+  assert.equal((junit.match(/<testcase /g) ?? []).length, 2);
+});
+
+test('failed final artifact publication leaves durable batch metadata unfinished', async t => {
+  let directory = await mkdtemp(join(tmpdir(), 'dyno-repeat-finalize-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  let writer = await createRepeatWriter(directory);
+  let first = run(1, 'root');
+  let state = acceptRepeatRound(batch(1), first);
+  await writer.save(state, first);
+  await mkdir(join(directory, 'junit.xml'));
+  await assert.rejects(writer.finish(finishRepeat(state), {}));
+  let persisted = JSON.parse(await readFile(join(directory, 'batch.json'), 'utf8'));
+  assert.equal(persisted.status, 'running');
+  assert.equal(persisted.tests[0].passed, 1);
+  await assert.rejects(readFile(join(directory, 'index.html')), { code: 'ENOENT' });
 });
