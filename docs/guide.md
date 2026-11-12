@@ -565,7 +565,7 @@ await I.find('Dashboard').visible();
 let image = await app.screenshot('dashboard', { fullPage: true });
 ```
 
-Managed browsers capture the original app page with the reporter hidden. The default is a viewport image; `fullPage: true` captures the whole page without changing its viewport. The result includes `path`, `url`, dimensions, and pixel ratio. Images appear in live and [saved reports](guide.md#saved-reports).
+Managed browsers capture the original app page with the reporter hidden. The default is a viewport image; `fullPage: true` captures the whole page without changing its configured viewport. Chromium briefly pauses app JavaScript during full-page and element captures so its temporary resize cannot reach app handlers. Queued callbacks resume afterward; CSS animation and backend work continue. The result includes `path`, `url`, dimensions, and pixel ratio. Images appear in live and [saved reports](guide.md#saved-reports).
 
 ### Choose what to capture
 

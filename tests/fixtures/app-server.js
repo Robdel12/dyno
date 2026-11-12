@@ -217,6 +217,26 @@ let server = http.createServer(async (request, response) => {
       </script>`);
     return;
   }
+  if (request.url === '/capture-responsive') {
+    response.setHeader('Content-Type', 'text/html');
+    response.end(html.replace('</head>', `<style>
+      html, body { margin: 0; padding: 0; scrollbar-width: none; }
+      body { display: flow-root; position: relative; isolation: isolate; min-height: 2400px; }
+      .capture-band { position: absolute; left: 0; width: 100%; height: 600px; z-index: -1; }
+      #viewport-history { position: fixed; top: 200px; }
+      #offscreen { position: absolute; left: 20px; top: 2100px; width: 100px; height: 80px; background: cyan; }
+    </style></head>`).replace('</body>', `
+      ${[[180,40,90], [20,160,80], [20,60,140], [210,130,20]].map((color, index) =>
+        `<div class="capture-band" aria-hidden="true" style="top:${index * 600}px;background:rgb(${color.join(',')})"></div>`).join('')}
+      <p id="viewport-history"></p><div id="offscreen"></div><script>
+        let smallestWidth = innerWidth;
+        let history = document.querySelector('#viewport-history');
+        let record = () => { smallestWidth = Math.min(smallestWidth, innerWidth); history.textContent = 'Smallest viewport: ' + smallestWidth; };
+        addEventListener('resize', record);
+        record();
+      </script></body>`));
+    return;
+  }
   if (request.url === '/visual') {
     response.writeHead(200, { 'Content-Type': 'text/html' });
     response.end(`<!doctype html><meta charset="utf-8"><style>html,body{margin:0;background:rgb(20,150,80)}canvas{position:absolute;left:0;top:0}form{margin:80px 20px}#layout:after{content:'Wide'}@media(max-width:500px){#layout:after{content:'Narrow'}}</style><canvas width="40" height="40"></canvas><form><label>Name<input name="name"></label><button>Save</button></form><p role="status">Ready</p><p id="layout"></p><script>let context=document.querySelector('canvas').getContext('2d');context.fillStyle='rgb(30,70,210)';context.fillRect(0,0,40,40);let saves=0;document.querySelector('form').onsubmit=event=>{event.preventDefault();document.querySelector('[role=status]').textContent='Saved '+document.querySelector('input').value+' · '+ ++saves;};</script>`);
