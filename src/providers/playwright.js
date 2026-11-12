@@ -1,6 +1,7 @@
 import { browserChannel } from '../browsers.js';
 import { nativeCapabilities } from '../native.js';
 import { createNative } from './native.js';
+import { createChromiumCapture } from './chromium-capture.js';
 
 export async function open(browser, plan, viewport, onExit, onDiagnostic = () => {}) {
   let context = await browser.newContext({
@@ -34,6 +35,8 @@ export async function open(browser, plan, viewport, onExit, onDiagnostic = () =>
       capabilities: nativeCapabilities(plan.name),
       close: stop,
     });
+    let chromiumCapture = ['chromium', 'chrome', 'edge'].includes(plan.name)
+      ? createChromiumCapture({ context, page, plan, close: stop }) : undefined;
     return Object.freeze({
       identity: Object.freeze({
         provider: 'playwright',
@@ -76,9 +79,11 @@ export async function open(browser, plan, viewport, onExit, onDiagnostic = () =>
       resize: async (size) => {
         await page.bringToFront();
         await page.setViewportSize(size);
+        await chromiumCapture?.resize(size);
       },
-      capture: ({ fullPage = false, clip } = {}) =>
-        page.screenshot({
+      capture: ({ fullPage = false, clip } = {}) => {
+        if (chromiumCapture && (fullPage || clip)) return chromiumCapture.capture({ clip });
+        return page.screenshot({
           type: 'png',
           animations: 'allow',
           caret: 'initial',
@@ -86,7 +91,8 @@ export async function open(browser, plan, viewport, onExit, onDiagnostic = () =>
           fullPage: clip ? true : fullPage,
           ...(clip ? { clip } : {}),
           timeout: 15000,
-        }),
+        });
+      },
       native: native.native,
       cancelNative: native.cancelNative,
       resetNative: native.resetNative,

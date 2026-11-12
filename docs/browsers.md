@@ -55,6 +55,8 @@ Prefer Playwright's matching builds. Use `--browser-path` or `browser.path` for 
 
 ## Known limits
 
+Chromium full-page and element captures briefly pause app JavaScript to avoid an internal browser resize. Queued callbacks resume afterward. Resume an existing app debugger pause before capturing; Dyno won’t resume it for you.
+
 CI exercises Chromium, Firefox, and WebKit on Linux and macOS. Windows, phones, iOS, and TVs still need verification. Manual browsers need [modern APIs](guide.md#current-limits), and their popup and background-tab policies can affect the runner.
 
 For launch failures, check `dyno browsers`, then run `dyno doctor` with that browser. Include its diagnostic when reporting a problem. A failed launch is an error; Dyno never silently switches browsers.

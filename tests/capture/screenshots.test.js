@@ -15,6 +15,49 @@ let browser = {
   ...(process.env.DYNO_CAPTURE_PATH ? { path: process.env.DYNO_CAPTURE_PATH } : {}),
 };
 
+test('full-page and offscreen captures preserve app resize state and restore interaction', managedOptions, async t => {
+  let fixture = await project(t, {
+    config: { browser: { ...browser, deviceScaleFactor: 1.5 }, viewport: { width: 800, height: 600 } },
+    source: `
+describe('Responsive captures', () => {
+  test('keeps the app at its real viewport throughout capture', async ({ app, I }) => {
+    await app.goto('/capture-responsive');
+    for (let index = 0; index < 2; index++) {
+      await app.screenshot('record ' + index, { fullPage: true });
+      await I.find('$(#viewport-history)').text('Smallest viewport: 800');
+    }
+    await app.screenshot('offscreen panel', { element: app.document.querySelector('#offscreen') });
+    await I.find('$(#viewport-history)').text('Smallest viewport: 800');
+    await I.type('After capture').into('$(input[name=name])');
+    await I.click('Save');
+    await I.find('$([role=status])').text('Saved After capture · 1');
+    await app.setViewport({ width: 390, height: 844 });
+    await I.find('$(#viewport-history)').text('Smallest viewport: 390');
+    await app.screenshot('narrow record', { fullPage: true });
+    await app.setViewport({ width: 800, height: 600 });
+    await app.screenshot('wide record again', { fullPage: true });
+  });
+});`,
+  });
+  let result = await fixture.run().completion;
+  assert.equal(result.code, 0, result.stdout + result.stderr);
+  let attachments = result.events.filter(event => event.type === 'attachment').map(event => event.attachment);
+  assert.equal(attachments.length, 5);
+  for (let attachment of attachments) {
+    let image = PNG.sync.read(await readFile(attachment.path));
+    if (attachment.name === 'offscreen panel') {
+      assert.deepEqual([image.width, image.height], [150, 120]);
+      assert.deepEqual([...image.data.subarray(0, 4)], [0, 255, 255, 255]);
+    } else {
+      assert.deepEqual([image.width, image.height], [attachment.viewport.width * 1.5, 3600]);
+      for (let [index, color] of [[180, 40, 90], [20, 160, 80], [20, 60, 140], [210, 130, 20]].entries()) {
+        let offset = ((index * 600 + 500) * 1.5 * image.width + 10) * 4;
+        assert.deepEqual([...image.data.subarray(offset, offset + 4)], [...color, 255]);
+      }
+    }
+  }
+});
+
 test('full-page images preserve content beyond 16384 device pixels without resizing', managedOptions, async t => {
   let colors = [[180, 40, 90], [20, 160, 80], [20, 60, 140], [210, 130, 20],
     [90, 30, 160], [30, 170, 180], [190, 70, 30], [60, 110, 50]];
