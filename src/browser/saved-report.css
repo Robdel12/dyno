@@ -1,18 +1,43 @@
-.saved-report { max-width: 1000px; margin: auto; padding: 32px 20px; }
-.saved-report h1 { margin: 20px 0; }
-.saved-report p { margin: 12px 0; color: var(--muted); overflow-wrap: anywhere; }
-.saved-test { border-bottom: 1px solid var(--line); padding: 18px 0; }
-.saved-test > summary { cursor: pointer; overflow-wrap: anywhere; line-height: 1.8; }
-.saved-status { color: var(--muted); font-size: 12px; margin-right: 12px; }
-.saved-test[data-status=failed] .saved-status { color: var(--red); }
-.saved-test[data-status=passed] .saved-status { color: var(--green); }
-.saved-output { padding: 20px 0; }
-.saved-report pre { white-space: pre-wrap; overflow-wrap: anywhere; max-width: 100%; padding: 16px; }
-.saved-report .test-time { float: right; }
-.saved-report input { width: 100%; padding: 10px; color: var(--text); background: var(--surface); border: 1px solid var(--line); margin: 16px 0; }
-@media(max-width:640px) {
-  .saved-report { padding-top: 24px; }
-  .saved-test > summary { position:relative; padding-right:52px; }
-  .saved-report .test-time { position:absolute; right:0; top:2px; padding:0; }
-  .saved-report pre { padding:12px; font-size:11px; }
+/* Saved reports are the printed dyno sheet: same tokens, read top to bottom, no live controls. */
+.saved-report { max-width: 1080px; margin: auto; padding: 0 28px 72px; }
+.saved-masthead { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 18px 0; margin-bottom: 30px; border-bottom: 1px solid var(--line); }
+.saved-files { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 13px; }
+.saved-files a { color: var(--trace); }
+.saved-report .pull-title { margin-bottom: 8px; }
+.saved-meta { margin: 4px 0 0 74px; color: var(--muted); overflow-wrap: anywhere; }
+.saved-report .sheet { margin-top: 24px; }
+.saved-report > .run-info { margin-top: 8px; }
+.saved-search { display: grid; gap: 6px; margin: 30px 0 8px; color: var(--muted); font-size: 12px; font-weight: 600; }
+.saved-report input { width: 100%; height: 38px; padding: 0 12px; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 7px; }
+.saved-report .file-group > h2 { padding: 16px 0 6px; font: 500 13px/1.6 var(--mono); overflow-wrap: anywhere; }
+.saved-test { border-top: 1px solid var(--line); }
+.saved-test > summary { display: grid; grid-template-columns: 76px minmax(0, 1fr) auto; gap: 12px; align-items: baseline; padding: 12px 4px; cursor: pointer; list-style: none; overflow-wrap: anywhere; }
+.saved-test > summary::-webkit-details-marker { display: none; }
+.saved-test > summary:hover { background: var(--hover); }
+.saved-status { justify-self: start; color: var(--muted); font-size: 12px; font-weight: 700; font-stretch: 110%; white-space: nowrap; }
+.saved-test[data-status=failed] .saved-status { color: var(--fail); }
+.saved-test[data-status=passed] .saved-status { color: var(--pass); }
+.saved-name { font-weight: 550; }
+.saved-test[data-status=failed] .saved-name { font-weight: 650; }
+.saved-report .test-time { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.saved-output { padding: 8px 4px 26px 92px; }
+.saved-output > h2 { margin: 18px 0 8px; font-size: 14px; }
+.saved-report pre { white-space: pre-wrap; overflow-wrap: anywhere; max-width: 100%; padding: 14px 16px; margin: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; font-size: 12px; line-height: 1.6; }
+.saved-report .source-excerpt { padding: 14px 16px; }
+.saved-timings { margin: 14px 0; color: var(--muted); font-size: 13px; }
+.saved-timings summary { cursor: pointer; font-weight: 600; color: var(--ink); }
+.saved-timings .timing-phases { margin: 14px 0; }
+.saved-timings caption { text-align: left; color: var(--muted); font-size: 12px; }
+@media (max-width: 640px) {
+  .saved-report { padding: 0 16px 48px; }
+  .saved-masthead { align-items: flex-start; flex-direction: column; }
+  .saved-meta { margin-left: 0; font-size: 12px; }
+  .saved-test > summary { grid-template-columns: minmax(0, 1fr) auto; }
+  .saved-status { grid-column: 1 / -1; }
+  .saved-output { padding-left: 0; }
+  .saved-report pre { padding: 12px; font-size: 11px; }
+}
+@media print {
+  .saved-search, #empty { display: none; }
+  .saved-test { break-inside: avoid; }
 }

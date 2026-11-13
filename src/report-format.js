@@ -1,13 +1,11 @@
 import { testTitle } from './suite.js';
-import { timingPhases, timingOperations, timingDuration, timingLabels } from './browser/timing-format.js';
+import { timingPhases, timingOperations, timingDuration, timingLabels, failurePlace } from './browser/timing-format.js';
 import { slowestTests } from './browser/timings.js';
+import { pullCurve, pullSheet, pace, tachometer } from './browser/dyno-chart.js';
+import { escapeMarkup, wordmark } from './browser/markup.js';
 
-let clean = (value) => String(value ?? '').replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]/g, '�');
-export let escapeMarkup = (value) =>
-  clean(value).replace(
-    /[<>&"']/g,
-    (character) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&apos;' })[character]
-  );
+export { escapeMarkup };
+
 let errors = (test) => [test.error, ...test.additionalErrors].filter(Boolean);
 let failureText = (error) =>
   `[${error.phase}] ${error.stack ?? error.message}${error.source ? `\n${error.source.file}:${error.source.line}:${error.source.column}\n${error.source.code}` : ''}`;
@@ -37,29 +35,21 @@ export function junitReport(report) {
 
 function errorMarkup(error) {
   let x = escapeMarkup;
-  let labels = {
-    test: 'Test',
-    beforeEach: 'Setup · beforeEach',
-    afterEach: 'Cleanup · afterEach',
-    app: 'Application',
-    timeout: 'Test timeout',
-    cleanup: 'Cleanup timeout',
-    runtime: 'Test runtime'
-  };
+  let place = failurePlace(error);
   return `<div class="failure">
-    <p class="failure-location">${x(labels[error.phase] ?? error.phase)}</p>
     <h2>${x(error.message)}</h2>
-    ${error.source ? `<p class="failure-location">${x(error.source.file)}:${error.source.line}:${error.source.column}</p><pre class="source-excerpt">${x(error.source.code)}</pre>` : ''}
+    ${place ? `<p class="failure-location">${x(place)}</p>` : ''}
+    ${error.source ? `<pre class="source-excerpt">${x(error.source.code)}</pre>` : ''}
     ${error.stack ? `<details><summary>Stack trace</summary><pre>${x(error.stack)}</pre></details>` : ''}
   </div>`;
 }
 function imageMarkup(image) {
   let x = escapeMarkup;
   if (image.status !== 'captured')
-    return `<p class="output-notice">${image.status === 'missing' ? 'Screenshot unavailable' : 'Image skipped'}: ${x(image.name)} · ${x(image.reason)}</p>`;
+    return `<p class="output-notice">${image.status === 'missing' ? 'Screenshot unavailable' : 'Image skipped'}: ${x(image.name)}. ${x(image.reason)}</p>`;
   return `<figure class="screenshot">
     <a href="${x(image.path)}"><img src="${x(image.path)}" alt="${x(image.name)}" loading="lazy"></a>
-    <figcaption>${x(image.name)} · ${image.width} × ${image.height} · ${x(image.browser.name)}</figcaption>
+    <figcaption>${x(image.name)}, ${image.width} × ${image.height} in ${x(image.browser.name)}</figcaption>
   </figure>`;
 }
 function timingMarkup(timings) {
@@ -69,7 +59,7 @@ function timingMarkup(timings) {
     <dl class="timing-phases">${timingPhases(timings).map(entry => `<div><dt>${x(entry.name)}</dt><dd>${x(timingDuration(entry.duration))}</dd></div>`).join('')}</dl>
     <p>Times include waiting. Steps and operations can overlap; do not add these rows together. Debug pauses are included.</p>
     <table class="timings-table"><caption>Hooks, operations, and steps, slowest first</caption><thead><tr><th scope="col">Work</th><th scope="col">Started</th><th scope="col">Duration</th></tr></thead>
-    <tbody>${timingOperations(timings).map(entry => `<tr><td><strong>${x(entry.name)}</strong><span class="timing-kind">${x(timingLabels[entry.kind])} · ${x(entry.phase ?? 'test')} · ${x(entry.status)}</span></td><td>${x(timingDuration(entry.start))}</td><td>${x(timingDuration(entry.duration))}</td></tr>`).join('')}</tbody></table>
+    <tbody>${timingOperations(timings).map(entry => `<tr><td><strong>${x(entry.name)}</strong><span class="timing-kind">${x(timingLabels[entry.kind])} in ${x(entry.phase ?? 'test')}, ${x(entry.status)}</span></td><td>${x(timingDuration(entry.start))}</td><td>${x(timingDuration(entry.duration))}</td></tr>`).join('')}</tbody></table>
     ${timings.truncated ? `<p>${timings.truncated} additional timings were not recorded.</p>` : ''}</details>`;
 }
 function testMarkup(test) {
@@ -92,26 +82,40 @@ function testMarkup(test) {
     </div>
   </details>`;
 }
+let readout = (label, value, kind = '') =>
+  `<div class="readout"${kind ? ` data-kind="${kind}"` : ''}><dt>${label}</dt><dd>${value}</dd></div>`;
 export function htmlReport(report, css, { session = false } = {}) {
   let x = escapeMarkup;
   let files = [...new Set(report.tests.map((test) => test.file))];
   let title =
     report.status === 'interrupted' ? 'Run interrupted' : report.summary.failed ? 'Run failed' : 'Run complete';
+  let curve = pullCurve(report.tests);
+  let average = pace(curve);
+  let slow = slowestTests(report.tests);
+  let phase = report.status === 'interrupted' ? 'error' : 'completed';
   return `<!doctype html><html lang="en"><head>
     <meta charset="utf-8"><meta name="viewport" content="width=device-width">
-    <title>Dyno · ${x(report.status)}</title><style>${css}</style>
+    <title>Dyno report: ${x(report.status)}</title><style>${css}</style>
   </head><body><main class="saved-report">
-    <a href="run.json">Run JSON</a> · <a href="junit.xml">JUnit</a> · <a href="schedule.json">Execution order</a>${session ? ' · <a href="session.json">Session timings</a>' : ''}
-    <h1>${title}</h1>
-    <p>${report.summary.passed} passed · ${report.summary.failed} failed · ${report.summary.skipped} skipped · ${report.summary.notRun} not run</p>
-    <p>Saved report · ${x(report.runId)}${report.startedAt ? ` · ${x(report.startedAt)}` : ''}</p>
-    ${report.schedule?.seed != null ? `<p>Seed: ${x(report.schedule.seed)}</p>` : ''}
-    ${report.coordination ? `<p>${report.coordination.workers.length} ${report.coordination.workers.length === 1 ? 'worker' : 'workers'} · ${x(timingDuration(report.coordination.wallDuration))} wall · ${x(timingDuration(report.coordination.testWorkDuration))} summed test work</p>
-      <details class="run-info"><summary>Worker timings</summary><ul>${report.coordination.workers.map(worker => `<li>Worker ${x(worker.id)}: ${x(timingDuration(worker.executionDuration))} execution · ${x(timingDuration(worker.handoffDuration))} handoff · ${x(timingDuration(worker.queueDuration))} queue to assignment · ${x(timingDuration(worker.unassignedDuration))} unassigned</li>`).join('')}</ul></details>` : ''}
+    <header class="saved-masthead">
+      ${wordmark}<span class="sr-only">Dyno</span>
+      <nav class="saved-files" aria-label="Report files"><a href="run.json">Run JSON</a><a href="junit.xml">JUnit</a><a href="schedule.json">Execution order</a>${session ? '<a href="session.json">Session timings</a>' : ''}</nav>
+    </header>
+    <div class="pull-title">${tachometer({ phase, failed: report.summary.failed > 0, progress: curve.total ? curve.done / curve.total : 0 })}<h1>${title}</h1></div>
+    <p class="saved-meta">${report.summary.passed} passed, ${report.summary.failed} failed, ${report.summary.skipped} skipped, ${report.summary.notRun} not run</p>
+    <p class="saved-meta">Saved report ${x(report.runId)}${report.startedAt ? `, started ${x(report.startedAt)}` : ''}</p>
+    ${report.schedule?.seed != null ? `<p class="saved-meta">Seed: ${x(report.schedule.seed)}</p>` : ''}
+    ${curve.total ? `<div class="sheet">
+      <figure class="sheet-chart"><div class="sheet-frame"><div class="sheet-canvas">${pullSheet(curve, { href: (point) => `#test-${point.index}` })}</div><span class="sheet-axis sheet-axis-y">${curve.total} ${curve.total === 1 ? 'test' : 'tests'}</span><span class="sheet-axis sheet-axis-x">${x(timingDuration(curve.time))} of test time</span></div>
+      <figcaption><span class="sheet-legend"><span class="legend-trace">This pull</span></span><span class="sheet-hint">Steep is fast. Flat stretches are slow tests.</span></figcaption></figure>
+      <dl class="readouts">${readout('Passed', report.summary.passed, 'passed')}<div class="readout" id="failed-summary" data-failed="${report.summary.failed > 0}"><dt>Failed</dt><dd>${report.summary.failed}</dd></div>${readout('Skipped', report.summary.skipped)}${readout('Not run', report.summary.notRun)}${readout('Run time', x(timingDuration(report.summary.duration)))}${readout('Per test', average === undefined ? '—' : x(timingDuration(average)))}</dl>
+    </div>` : ''}
+    ${report.coordination ? `<p class="saved-meta">${report.coordination.workers.length} ${report.coordination.workers.length === 1 ? 'worker' : 'workers'}, ${x(timingDuration(report.coordination.wallDuration))} wall, ${x(timingDuration(report.coordination.testWorkDuration))} summed test work</p>
+      <details class="run-info"><summary>Worker timings</summary><ul>${report.coordination.workers.map(worker => `<li>Worker ${x(worker.id)}: ${x(timingDuration(worker.executionDuration))} execution, ${x(timingDuration(worker.handoffDuration))} handoff, ${x(timingDuration(worker.queueDuration))} queue to assignment, ${x(timingDuration(worker.unassignedDuration))} unassigned</li>`).join('')}</ul></details>` : ''}
     ${report.error ? errorMarkup(report.error) : ''}
-    ${slowestTests(report.tests).length ? `<details class="run-info"><summary>Slowest tests</summary><ol class="slow-test-list">${slowestTests(report.tests).map(test => `<li><a href="#test-${test.index}">${x(testTitle(test))}</a><span>${x(timingDuration(test.duration))}</span></li>`).join('')}</ol></details>` : ''}
-    <label>Filter tests<input type="search" id="search" placeholder="Search files, suites, and test output"></label>
-    <p id="empty" hidden>No tests match this filter.</p>
+    ${slow.length ? `<details class="run-info"><summary>Slowest tests</summary><ol class="slow-test-list">${slow.map(test => `<li><a href="#test-${test.index}">${x(testTitle(test))}</a><span>${x(timingDuration(test.duration))}</span></li>`).join('')}</ol></details>` : ''}
+    <label class="saved-search"><span>Filter tests</span><input type="search" id="search" placeholder="Search files, suites, and test output"></label>
+    <p id="empty" class="empty-list" hidden>No tests match this filter.</p>
     ${files
       .map(
         (file) =>
@@ -130,7 +134,11 @@ export function htmlReport(report, css, { session = false } = {}) {
         if(!test.hidden)visible++;
       }
       for(let file of document.querySelectorAll('.file-group'))file.hidden=![...file.querySelectorAll('[data-test]')].some(test=>!test.hidden);
-      document.getElementById('empty').hidden=visible>0;
+      let empty=document.getElementById('empty');
+      empty.hidden=visible>0;
+      if(!empty.hidden)empty.scrollIntoView({block:'nearest'});
     });
+    for(let detail of document.querySelectorAll('.run-info'))detail.addEventListener('toggle',()=>{if(detail.open)detail.scrollIntoView({block:'nearest'});});
+    for(let link of document.querySelectorAll('.sheet-plot a, .slow-test-list a'))link.addEventListener('click',()=>{let test=document.querySelector(link.getAttribute('href'));if(test)test.open=true;});
   </script></body></html>`;
 }

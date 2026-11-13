@@ -1,5 +1,6 @@
 import { slowestTests } from './timings.js';
-import { timingDuration, timingLabels, timingPhases, timingOperations, timingText } from './timing-format.js';
+import { pullCurve, pullSheet, ghostCurve, pace, sheetSummary, sheetHead, tachometer, usable } from './dyno-chart.js';
+import { timingDuration, timingLabels, timingPhases, timingOperations, timingText, failurePlace } from './timing-format.js';
 
 export function duration(value) {
   if (value === undefined || value === null) return '';
@@ -165,6 +166,11 @@ export function createReporter(actions) {
       else if (actions.embedded) actions.close();
     }
   });
+  // The sheet makes the overview tall; bring disclosed details and empty results into view.
+  for (let detail of document.querySelectorAll('.run-info'))
+    detail.addEventListener('toggle', () => {
+      if (detail.open) detail.scrollIntoView({ block: 'nearest' });
+    });
   document.addEventListener('click', (event) => {
     if (!get('run-options').contains(event.target)) get('run-options').open = false;
   });
@@ -217,26 +223,11 @@ export function createReporter(actions) {
     for (let failureError of [error, ...(test?.additionalErrors ?? [])].filter(Boolean)) {
       let error = failureError;
       let failure = element('div', 'failure');
-      if (error.phase)
-        failure.append(
-          element(
-            'p',
-            'failure-location',
-            {
-              test: 'Test',
-              beforeEach: 'Setup · beforeEach',
-              afterEach: 'Cleanup · afterEach',
-              app: 'Application',
-              timeout: 'Test timeout',
-              cleanup: 'Cleanup timeout',
-              runtime: 'Test runtime'
-            }[error.phase] ?? error.phase
-          )
-        );
       failure.append(element('h2', '', error.message));
+      let place = failurePlace(error);
+      if (place) failure.append(element('p', 'failure-location', place));
       if (error.source) {
         let source = error.source;
-        failure.append(element('p', 'failure-location', `${source.file}:${source.line}:${source.column}`));
         let excerpt = element('pre', 'source-excerpt');
         for (let [offset, text] of source.code.split('\n').entries()) {
           let line = element('span', 'source-line');
@@ -296,10 +287,10 @@ export function createReporter(actions) {
           element(
             'figcaption',
             '',
-            `${attachment.name} · ${attachment.width} × ${attachment.height} · ${attachment.browser.name}`
+            `${attachment.name}, ${attachment.width} × ${attachment.height} in ${attachment.browser.name}`
           )
         );
-      } else figure.append(element('figcaption', '', `${attachment.name} · Image skipped: ${attachment.reason}`));
+      } else figure.append(element('figcaption', '', `${attachment.name}: image skipped. ${attachment.reason}`));
       content.push(figure);
     }
     container.replaceChildren(...content);
@@ -320,11 +311,38 @@ export function createReporter(actions) {
       return;
     }
     let timings = test.timings;
+    let phaseEntries = timingPhases(timings);
+    let split = element('div', 'timing-split');
+    split.setAttribute('aria-hidden', 'true');
     let phases = element('dl', 'timing-phases');
-    for (let entry of timingPhases(timings)) {
+    for (let entry of phaseEntries) {
+      let segment = element('span');
+      segment.dataset.kind = entry.kind;
+      segment.style.flexGrow = String(Math.max(entry.duration, 0.0001));
+      segment.title = `${entry.name}: ${timingDuration(entry.duration)}`;
+      split.append(segment);
       let group = element('div');
-      group.append(element('dt', '', entry.name), element('dd', '', timingDuration(entry.duration)));
+      let swatch = element('i');
+      swatch.dataset.kind = entry.kind;
+      group.append(swatch, element('dt', '', entry.name), element('dd', '', timingDuration(entry.duration)));
       phases.append(group);
+    }
+    let operations = timingOperations(timings);
+    let begin = Math.min(...timings.entries.map((entry) => entry.start));
+    let span = Math.max(...timings.entries.map((entry) => entry.start + entry.duration)) - begin || 1;
+    let waterfall = element('ol', 'waterfall');
+    waterfall.setAttribute('aria-hidden', 'true');
+    for (let entry of operations.toSorted((a, b) => a.start - b.start || a.id - b.id).slice(0, 60)) {
+      let row = element('li');
+      let track = element('span', 'waterfall-track');
+      let bar = element('span', 'waterfall-bar');
+      bar.dataset.status = entry.status;
+      bar.style.left = `${(((entry.start - begin) / span) * 100).toFixed(2)}%`;
+      bar.style.width = `${((entry.duration / span) * 100).toFixed(2)}%`;
+      bar.title = `${entry.name}: ${timingDuration(entry.duration)}`;
+      track.append(bar);
+      row.append(element('span', 'waterfall-name', entry.name), track);
+      waterfall.append(row);
     }
     let table = element('table', 'timings-table');
     table.setAttribute('aria-label', 'Hooks, operations, and steps, slowest first');
@@ -334,19 +352,77 @@ export function createReporter(actions) {
     }
     let head = element('thead'); head.append(heading); table.append(head);
     let body = element('tbody');
-    for (let entry of timingOperations(timings)) {
+    for (let entry of operations) {
       let row = element('tr');
       let name = element('td');
       name.append(element('strong', '', entry.name), element('span', 'timing-kind',
-        `${timingLabels[entry.kind]} · ${entry.phase ?? 'test'} · ${entry.status}`));
+        `${timingLabels[entry.kind]} in ${entry.phase ?? 'test'}, ${entry.status}`));
       row.append(name, element('td', '', timingDuration(entry.start)), element('td', '', timingDuration(entry.duration)));
       body.append(row);
     }
     table.append(body);
-    container.replaceChildren(element('h2', '', 'Phases'), phases,
+    container.replaceChildren(element('h2', '', `Where ${timingDuration(timings.duration)} went`), split, phases,
+      ...(body.childElementCount ? [element('h2', '', 'Timeline'), waterfall] : []),
+      element('h2', '', 'Hooks, operations, and steps'),
       element('p', 'output-notice', 'Times include waiting. Steps can contain operations and overlap; do not add these rows together. Debug pauses are included.'),
-      element('h2', '', 'Hooks, operations, and steps'), body.childElementCount ? table : element('p', '', 'No app operations or named steps were recorded.'));
+      body.childElementCount ? table : element('p', '', 'No app operations or named steps were recorded.'));
     if (timings.truncated) container.append(element('p', 'output-notice', `${timings.truncated} additional timings were not recorded.`));
+  }
+
+  let sheetKey;
+  get('tach-slot').outerHTML = tachometer({ id: 'run-indicator' });
+  let tach = get('run-indicator');
+  let storedPull;
+  let savedPull;
+  let pullKey = (state) => `dyno:last-pull:${state.tests.length}:${state.files.join('|')}`;
+  let readPull = (key) => {
+    try {
+      return JSON.parse(localStorage.getItem(key) ?? 'null');
+    } catch {
+      return null;
+    }
+  };
+  let writePull = (key, value) => {
+    try {
+      localStorage.setItem(key, JSON.stringify(value));
+    } catch {
+      // Storage can be unavailable in private or locked-down browsers; the sheet still renders.
+    }
+  };
+  function renderSheet(state, curve, href) {
+    let key = curve.total ? pullKey(state) : undefined;
+    if (key && storedPull?.key !== key) storedPull = { key, value: readPull(key) };
+    let ghost = storedPull?.value?.runId !== state.runId ? storedPull?.value : undefined;
+    if (key && state.phase === 'completed' && curve.done === curve.total && savedPull !== state.runId) {
+      savedPull = state.runId;
+      writePull(key, ghostCurve(curve, state.runId));
+    }
+    let shownGhost = usable(curve, ghost);
+    write(get('ghost-legend'), shownGhost ? `Last pull, ${duration(shownGhost.time)}` : '');
+    get('ghost-legend').hidden = !shownGhost;
+    write(get('sheet-total'), curve.total ? `${curve.total} ${curve.total === 1 ? 'test' : 'tests'}` : '');
+    write(get('sheet-time'), curve.time ? `${duration(Math.max(curve.time, shownGhost?.time ?? 0))} of test time` : 'test time');
+    write(get('sheet-summary'), sheetSummary(curve));
+    let average = pace(curve);
+    write(get('run-pace'), average === undefined ? '—' : duration(average));
+    let flag = get('sheet-flag');
+    let head = sheetHead(curve, shownGhost);
+    let finishedPull = curve.total && curve.done === curve.total && !curve.running;
+    let label = curve.running ? curve.running.name : finishedPull ? `${curve.total} ${curve.total === 1 ? "test" : "tests"} @ ${duration(curve.time)}` : '';
+    flag.hidden = !label;
+    flag.dataset.kind = curve.running ? 'running' : 'finished';
+    flag.dataset.side = head.left > 62 ? 'left' : 'right';
+    flag.style.left = `${head.left}%`;
+    flag.style.top = `${head.top}%`;
+    write(get('sheet-flag-text'), label);
+    // Points only append during a run, so a few scalars identify the drawn sheet.
+    let next = JSON.stringify([state.runId, curve.total, curve.done, curve.time, curve.running?.id, shownGhost?.time, state.route.query, state.route.filter]);
+    if (next === sheetKey) return;
+    sheetKey = next;
+    get('sheet').innerHTML = pullSheet(curve, {
+      ghost: shownGhost,
+      href: (point) => href({ page: 'test', id: point.id, tab: 'output' })
+    });
   }
 
   return function render(state) {
@@ -355,7 +431,7 @@ export function createReporter(actions) {
     let total = state.tests.length;
     let workers = state.workers ?? [];
     get('worker-setting').hidden = workers.length < 2;
-    let workerOptions = workers.map(worker => ({ value: worker.id, label: `Worker ${worker.id} · ${worker.phase}` }));
+    let workerOptions = workers.map(worker => ({ value: worker.id, label: `Worker ${worker.id} (${worker.phase})` }));
     if (JSON.stringify([...get('worker').options].map(option => ({ value: option.value, label: option.textContent }))) !== JSON.stringify(workerOptions))
       get('worker').replaceChildren(...workerOptions.map(worker => {
         let option = element('option', '', worker.label); option.value = worker.value; return option;
@@ -394,7 +470,7 @@ export function createReporter(actions) {
     get('connection-state').dataset.connection = state.connection;
     write(
       get('capabilities'),
-      state.capabilities?.screenshot ? 'Screenshots available' : 'Screenshots unavailable · URL-only browser'
+      state.capabilities?.screenshot ? 'Screenshots available' : 'Screenshots unavailable in URL-only browsers'
     );
     for (let link of document.querySelectorAll('.back-link,.brand')) link.href = href({ page: 'overview' });
     if (get('test-search').value !== state.route.query) get('test-search').value = state.route.query;
@@ -438,12 +514,14 @@ export function createReporter(actions) {
           : 'Test results'
         : titles[state.phase]
     );
-    get('run-indicator').dataset.phase = state.phase;
-    get('run-indicator').dataset.failed = String(failed > 0);
+    let curve = pullCurve(state.tests);
+    tach.dataset.phase = state.phase;
+    tach.dataset.failed = String(failed > 0);
+    tach.style.setProperty('--progress', curve.total ? (curve.done / curve.total).toFixed(3) : '0');
     write(
       get('run-meta'),
       state.error ??
-        `${state.files.length} test ${state.files.length === 1 ? 'file' : 'files'}${workers.length > 1 ? ` · ${workers.length} workers` : ''} · ${state.appHost || location.host}`
+        `${state.files.length} test ${state.files.length === 1 ? 'file' : 'files'}${workers.length > 1 ? `, ${workers.length} workers` : ''}, app at ${state.appHost || location.host}`
     );
     write(get('passed-count'), String(passed));
     write(get('failed-count'), String(failed));
@@ -452,13 +530,15 @@ export function createReporter(actions) {
     get('skipped-summary').hidden = skipped === 0;
     get('failed-summary').dataset.failed = String(failed > 0);
     write(get('test-count'), String(total));
-    write(get('run-duration'), duration(state.duration));
+    write(get('run-duration'), duration(state.duration) || '—');
+    document.documentElement.dataset.phase = state.phase;
+    renderSheet(state, curve, href);
     let coordination = state.coordination;
     get('run-coordination').hidden = !coordination;
     get('worker-timings').hidden = !coordination;
     if (coordination) {
-      write(get('run-coordination'), `${duration(coordination.wallDuration)} wall · ${duration(coordination.testWorkDuration)} summed test work`);
-      let lines = coordination.workers.map(worker => `Worker ${worker.id}: ${duration(worker.executionDuration)} execution (${duration(worker.projectPreparationDuration ?? 0)} preparation) · ${duration(worker.handoffDuration)} handoff · ${duration(worker.queueDuration)} queue to assignment · ${duration(worker.unassignedDuration)} unassigned`);
+      write(get('run-coordination'), `${duration(coordination.wallDuration)} wall time, ${duration(coordination.testWorkDuration)} summed test work`);
+      let lines = coordination.workers.map(worker => `Worker ${worker.id}: ${duration(worker.executionDuration)} execution (${duration(worker.projectPreparationDuration ?? 0)} preparation), ${duration(worker.handoffDuration)} handoff, ${duration(worker.queueDuration)} queue to assignment, ${duration(worker.unassignedDuration)} unassigned`);
       if (get('worker-timings').textContent !== lines.join(''))
         get('worker-timings').replaceChildren(...lines.map(line => element('li', '', line)));
     }
@@ -476,7 +556,7 @@ export function createReporter(actions) {
       }));
     }
     get('progress').max = Math.max(total, 1);
-    get('progress').value = passed + failed + skipped;
+    get('progress').value = curve.done;
     get('progress').hidden = !active && state.phase !== 'discovering';
     get('rerun').disabled = detail ? !test : !total && state.phase !== 'error';
     write(get('rerun'), detail ? 'Run test' : 'Run all');
@@ -529,7 +609,7 @@ export function createReporter(actions) {
       let failedCount = group.tests.filter((test) => test.status === 'failed').length;
       write(
         fileGroup.count,
-        `${group.tests.length} ${group.tests.length === 1 ? 'test' : 'tests'}${failedCount ? ` · ${failedCount} failed` : ''}`
+        `${group.tests.length} ${group.tests.length === 1 ? 'test' : 'tests'}${failedCount ? `, ${failedCount} failed` : ''}`
       );
       fileGroup.run.disabled = active || state.phase === 'debugging' || unavailable;
       let fileVisible = false;
@@ -569,6 +649,7 @@ export function createReporter(actions) {
       fileGroup.node.hidden = !fileVisible;
     }
     let visible = 0;
+    let slowest = Math.max(0, ...state.tests.filter((item) => item.status !== 'running').map((item) => item.duration ?? 0));
     for (let item of state.tests) {
       let row = rows.get(item.id);
       if (!row) {
@@ -580,13 +661,13 @@ export function createReporter(actions) {
         let label = element('span', 'test-name', item.name);
         let error = element('span', 'test-error');
         label.append(error);
+        let load = element('span', 'test-load');
+        load.setAttribute('aria-hidden', 'true');
         let time = element('span', 'test-time');
-        let arrow = element('span', 'test-arrow', '›');
-        arrow.setAttribute('aria-hidden', 'true');
-        select.append(symbol, label, time, arrow);
+        select.append(symbol, label, load, time);
         node.append(select);
         suites.get(JSON.stringify([item.file, ...item.suites])).list.append(node);
-        row = { node, select, symbol, error, time };
+        row = { node, select, symbol, error, time, load };
         rows.set(item.id, row);
       }
       row.select.href = href({ page: 'test', id: item.id, tab: 'output' });
@@ -596,8 +677,10 @@ export function createReporter(actions) {
       write(row.symbol, symbols[item.status]);
       write(
         row.time,
-        item.status === 'pending' ? '—' : item.status === 'running' ? 'Running' : duration(item.duration)
+        ['pending', 'skipped'].includes(item.status) ? '—' : item.status === 'running' ? 'Running' : duration(item.duration)
       );
+      let load = slowest ? Math.min((item.duration ?? 0) / slowest, 1).toFixed(3) : '0';
+      if (row.load.style.getPropertyValue('--load') !== load) row.load.style.setProperty('--load', load);
       row.error.hidden = !item.error;
       write(row.error, item.error?.message ?? '');
       row.node.hidden = !(
@@ -606,7 +689,9 @@ export function createReporter(actions) {
       );
       if (!row.node.hidden) visible++;
     }
-    get('empty-results').hidden = visible > 0 || !total;
+    let emptyHidden = visible > 0 || !total;
+    if (get('empty-results').hidden && !emptyHidden) requestAnimationFrame(() => get('empty-results').scrollIntoView({ block: 'nearest' }));
+    get('empty-results').hidden = emptyHidden;
     if (get('files').childElementCount !== state.files.length)
       get('files').replaceChildren(...state.files.map((file) => element('li', '', file)));
     write(get('browser-name'), state.browser);
@@ -619,7 +704,7 @@ export function createReporter(actions) {
     write(get('selected-name'), test?.name ?? 'Loading test…');
     write(
       get('selected-status'),
-      test ? `${names[test.status]}${duration(test.duration) ? ` · ${duration(test.duration)}` : ''}` : ''
+      test ? `${names[test.status]}${duration(test.duration) ? ` in ${duration(test.duration)}` : ''}` : ''
     );
     get('selected-status').dataset.status = test?.status ?? 'pending';
     get('output-tab').href = href({ page: 'test', id: test?.id, tab: 'output' });
