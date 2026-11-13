@@ -5,6 +5,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { sourceDocs, documentedTypes } from './source.js';
 import { guideOrder } from '../navigation.js';
+import { tachometer } from '../../src/browser/dyno-chart.js';
 
 let exec = promisify(execFile);
 export let root = fileURLToPath(new URL('../../', import.meta.url));
@@ -38,6 +39,7 @@ export async function generate() {
     anchors.set(slug(guide.title), `guides/${key}/`);
     for (let [, heading] of guide.body.matchAll(/^#{2,3} (.+)$/gm)) anchors.set(slug(heading), `guides/${key}/#${slug(heading)}`);
   }
+  let base = process.env.DYNO_DOCS_BASE ?? '/dyno/next/';
   function links(body) {
     return body.replace(/\]\(([^)]+)\)/g, (match, href) => {
       let [file, hash] = href.split('#');
@@ -52,27 +54,38 @@ export async function generate() {
         return `](https://github.com/Robdel12/dyno/${kind}/${process.env.DYNO_DOCS_COMMIT ?? 'main'}/${resource}${hash ? `#${hash}` : ''})`;
       }
       if (!route) return match;
-      return `](${process.env.DYNO_DOCS_BASE ?? '/dyno/next/'}${route})`;
+      return `](${base}${route})`;
     });
   }
-  let page = async (path, title, body) => write(join(output, `${path}.md`), `---\ntitle: ${JSON.stringify(title)}\n---\n\n${links(body)}\n`);
-  await page('index', overview.title, overview.body);
+  // Frontmatter is written as JSON, which is valid YAML.
+  let page = async (path, frontmatter, body) => write(join(output, `${path}.md`), `---\n${JSON.stringify(frontmatter, null, 2)}\n---\n\n${links(body)}\n`);
+  let action = (text, route, variant) => ({ text, link: base + route, variant });
+  await page('index', { title: overview.title, template: 'splash', hero: {
+    tagline: 'Dyno runs your tests inside the browser, right next to your app, and plots every run as it happens.',
+    actions: [action('Write your first test', 'guides/getting-started/', 'primary'), action('Read the API', 'api/readme/', 'secondary')],
+  } }, overview.body);
+  // Starlight renders this entry at /404. Its build warns that [...slug] also lists it; the /404 route wins.
+  await page('404', { title: 'Not on the sheet', template: 'splash', pagefind: false, hero: {
+    tagline: "This page isn't part of these docs. Search for it, or start from the top.",
+    image: { html: `<figure class="stalled">${tachometer({ phase: 'connecting', progress: 0 })}<figcaption>The needle hasn't moved. Nothing ran here.</figcaption></figure>` },
+    actions: [action('Back to the docs', '', 'primary')],
+  } }, '');
   for (let key of guideOrder) {
     let { title, body } = guides.get(key);
     markdown += `\n## ${title}\n\n${body.replace(/^(#{2,5}) /gm, '#$1 ')}\n`;
-    await page(`guides/${key}`, title, body);
+    await page(`guides/${key}`, { title }, body);
   }
   for (let [path, target] of [['docs/browsers.md', 'guides/browsers'], ['docs/architecture.md', 'contributing/architecture'], ['docs/design.md', 'contributing/design'], ['docs/ci.md', 'contributing/ci'], ['docs/documentation.md', 'contributing/documentation'], ['vision.md', 'contributing/vision']]) {
     let [heading, ...body] = (await read(path)).split('\n');
-    await page(target, heading.replace(/^# /, ''), body.join('\n'));
+    await page(target, { title: heading.replace(/^# /, '') }, body.join('\n'));
   }
-  await page('example', 'A complete test', `This is the demo test we run in CI. Copy the pattern and change the workflow for your app.\n\n\`\`\`js\n${(await read('examples/demo/tests/contact.test.js')).trim()}\n\`\`\`\n`);
+  await page('example', { title: 'A complete test' }, `This is the demo test we run in CI. Copy the pattern and change the workflow for your app.\n\n\`\`\`js\n${(await read('examples/demo/tests/contact.test.js')).trim()}\n\`\`\`\n`);
   let cli = guides.get('cli').body + '\n';
   for (let command of ['', 'run', 'init', 'doctor', 'browsers', 'install']) {
     let { stdout } = await exec(process.execPath, [join(root, 'bin/dyno.js'), ...(command ? [command] : []), '--help'], { cwd: root });
     cli += `\n## dyno${command ? ` ${command}` : ''}\n\n\`\`\`text\n${stdout.trim()}\n\`\`\`\n`;
   }
-  await page('cli', 'Commands and flags', cli);
+  await page('cli', { title: 'Commands and flags' }, cli);
   await write(join(site, '.generated/overview.md'), links(guides.get('api-overview').body) + '\n');
   let reference = '# API reference\n\n' + guides.get('api-overview').body.replace(/\[([^\]]+)\]\(api\/[^)]+\)/g, '`$1`') + '\n\nSignatures: [browser types](../types/index.d.ts), [configuration](../types/config.d.ts), [app-process fixtures](../types/fixtures.d.ts). See the [guide](guide.md) for examples.\n';
   let groups = [

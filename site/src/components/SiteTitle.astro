@@ -1,0 +1,18 @@
+---
+import { wordmark } from '../../../src/browser/markup.js';
+let { siteTitle, siteTitleHref } = Astro.locals.starlightRoute;
+---
+<a href={siteTitleHref} class="site-title" aria-label={siteTitle}>
+  <Fragment set:html={wordmark} />
+</a>
+
+<style>
+  .site-title { display: inline-flex; align-items: center; padding: 4px 2px; color: var(--sl-color-white); text-decoration: none; }
+  .site-title :global(.wordmark) { font-size: 1.75rem; }
+  /* The roller turns as you scroll, like the drum under a car on the dyno. Turning the whole svg keeps it on the compositor. */
+  @supports (animation-timeline: scroll()) {
+    .site-title :global(.roller) { animation: roll linear both; animation-timeline: scroll(root); }
+  }
+  @keyframes roll { to { rotate: 3turn; } }
+  @media (prefers-reduced-motion: reduce) { .site-title :global(.roller) { animation: none; } }
+</style>

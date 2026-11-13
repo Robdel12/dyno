@@ -1,5 +1,5 @@
 import { slowestTests } from './timings.js';
-import { pullCurve, pullSheet, ghostCurve, pace, sheetSummary, sheetHead, tachometer, usable } from './dyno-chart.js';
+import { pullCurve, pullSheet, ghostCurve, pace, sheetSummary, sheetHead, tachometer, usable, testCount, sheetNote, sheetSpan } from './dyno-chart.js';
 import { timingDuration, timingLabels, timingPhases, timingOperations, timingText, failurePlace } from './timing-format.js';
 
 export function duration(value) {
@@ -400,18 +400,18 @@ export function createReporter(actions) {
     let shownGhost = usable(curve, ghost);
     write(get('ghost-legend'), shownGhost ? `Last pull, ${duration(shownGhost.time)}` : '');
     get('ghost-legend').hidden = !shownGhost;
-    write(get('sheet-total'), curve.total ? `${curve.total} ${curve.total === 1 ? 'test' : 'tests'}` : '');
-    write(get('sheet-time'), curve.time ? `${duration(Math.max(curve.time, shownGhost?.time ?? 0))} of test time` : 'test time');
+    write(get('sheet-total'), curve.total ? testCount(curve.total) : '');
+    write(get('sheet-time'), sheetSpan(curve, shownGhost));
     write(get('sheet-summary'), sheetSummary(curve));
     let average = pace(curve);
     write(get('run-pace'), average === undefined ? '—' : duration(average));
     let flag = get('sheet-flag');
     let head = sheetHead(curve, shownGhost);
     let finishedPull = curve.total && curve.done === curve.total && !curve.running;
-    let label = curve.running ? curve.running.name : finishedPull ? `${curve.total} ${curve.total === 1 ? "test" : "tests"} @ ${duration(curve.time)}` : '';
+    let label = curve.running ? curve.running.name : finishedPull ? sheetNote(curve) : '';
     flag.hidden = !label;
     flag.dataset.kind = curve.running ? 'running' : 'finished';
-    flag.dataset.side = head.left > 62 ? 'left' : 'right';
+    flag.dataset.side = head.side;
     flag.style.left = `${head.left}%`;
     flag.style.top = `${head.top}%`;
     write(get('sheet-flag-text'), label);

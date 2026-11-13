@@ -83,8 +83,19 @@ export function pullSheet(curve, { ghost, href } = {}) {
 export function sheetHead(curve, ghost) {
   let s = scale(curve, usable(curve, ghost));
   let last = curve.points.at(-1);
-  return Object.freeze({ left: (s.x(last?.x ?? 0) / width) * 100, top: (s.y(last?.y ?? 0) / height) * 100 });
+  let left = (s.x(last?.x ?? 0) / width) * 100;
+  // Notes near the right edge print to the left of the point so they never clip.
+  return Object.freeze({ left, top: (s.y(last?.y ?? 0) / height) * 100, side: left > 62 ? 'left' : 'right' });
 }
+
+export let testCount = (count) => `${count} ${count === 1 ? 'test' : 'tests'}`;
+
+// The finished note, printed like a dyno sheet's peak: "13 tests @ 1.90 s".
+export let sheetNote = (curve) => `${testCount(curve.total)} @ ${timingDuration(curve.time)}`;
+
+// The x-axis label. The axis spans the longer of this pull and its ghost.
+export let sheetSpan = (curve, ghost) =>
+  curve.time ? `${timingDuration(Math.max(curve.time, usable(curve, ghost)?.time ?? 0))} of test time` : 'test time';
 
 /**
  * A small tachometer for the run title. The needle sweeps from 0 to all tests finished.

@@ -1,17 +1,112 @@
+/* Dyno docs: the same dyno cell as the reporter. Dark is the night-shift cell, light is the printed sheet.
+   Tokens and instruments come from the reporter's brand.css; this file maps them onto Starlight.
+   Starlight sets color-scheme from its theme toggle, which picks each light-dark() token. */
+@import '../../../src/browser/brand.css';
+@font-face {
+  font-family: 'Archivo Dyno';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  font-stretch: 62% 125%;
+  src: url('../../../src/browser/fonts/archivo.woff2') format('woff2');
+}
+
 :root {
-  --sl-color-accent-low: #112c26;
-  --sl-color-accent: #53bd9d;
-  --sl-color-accent-high: #b1ebd8;
-  --sl-content-width: 50rem;
-  --sl-text-body: 1rem;
-  --sl-font: ui-sans-serif, system-ui, sans-serif;
+  --sl-color-white: var(--ink);
+  --sl-color-gray-1: light-dark(#1d3042, #d6e0e9);
+  --sl-color-gray-2: light-dark(#33495c, #b9c8d5);
+  --sl-color-gray-3: var(--muted);
+  --sl-color-gray-4: var(--faint);
+  --sl-color-gray-5: var(--line);
+  --sl-color-gray-6: var(--surface);
+  --sl-color-gray-7: var(--raised);
+  --sl-color-black: light-dark(#fbfcfd, #141f2a);
+  --sl-color-accent-low: light-dark(#fff1c2, #3b3005);
+  --sl-color-accent: var(--accent);
+  --sl-color-accent-high: light-dark(#845e00, #ffe08a);
+  --sl-color-text-accent: var(--trace);
+  --sl-color-text-invert: var(--on-accent);
+  --sl-color-bg-nav: color-mix(in srgb, var(--sl-color-black) 94%, transparent);
+  --sl-color-bg-sidebar: var(--sl-color-black);
+  --sl-color-bg-inline-code: light-dark(#e8eef4, #223444);
+  --sl-color-hairline-light: var(--line);
+  --sl-color-hairline: var(--line);
+  --sl-color-hairline-shade: var(--line);
+  --sl-color-backdrop-overlay: light-dark(#0f1f2e66, #0b131bb0);
+  --sl-font: var(--sans);
+  --sl-font-mono: var(--mono);
+  --sl-content-width: 48rem;
+  --sl-text-h1: 2.5rem;
+  --sl-text-h2: 1.75rem;
+  --sl-text-h3: 1.3125rem;
+  --sl-text-h4: 1.125rem;
+  --sl-line-height-headings: 1.15;
 }
-:root[data-theme='light'] {
-  --sl-color-accent-low: #d8f2e8;
-  --sl-color-accent: #176d52;
-  --sl-color-accent-high: #104331;
-}
+
+body { font-stretch: 100%; -webkit-font-smoothing: antialiased; }
+:focus-visible { outline: 2px solid var(--trace); outline-offset: 3px; }
+
+/* Starlight internals: these selectors follow Starlight's markup, so check them after upgrades. */
+
+/* Header */
+header.header { border-bottom: 1px solid var(--line); }
+site-search button[data-open-modal] { border-radius: 7px; border-color: var(--line); background: var(--surface); }
+
+/* Sidebar: the current page sits on a roller, the same mark as a running test. No rails on nested lists. */
+.sidebar-content .large { color: var(--ink); font-size: .9375rem; font-weight: 720; font-stretch: 110%; }
+.sidebar-content ul ul li { border-inline-start: 0; }
+.sidebar-content a { position: relative; border-radius: 6px; color: var(--sl-color-gray-2); font-size: .9375rem; }
+.sidebar-content a:hover { color: var(--ink); }
+.sidebar-content a[aria-current='page'] { color: var(--ink); background: none; font-weight: 680; }
+.sidebar-content a[aria-current='page']::before { content: ''; position: absolute; left: -.6rem; top: 50%; width: 14px; height: 14px; translate: 0 -50%; background: var(--mark); -webkit-mask: var(--roller) center / contain no-repeat; mask: var(--roller) center / contain no-repeat; }
+
+/* Content */
 .sl-markdown-content { line-height: 1.75; }
-.sl-markdown-content h2 { margin-top: 2.5rem; }
-.sl-markdown-content table { font-size: .875rem; }
+.content-panel h1:not([data-page-title]), .sl-markdown-content :is(h1, h2, h3, h4) { letter-spacing: -.02em; }
+.content-panel h1:not([data-page-title]) { font-weight: 780; font-stretch: 118%; text-wrap: balance; }
+.sl-markdown-content h2 { margin-top: 2.75rem; font-weight: 740; font-stretch: 114%; }
+.sl-markdown-content h3 { font-weight: 700; font-stretch: 108%; }
+.sl-markdown-content h4 { font-weight: 680; }
+.sl-markdown-content a:not(:where(.not-content *)) { text-underline-offset: 4px; text-decoration-thickness: 1px; }
+.sl-markdown-content a:not(:where(.not-content *)):hover { text-decoration-thickness: 2px; }
+.sl-markdown-content code:not(:where(.not-content *, pre *)) { padding: .1em .35em; border-radius: 4px; font-size: .875em; }
+.sl-markdown-content table { display: table; width: 100%; font-size: .875rem; font-variant-numeric: tabular-nums; border-collapse: collapse; }
+.sl-markdown-content :is(th, td) { padding: .6rem .75rem; border: 0; border-bottom: 1px solid var(--line); background: none; }
+.sl-markdown-content th { color: var(--muted); font-size: .8125rem; font-weight: 600; text-align: start; }
 .sl-markdown-content table:has(a[id^="property-"]) td:nth-child(4) { min-width: 16rem; }
+.sl-markdown-content hr { border-color: var(--line); }
+
+/* Callouts: tinted plates, no rails. Cautions get hazard tape, the cell's own "stop and look" sign. */
+.starlight-aside { position: relative; overflow: hidden; border: 1px solid var(--line); border-radius: 8px; }
+.starlight-aside--note, .starlight-aside--tip { --sl-color-asides-text-accent: var(--trace); background: color-mix(in srgb, var(--trace) 7%, var(--surface)); }
+.starlight-aside--caution { --sl-color-asides-text-accent: var(--accent-text); background: color-mix(in srgb, var(--accent) 8%, var(--surface)); }
+.starlight-aside--danger { --sl-color-asides-text-accent: var(--fail); background: color-mix(in srgb, var(--fail) 8%, var(--surface)); }
+.starlight-aside:is(.starlight-aside--caution, .starlight-aside--danger) { padding-top: 1.35rem; }
+.starlight-aside:is(.starlight-aside--caution, .starlight-aside--danger)::before { content: ''; position: absolute; inset: 0 0 auto; height: 5px; background: var(--hazard); }
+
+/* Buttons: primary is a hazard-yellow plate, like Run all in the reporter. */
+.sl-link-button { border-radius: 7px; font-weight: 720; font-stretch: 108%; }
+.sl-link-button.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.sl-link-button.primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); color: var(--on-accent); }
+.sl-link-button.secondary { border-color: var(--line); }
+.sl-link-button.secondary:hover { border-color: var(--faint); }
+
+/* Pagination and table of contents */
+.pagination-links a { border-radius: 8px; border-color: var(--line); box-shadow: none; }
+.pagination-links a:hover { border-color: var(--faint); }
+.pagination-links .link-title { color: var(--ink); font-weight: 720; font-stretch: 110%; }
+starlight-toc a[aria-current='true'] { color: var(--ink); font-weight: 650; }
+
+/* Splash pages: a faint sheet grid behind the hero, like printed dyno paper, and short reading lines below it. */
+[data-has-hero] .main-frame { position: relative; isolation: isolate; }
+[data-has-hero] .main-frame::before { content: ''; position: absolute; inset: 0 0 auto; z-index: -1; height: 38rem; pointer-events: none; background-image: linear-gradient(var(--grid) 1px, transparent 1px), linear-gradient(90deg, var(--grid) 1px, transparent 1px); background-size: 48px 48px; mask-image: linear-gradient(to bottom, #000, transparent); -webkit-mask-image: linear-gradient(to bottom, #000, transparent); }
+[data-has-hero] .sl-markdown-content { max-width: 46rem; }
+.hero h1 { margin: 0; color: var(--ink); font-size: clamp(2.5rem, 1.4rem + 4vw, 4.25rem); line-height: 1; font-weight: 820; font-stretch: 122%; letter-spacing: -.035em; text-wrap: balance; }
+.hero .tagline { margin: 0; max-width: 34rem; color: var(--sl-color-gray-2); font-size: clamp(1.0625rem, 1rem + .4vw, 1.25rem); line-height: 1.55; }
+
+/* The 404: a big tach whose needle never left zero. */
+.stalled { display: grid; justify-items: center; gap: 1rem; text-align: center; color: var(--muted); }
+.stalled .tach { width: 180px; height: 102px; }
+.stalled .tach-track { stroke-width: 12; }
+.stalled .tach-ticks { stroke-width: 2.5; }
+.stalled .tach-needle { stroke-width: 5; }
