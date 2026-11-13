@@ -83,7 +83,7 @@ import { readAppBinding, appController, appRuntime } from './companion.js';
       height: '100vh',
       border: '0',
       zIndex: '2147483647',
-      background: '#151719',
+      background: '#141f2a',
       display: 'none'
     });
     reporter.src = `/__dyno__/reporter?run=${encodeURIComponent(binding.runId)}&embedded=1`;
@@ -164,14 +164,29 @@ import { readAppBinding, appController, appRuntime } from './companion.js';
       right: '16px',
       bottom: '16px',
       zIndex: '2147483646',
-      font: '500 13px system-ui',
-      background: '#24272a',
-      color: '#f4f0e9',
-      border: '1px solid #59534b',
-      borderRadius: '5px',
-      padding: '10px 14px',
+      font: '700 13px/1 system-ui, sans-serif',
+      background: '#ffc629',
+      color: '#1d1600',
+      border: '0',
+      borderRadius: '6px',
+      padding: '9px 14px 9px 11px',
+      boxShadow: '0 6px 18px rgba(15, 31, 46, .35)',
       cursor: 'pointer'
     });
+    if (!disconnected) {
+      // The brand roller, drawn with DOM APIs so app CSP and markup never touch it.
+      let svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      svg.setAttribute('viewBox', '0 0 40 40');
+      svg.setAttribute('aria-hidden', 'true');
+      Object.assign(svg.style, { width: '15px', height: '15px', marginRight: '8px', verticalAlign: '-3px', display: 'inline' });
+      let path = document.createElementNS(svg.namespaceURI, 'path');
+      path.setAttribute('d', 'M20 4.5a15.5 15.5 0 1 0 0 31a15.5 15.5 0 1 0 0-31M20 16a4 4 0 1 0 0 8a4 4 0 1 0 0-8');
+      path.setAttribute('fill', 'none');
+      path.setAttribute('stroke', 'currentColor');
+      path.setAttribute('stroke-width', '5');
+      svg.append(path);
+      inspectButton.prepend(svg);
+    }
     inspectButton.addEventListener('click', () => {
       if (disconnected) location.assign('/__dyno__/');
       else inspect();

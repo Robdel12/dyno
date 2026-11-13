@@ -6,10 +6,14 @@ import { proxyRequest, proxyUpgrade } from './proxy.js';
 import { createCoordinator } from './coordinator.js';
 import { defaultViewport } from './browser/viewport.js';
 import { createBrowserControl } from './browser-control.js';
+import { wordmark } from './browser/markup.js';
 
 let prefix = '/__dyno__/';
+let favicon = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><rect width="40" height="40" rx="9" fill="#141f2a"/><circle cx="20" cy="20" r="12.5" fill="none" stroke="#ffc629" stroke-width="5"/><circle cx="20" cy="20" r="3.5" fill="#ffc629"/></svg>')}`;
+let archivo = readFile(new URL('./browser/fonts/archivo.woff2', import.meta.url));
+let withWordmark = (html) => html.replace('<!-- wordmark -->', wordmark);
 let page = (title, body, script, stylesheet = 'runtime.css') =>
-  `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>${title}</title><link rel="stylesheet" href="${prefix}${stylesheet}"></head><body>${body}<script type="module" src="${prefix}${script}"></script></body></html>`;
+  `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><link rel="icon" href="${favicon}"><title>${title}</title><link rel="stylesheet" href="${prefix}${stylesheet}"></head><body>${body}<script type="module" src="${prefix}${script}"></script></body></html>`;
 
 async function reporterInput(request, limit = 1_000_000) {
   let chunks = [];
@@ -50,19 +54,19 @@ export async function createGateway(
 ) {
   let shell = page(
     'Dyno',
-    await readFile(new URL('./browser/host.html', import.meta.url), 'utf8'),
+    withWordmark(await readFile(new URL('./browser/host.html', import.meta.url), 'utf8')),
     'shell.js',
     'host.css',
   );
   let start = page(
     'Dyno',
-    '<main><h1>Dyno</h1><p id="start-status">Connecting tests…</p><button id="start" hidden>Start tests</button></main>',
+    `<main class="control-room">${wordmark}<h1>Start a test run</h1><p id="start-status">Connecting tests…</p><button id="start" hidden>Start tests</button></main>`,
     'bootstrap.js',
     'host.css',
   );
   let reporter = page(
     'Dyno results',
-    await readFile(new URL('./browser/reporter.html', import.meta.url), 'utf8'),
+    withWordmark(await readFile(new URL('./browser/reporter.html', import.meta.url), 'utf8')),
     'reporter-client.js',
     'reporter.css',
   );
@@ -186,6 +190,8 @@ export async function createGateway(
             'runtime.css',
             'host.css',
             'reporter.js',
+            'dyno-chart.js',
+            'markup.js',
             'timings.js',
             'timing-format.js',
             'reporter-client.js',
@@ -203,6 +209,10 @@ export async function createGateway(
             route.endsWith('.css') ? 'text/css' : 'text/javascript',
             await readFile(new URL(`./browser/${route}`, import.meta.url), 'utf8'),
           );
+        if (route === 'archivo.woff2' && request.method === 'GET') {
+          response.setHeader('Cache-Control', 'public, max-age=86400');
+          return send('font/woff2', await archivo);
+        }
         if (route === 'suite-model.js')
           return send(
             'text/javascript',

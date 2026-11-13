@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { createReport } from './report-model.js';
 import { createReportWriter } from './reports.js';
-import { escapeMarkup } from './report-format.js';
+import { escapeMarkup } from './browser/markup.js';
 import { replayCommand } from './repeat.js';
 
 export let repeatEvidenceLimit = 256 * 1024 * 1024;
@@ -19,7 +19,7 @@ function overview(batch) {
   let rows = batch.tests.map(test => `<tr><td>${x([...test.suites, test.name].join(' › '))}</td><td>${test.passed}</td><td>${test.failed}</td><td>${test.skipped}</td><td>${test.notRun}</td></tr>`).join('');
   let failure = batch.firstFailure;
   return `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Dyno repeated runs</title>
-<style>body{font:16px/1.6 system-ui;max-width:72rem;margin:3rem auto;padding:0 1rem;background:#171719;color:#eee}a{color:#ffad73}table{border-collapse:collapse;width:100%}th,td{text-align:left;padding:.6rem;border-bottom:1px solid #444}pre{white-space:pre-wrap;overflow-wrap:anywhere}code{overflow-wrap:anywhere}</style>
+<style>:root{color-scheme:dark light;--bg:#141f2a;--surface:#1a2835;--line:#2a3d4f;--ink:#e9eff4;--muted:#90a5b7;--trace:#63a9ff;--accent:#ffc629}@media(prefers-color-scheme:light){:root{--bg:#edf1f5;--surface:#fff;--line:#ccd6e0;--ink:#0f1f2e;--muted:#536a7e;--trace:#1a5bc4}}body{font:15px/1.6 system-ui,sans-serif;max-width:72rem;margin:0 auto;padding:2.5rem 1.25rem 4rem;background:var(--bg);color:var(--ink)}body::before{content:"";display:block;height:5px;margin-bottom:2rem;border-radius:3px;background:repeating-linear-gradient(-45deg,var(--accent) 0 9px,#1d1600 9px 18px)}h1{font-size:30px;letter-spacing:-.02em;margin:0 0 .5rem}h2{font-size:17px;margin-top:2.2rem}p{color:var(--muted)}a{color:var(--trace)}table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}th{color:var(--muted);font-size:12px;font-weight:600}th,td{text-align:left;padding:.6rem;border-bottom:1px solid var(--line)}pre{white-space:pre-wrap;overflow-wrap:anywhere;padding:12px 14px;background:var(--surface);border:1px solid var(--line);border-radius:8px}code{overflow-wrap:anywhere}</style>
 <h1>Repeated runs: ${x(batch.status)}</h1><p>${batch.completed}/${batch.requested} rounds completed · ${batch.failedRounds} with failures</p>
 <p>Browser storage and project worker resources were reused. Seeds reproduce priority; schedules reproduce worker queues, not asynchronous timing. The source fingerprint covers the test bundle, not the running app or backend.</p>
 ${batch.reason ? `<p>Stopped: ${x(batch.reason)}</p>` : ''}
