@@ -27,8 +27,6 @@ Tests live under `tests/core`, `tests/package`, `tests/browser`, `tests/executio
 
 Core checks and actionlint workflow validation run first. Browser and package suites run in parallel once core passes. Documentation runs separately. Browser, execution, repeat, project, reporter, native, and capture suites have separate jobs so each complete suite has its own budget. Each test job has a hard five-minute cap, including setup. Browser and execution checks run up to three independent files together; each owns its app, gateway, browser profiles, and fixture directory. Tests inside a file stay sequential. Repeat, project, reporter, native, capture, and package suites stay sequential. The macOS process-group check runs once in core instead of repeating for each browser. There are no retries or extra sleeps.
 
-Execution and reporter checks have their own suites because the combined macOS Firefox browser suite reached 288–294 seconds. Project setup and preparation now have their own suite after execution exhausted the same cap. Repeated runs have a separate suite after the added real-browser rounds pushed macOS Firefox execution past that cap. Every test and engine/OS combination remains covered. Product suites and benchmarks keep their configured execution; this grouping only changes Dyno's own CI.
-
 ## Results and setup
 
 Each test job uploads `output.log` and `results.xml` under its own artifact name, retained for seven days. They include failed test diagnostics; they don't retain fixture app data or screenshot files. Set `DYNO_TEST_REPORT_DIR` locally to write JUnit output alongside the console report.

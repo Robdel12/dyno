@@ -10,6 +10,9 @@ html{background:white}body{font:16px system-ui;margin:24px}label{display:block;m
 #secret{position:absolute;left:600px;top:400px;width:60px;height:40px;background:rgb(200,10,20)}
 #hover{width:200px;height:80px;background:rgb(20,60,140);margin:16px 0}
 #hover:hover{background:rgb(20,160,80)}
+#motion{animation:native-motion 1s infinite alternate}
+@keyframes native-motion{to{transform:translateX(10px)}}
+@media(prefers-reduced-motion:reduce){#motion{animation:none}}
 #tall{position:absolute;top:1600px;left:24px;width:160px}#tall>div{height:500px}
 @media(max-width:500px){#secret{display:none}}
 @media(min-height:1000px){#tall>div{background:rgb(1,2,3)!important}}
@@ -22,6 +25,7 @@ html{background:white}body{font:16px system-ui;margin:24px}label{display:block;m
 <button id="copy">Copy token</button><output id="copied"></output>
 <button id="load">Load status</button><output id="network"></output>
 <div id="hover">Hover target</div><a href="/destination">Open destination</a>
+<div id="motion">Motion preview</div>
 <div style="height:900px"></div>
 <section id="tall"><div style="background:rgb(180,40,90)"></div><div style="background:rgb(20,160,80)"></div><div style="background:rgb(20,60,140)"></div></section>
 <script>
@@ -38,6 +42,9 @@ window.viewportSnapshot=()=>({
 window.addEventListener('resize',event=>viewportChanges.push({
   ...viewportSnapshot(),eventAt:event.timeStamp,stage:viewportObservationStage
 }));
+let hover=document.querySelector('#hover');
+hover.addEventListener('mouseenter',()=>{hover.textContent='Pointer inside';});
+hover.addEventListener('mouseleave',()=>{hover.textContent='Pointer outside';});
 document.querySelector('form').onsubmit=async event=>{
   event.preventDefault();
   let response=await fetch('/api/records',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:document.querySelector('#name').value,notes:document.querySelector('#notes').value})});
