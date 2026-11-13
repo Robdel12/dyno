@@ -9,12 +9,15 @@ export default defineConfig({
   site: 'https://robdel12.github.io',
   base,
   outDir: './dist',
+  // In dev, the browser loads the reporter's shared font and brand.css from the package's src/browser.
+  vite: { server: { fs: { allow: ['.', '../src/browser'] } } },
   integrations: [starlight({
     title: 'Dyno',
     description: 'Browser tests that run in the browser.',
     social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/Robdel12/dyno' }],
     customCss: ['./src/styles/docs.css'],
-    components: { Header: './src/components/Header.astro' },
+    expressiveCode: { styleOverrides: { borderRadius: '8px', frames: { frameBoxShadowCssValue: 'none' } } },
+    components: { Header: './src/components/Header.astro', SiteTitle: './src/components/SiteTitle.astro', Hero: './src/components/Hero.astro' },
     plugins: [starlightTypeDoc({
       entryPoints: ['./.generated/types/dyno.d.ts', './.generated/types/config.d.ts', './.generated/types/fixtures.d.ts'],
       tsconfig: './tsconfig.json',

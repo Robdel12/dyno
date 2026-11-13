@@ -1,5 +1,5 @@
 /* Dyno: the reporter is a dyno sheet. One pull per run, plotted as it happens.
-   Tokens first; every color below comes from here. */
+   Tokens, the wordmark, the tach, and the sheet live in brand.css, which loads first. */
 @font-face {
   font-family: 'Archivo Dyno';
   font-style: normal;
@@ -9,51 +9,14 @@
   src: url('/__dyno__/archivo.woff2') format('woff2');
 }
 :root {
-  --roller: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Ccircle cx='20' cy='20' r='15.5' fill='none' stroke='%23000' stroke-width='5.5'/%3E%3Cpath d='M20 4.5v5M20 30.5v5M4.5 20h5M30.5 20h5M9 9l3.5 3.5M27.5 27.5L31 31M31 9l-3.5 3.5M12.5 27.5L9 31' stroke='%23000' stroke-width='3' stroke-linecap='round'/%3E%3Ccircle cx='20' cy='20' r='4'/%3E%3C/svg%3E");
   color-scheme: dark light;
-  --bg: #141f2a;
-  --surface: #1a2835;
-  --raised: #223444;
-  --line: #2a3d4f;
-  --grid: #20303f;
-  --ink: #e9eff4;
-  --muted: #90a5b7;
-  --faint: #62778b;
-  --trace: #63a9ff;
-  --accent: #ffc629;
-  --on-accent: #1d1600;
-  --accent-text: #ffc629;
-  --mark: #ffc629;
   --desk-height: 60px;
-  --pass: #4fd08a;
-  --fail: #ff5c61;
-  --fail-tint: #ff5c6114;
-  --hover: #63a9ff0d;
   --shadow: 0 18px 40px #0007;
-  --sans: 'Archivo Dyno', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --mono: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
   font: 400 14px/1.5 var(--sans);
   font-stretch: 100%;
 }
 @media (prefers-color-scheme: light) {
-  :root {
-    --bg: #edf1f5;
-    --surface: #ffffff;
-    --raised: #f5f8fa;
-    --line: #ccd6e0;
-    --grid: #e1e8ef;
-    --ink: #0f1f2e;
-    --muted: #536a7e;
-    --faint: #8496a8;
-    --trace: #1a5bc4;
-    --accent-text: #845e00;
-    --mark: #e0a400;
-    --pass: #11804a;
-    --fail: #c8192e;
-    --fail-tint: #c8192e0d;
-    --hover: #1a5bc40a;
-    --shadow: 0 18px 40px #0f1f2e24;
-  }
+  :root { --shadow: 0 18px 40px #0f1f2e24; }
 }
 
 * { box-sizing: border-box; }
@@ -76,7 +39,7 @@ button { cursor: pointer; font-weight: 600; white-space: nowrap; }
 button:hover:not(:disabled) { border-color: var(--faint); }
 button:disabled { opacity: .42; cursor: default; }
 button.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 720; font-stretch: 108%; }
-button.primary:hover:not(:disabled) { background: #ffd457; border-color: #ffd457; }
+button.primary:hover:not(:disabled) { background: var(--accent-hover); border-color: var(--accent-hover); }
 button.primary:disabled { background: transparent; border-color: var(--line); color: var(--muted); }
 button.quiet { background: transparent; }
 button.stop:not(:disabled) { color: var(--fail); border-color: color-mix(in srgb, var(--fail) 45%, transparent); }
@@ -87,13 +50,8 @@ select { padding-right: 8px; }
 /* Control desk */
 .desk { position: sticky; top: 0; z-index: 4; height: var(--desk-height); padding: 0 28px; display: flex; align-items: center; justify-content: space-between; gap: 16px; background: color-mix(in srgb, var(--bg) 92%, transparent); backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); }
 .brand { display: inline-flex; align-items: center; text-decoration: none; padding: 4px 2px; }
-.wordmark { display: inline-flex; align-items: baseline; font-size: 27px; line-height: 1; font-weight: 860; font-stretch: 125%; letter-spacing: -.035em; transform: skewX(-9deg); }
-.roller { width: .8em; height: .8em; margin-left: .04em; align-self: center; translate: 0 .1em; overflow: visible; }
-.roller-drum { fill: none; stroke: var(--mark); stroke-width: 5.5; }
-.roller-knurl { stroke: var(--mark); stroke-width: 3; stroke-linecap: round; transform-origin: 20px 20px; }
-.roller-hub { fill: var(--mark); }
+.wordmark { font-size: 27px; }
 :root[data-phase=running] .roller-knurl, :root[data-phase=discovering] .roller-knurl, :root[data-phase=resuming] .roller-knurl, :root[data-phase=pausing] .roller-knurl { animation: spin .7s linear infinite; }
-@keyframes spin { to { rotate: 1turn; } }
 .run-actions { display: flex; align-items: center; gap: 8px; }
 .run-options { position: relative; }
 .run-options > summary { display: grid; place-items: center; width: 34px; height: 34px; list-style: none; cursor: pointer; border-radius: 6px; color: var(--muted); }
@@ -118,7 +76,7 @@ select { padding-right: 8px; }
 
 /* Paused: the car is stopped on the rollers. The only place hazard stripes appear. */
 .pause-banner { position: relative; display: flex; justify-content: space-between; align-items: center; gap: 20px; padding: 18px 18px 14px; margin-bottom: 28px; background: color-mix(in srgb, var(--accent) 8%, var(--surface)); border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); border-radius: 8px; overflow: hidden; font-size: 14px; font-weight: 560; }
-.pause-banner::before { content: ''; position: absolute; inset: 0 0 auto; height: 5px; background: repeating-linear-gradient(-45deg, var(--accent) 0 9px, var(--on-accent) 9px 18px); }
+.pause-banner::before { content: ''; position: absolute; inset: 0 0 auto; height: 5px; background: var(--hazard); }
 .pause-banner a { margin-left: 6px; color: var(--accent-text); font-weight: 650; }
 .pause-banner button { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 720; }
 
@@ -126,46 +84,19 @@ select { padding-right: 8px; }
 .pull { margin-bottom: 20px; }
 .pull-title { display: flex; align-items: center; gap: 14px; }
 /* The tachometer: needle sweeps to all tests finished. Its arc takes the run's status color. */
-.tach { width: 60px; height: 34px; flex: none; overflow: visible; --tone: var(--faint); }
-.tach path { fill: none; vector-effect: non-scaling-stroke; }
-.tach-ticks { stroke: var(--muted); stroke-width: 1.6; stroke-linecap: round; }
-.tach-track { stroke: var(--grid); stroke-width: 5; }
-.tach-sweep { stroke: var(--tone); stroke-width: 5; stroke-dasharray: var(--progress, 0) 1; transition: stroke-dasharray .35s ease-out; }
-.tach-needle { stroke: var(--ink); stroke-width: 2.4; stroke-linecap: round; transform-origin: 30px 31px; rotate: calc(-90deg + var(--progress, 0) * 180deg); transition: rotate .35s cubic-bezier(.3, 1.5, .5, 1); }
-.tach-hub { fill: var(--ink); }
-.tach[data-phase=running], .tach[data-phase=discovering], .tach[data-phase=pausing], .tach[data-phase=resuming], .tach[data-phase=paused], .tach[data-phase=debugging] { --tone: var(--accent); }
-.tach[data-phase=completed] { --tone: var(--pass); }
-.tach[data-phase=completed][data-failed=true], .tach[data-phase=stopped][data-failed=true], .tach[data-phase=error] { --tone: var(--fail); }
+.tach { width: 60px; height: 34px; }
 #status { font-size: clamp(26px, 3.2vw, 38px); }
 #run-meta { margin: 8px 0 0 74px; color: var(--muted); overflow-wrap: anywhere; }
 
 /* The sheet */
 .sheet { display: grid; grid-template-columns: minmax(0, 1fr) 236px; margin-bottom: 24px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
 .sheet-chart { margin: 0; padding: 20px 22px 12px; min-width: 0; }
-.sheet-frame { position: relative; height: clamp(140px, 19vh, 236px); margin: 0 0 26px 0; border-left: 1px solid var(--faint); border-bottom: 1px solid var(--faint); }
-.sheet-canvas, .sheet-plot { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
-.sheet-plot path { vector-effect: non-scaling-stroke; fill: none; }
-.sheet-plot .sheet-area { fill: var(--trace); opacity: .07; stroke: none; }
-.sheet-grid { stroke: var(--grid); stroke-width: 1; }
-.sheet-ceiling { stroke: var(--faint); stroke-width: 1; stroke-dasharray: 3 5; }
-.sheet-ghost { stroke: var(--faint); stroke-width: 1.5; stroke-dasharray: 2 5; stroke-linejoin: round; }
-.sheet-trace { stroke: var(--trace); stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; }
-.sheet-point { stroke: var(--trace); stroke-width: 6; stroke-linecap: round; }
-.sheet-point[data-status=failed] { stroke: var(--fail); stroke-width: 11; }
-.sheet-point[data-status=skipped], .sheet-point[data-status=stopped] { stroke: var(--faint); }
+.sheet-frame { height: clamp(140px, 19vh, 236px); margin: 0 0 26px 0; }
 .sheet-plot a:hover .sheet-point { stroke-width: 13; }
 .sheet-head { stroke: var(--accent); stroke-width: 12; stroke-linecap: round; animation: throb 1s ease-in-out infinite alternate; }
 @keyframes throb { from { stroke-width: 8; } to { stroke-width: 14; } }
-.sheet-axis { position: absolute; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.sheet-axis-y { left: 8px; top: -20px; }
-.sheet-axis-x { right: 0; bottom: -22px; }
 .sheet-frame::after { content: '0'; position: absolute; left: -2px; bottom: -22px; color: var(--muted); font-size: 11px; }
 .sheet-chart figcaption { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 20px; color: var(--muted); font-size: 12px; }
-.sheet-legend { display: flex; gap: 18px; }
-.legend-trace, .legend-ghost { display: inline-flex; align-items: center; gap: 8px; }
-.legend-trace::before, .legend-ghost::before { content: ''; width: 18px; }
-.legend-trace::before { border-top: 2.5px solid var(--trace); }
-.legend-ghost::before { border-top: 2px dotted var(--faint); }
 .readouts { margin: 0; display: flex; flex-direction: column; border-left: 1px solid var(--line); }
 .readout { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex: 1; padding: 6px 20px; border-bottom: 1px solid var(--line); }
 .readout:last-child { border-bottom: 0; }
@@ -380,14 +311,6 @@ select { padding-right: 8px; }
   *, *::before, *::after { animation: none !important; scroll-behavior: auto !important; }
 }
 
-/* Sheet notes ride the curve like the peak note on a printed dyno sheet: a leader line, then plain text. */
-.sheet-flag { position: absolute; z-index: 1; display: flex; align-items: center; gap: 6px; max-width: min(46%, 320px); margin: 0; translate: 8px -130%; font-size: 12px; font-weight: 700; font-stretch: 112%; white-space: nowrap; pointer-events: none; }
-.sheet-flag::before { content: ''; flex: none; width: 22px; height: 12px; translate: 0 7px; border-top: 1px solid currentColor; border-left: 1px solid currentColor; transform: skewX(-35deg); transform-origin: bottom left; }
-.sheet-flag span { overflow: hidden; text-overflow: ellipsis; padding: 1px 4px; background: color-mix(in srgb, var(--surface) 88%, transparent); }
-.sheet-flag[data-side=left] { flex-direction: row-reverse; translate: calc(-100% - 8px) -130%; }
-.sheet-flag[data-side=left]::before { border-left: 0; border-right: 1px solid currentColor; transform: skewX(35deg); transform-origin: bottom right; }
-.sheet-flag[data-kind=running] { color: var(--accent-text); }
-.sheet-flag[data-kind=finished] { color: var(--ink); font-variant-numeric: tabular-nums; }
 #run-seed { margin: 0 0 12px; color: var(--ink); font-family: var(--mono); font-size: 12px; }
 /* Keep scrolled-to targets clear of the sticky control desk. */
 html { scroll-padding-top: calc(var(--desk-height) + 12px); }

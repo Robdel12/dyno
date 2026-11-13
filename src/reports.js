@@ -51,7 +51,7 @@ export function createReportWriter(directory, { redact = (value) => value } = {}
       }
       if (missing.length) report = missingImages(report, missing);
       let styles = await Promise.all(
-        ['reporter.css', 'saved-report.css'].map(file => readFile(new URL(`./browser/${file}`, import.meta.url), 'utf8'))
+        ['brand.css', 'reporter.css', 'saved-report.css'].map(file => readFile(new URL(`./browser/${file}`, import.meta.url), 'utf8'))
       );
       let font = (await readFile(new URL('./browser/fonts/archivo.woff2', import.meta.url))).toString('base64');
       let css = styles.join('\n').replaceAll("url('/__dyno__/archivo.woff2')", `url('data:font/woff2;base64,${font}')`);

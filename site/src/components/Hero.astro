@@ -1,0 +1,108 @@
+---
+import { LinkButton } from '@astrojs/starlight/components';
+import Default from '@astrojs/starlight/components/Hero.astro';
+import { pullCurve, pullSheet, sheetHead, ghostCurve, tachometer, testCount, sheetNote, sheetSpan } from '../../../src/browser/dyno-chart.js';
+import { timingDuration } from '../../../src/browser/timing-format.js';
+
+// A hero without its own image gets the example pull. Heroes with an image, like the 404's stalled
+// tach, use Starlight's hero.
+let { data } = Astro.locals.starlightRoute.entry;
+let { title = data.title, tagline, image, actions = [] } = data.hero ?? {};
+let home = !image;
+
+// An example pull: one slow import test leaves a long flat stretch. The second pull is the same
+// suite after that test got faster, drawn over the first one's ghost.
+let names = ['opens the inbox', 'saves a contact', 'validates the email field', 'archives a contact', 'imports 500 contacts', 'filters by name', 'shows an empty state', 'applies a coupon', 'rejects an expired card', 'sends a receipt', 'exports a CSV', 'signs out'];
+let slow = [120, 95, 140, 88, 1240, 110, 76, 130, 64, 98, 150, 82];
+let fast = slow.map((duration, index) => (index === 4 ? 180 : duration));
+let pull = (durations, failed) => pullCurve(names.map((name, index) => ({ id: String(index), index, name, duration: durations[index], status: index === failed ? 'failed' : 'passed' })));
+let first = pull(slow, 7);
+let second = pull(fast);
+let ghost = ghostCurve(first, 'first');
+let pulls = [
+  { name: 'first', curve: first, caption: 'Steep is fast. That flat stretch is one slow import test.' },
+  { name: 'second', curve: second, ghost, caption: `The import got faster. This pull beat the last one by ${timingDuration(first.time - second.time)}.` }
+].map((state) => ({ ...state, head: sheetHead(state.curve, state.ghost), failed: state.curve.points.some((point) => point.status === 'failed') }));
+// Starlight's skip link and table of contents point at the page title by this id.
+let titleId = '_top';
+---
+{home ? (
+  <div class="hero">
+    <div class="copy">
+      <h1 id={titleId} data-page-title set:html={title} />
+      {tagline && <p class="tagline" set:html={tagline} />}
+      <div class="actions">
+        {actions.map(({ link: href, text, variant }) => <LinkButton {href} {variant}>{text}</LinkButton>)}
+      </div>
+    </div>
+    <figure class="instrument" data-pull="first">
+      {pulls.map(({ name, curve, ghost, head, failed, caption }) => (
+        <div class="pull" data-state={name}>
+          <div class="instrument-head">
+            <Fragment set:html={tachometer({ phase: 'completed', failed, progress: 1 })} />
+            <p class="instrument-title">An example pull</p>
+          </div>
+          <div class="sheet-frame">
+            <div class="sheet-canvas" set:html={pullSheet(curve, { ghost })} />
+            <p class="sheet-flag" data-side={head.side} style={`left:${head.left}%;top:${head.top}%`}><span>{sheetNote(curve)}</span></p>
+            <span class="sheet-axis sheet-axis-y">{testCount(curve.total)}</span>
+            <span class="sheet-axis sheet-axis-x">{sheetSpan(curve, ghost)}</span>
+          </div>
+          <figcaption>
+            <span class="sheet-legend"><span class="legend-trace">This pull</span>{ghost && <span class="legend-ghost">Last pull, {timingDuration(ghost.time)}</span>}</span>
+            <span class="caption">{caption}</span>
+          </figcaption>
+        </div>
+      ))}
+      <button type="button" class="pull-again">Run it again</button>
+    </figure>
+  </div>
+) : (
+  <Default />
+)}
+
+<script>
+  // Showing the second pull restarts its draw-in, sweep, and note animations.
+  for (let button of document.querySelectorAll('.pull-again'))
+    button.addEventListener('click', () => {
+      let figure = button.closest('.instrument');
+      if (figure instanceof HTMLElement) figure.dataset.pull = 'second';
+    });
+</script>
+
+<style>
+  .hero { display: grid; gap: 2.5rem; align-items: center; padding-block: clamp(1.5rem, 6vmin, 4.5rem) 1rem; }
+  @media (min-width: 64rem) { .hero { grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); gap: 3.5rem; } }
+  .copy { display: flex; flex-direction: column; align-items: flex-start; gap: 1.25rem; }
+  .actions { display: flex; flex-wrap: wrap; gap: .75rem 1rem; margin-top: .5rem; }
+
+  .instrument { position: relative; margin: 0; padding: 1.25rem 1.25rem 1rem; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
+  .instrument[data-pull=first] [data-state=second], .instrument[data-pull=second] [data-state=first] { display: none; }
+  .instrument-head { display: flex; align-items: center; gap: .75rem; min-height: 34px; margin-bottom: 1.75rem; padding-right: 7.5rem; }
+  .instrument-head :global(.tach) { width: 52px; height: 30px; }
+  .instrument-title { margin: 0; color: var(--ink); font-weight: 700; font-stretch: 112%; }
+  .pull-again { position: absolute; top: 1.25rem; right: 1.25rem; padding: .35rem .8rem; color: var(--ink); background: transparent; border: 1px solid var(--line); border-radius: 6px; font: inherit; font-size: .8125rem; font-weight: 650; cursor: pointer; }
+  .pull-again:hover { border-color: var(--faint); }
+  .sheet-frame { height: clamp(170px, 26vw, 250px); margin: 0 0 2rem; }
+  .sheet-axis { font-size: .75rem; }
+  .sheet-flag { font-size: .8125rem; }
+  figcaption { display: flex; flex-wrap: wrap; justify-content: space-between; gap: .5rem 1.25rem; color: var(--muted); font-size: .8125rem; }
+  .caption { color: var(--sl-color-gray-2); }
+
+  /* One orchestrated moment: the pull draws in left to right, the needle sweeps, then the note prints. */
+  @media (prefers-reduced-motion: no-preference) {
+    .sheet-canvas :global(.sheet-plot) { animation: draw 1.6s cubic-bezier(.45, 0, .2, 1) both; }
+    .instrument-head :global(.tach) { animation: sweep 1.6s cubic-bezier(.45, 0, .2, 1) both; }
+    .sheet-flag { animation: print .3s 1.5s ease-out both; }
+  }
+  @keyframes draw { from { clip-path: inset(-12px 100% -12px -12px); } to { clip-path: inset(-12px); } }
+  @keyframes sweep { from { --progress: 0; } }
+  @keyframes print { from { opacity: 0; translate: var(--flag-x) -90%; } }
+
+  @media (max-width: 40rem) {
+    .instrument { padding: 1rem .875rem .875rem; }
+    .pull-again { top: 1rem; right: .875rem; }
+    .instrument-title { font-size: .9375rem; }
+    .sheet-frame { height: 160px; }
+  }
+</style>

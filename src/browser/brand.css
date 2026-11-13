@@ -1,0 +1,82 @@
+/* Dyno's brand: tokens and the instruments shared by the reporter, the control room, saved reports,
+   and the docs site. Colors use light-dark(), so each page picks a theme by setting color-scheme:
+   the reporter follows the system, the control room stays dark, and the docs follow their theme toggle.
+   Pages bring their own @font-face (the URL differs) and size these pieces for their layout. */
+:root {
+  --bg: light-dark(#edf1f5, #141f2a);
+  --surface: light-dark(#ffffff, #1a2835);
+  --raised: light-dark(#f5f8fa, #223444);
+  --line: light-dark(#ccd6e0, #2a3d4f);
+  --grid: light-dark(#e1e8ef, #20303f);
+  --ink: light-dark(#0f1f2e, #e9eff4);
+  --muted: light-dark(#536a7e, #90a5b7);
+  --faint: light-dark(#8496a8, #62778b);
+  --trace: light-dark(#1a5bc4, #63a9ff);
+  --accent: #ffc629;
+  --accent-hover: #ffd457;
+  --on-accent: #1d1600;
+  --accent-text: light-dark(#845e00, #ffc629);
+  --mark: light-dark(#e0a400, #ffc629);
+  --pass: light-dark(#11804a, #4fd08a);
+  --fail: light-dark(#c8192e, #ff5c61);
+  --fail-tint: light-dark(#c8192e0d, #ff5c6114);
+  --hover: light-dark(#1a5bc40a, #63a9ff0d);
+  --hazard: repeating-linear-gradient(-45deg, var(--accent) 0 9px, var(--on-accent) 9px 18px);
+  --roller: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Ccircle cx='20' cy='20' r='15.5' fill='none' stroke='%23000' stroke-width='5.5'/%3E%3Cpath d='M20 4.5v5M20 30.5v5M4.5 20h5M30.5 20h5M9 9l3.5 3.5M27.5 27.5L31 31M31 9l-3.5 3.5M12.5 27.5L9 31' stroke='%23000' stroke-width='3' stroke-linecap='round'/%3E%3Ccircle cx='20' cy='20' r='4'/%3E%3C/svg%3E");
+  --sans: 'Archivo Dyno', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --mono: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
+}
+@property --progress { syntax: '<number>'; inherits: true; initial-value: 0; }
+@keyframes spin { to { rotate: 1turn; } }
+
+/* The wordmark: "dyn" with a roller drum for the o. */
+.wordmark { display: inline-flex; align-items: baseline; line-height: 1; font-weight: 860; font-stretch: 125%; letter-spacing: -.035em; transform: skewX(-9deg); }
+.roller { width: .8em; height: .8em; margin-left: .04em; align-self: center; translate: 0 .1em; overflow: visible; }
+.roller-drum { fill: none; stroke: var(--mark); stroke-width: 5.5; }
+.roller-knurl { stroke: var(--mark); stroke-width: 3; stroke-linecap: round; transform-origin: 20px 20px; }
+.roller-hub { fill: var(--mark); }
+
+/* The tachometer: the needle sweeps to all tests finished, and the arc takes the run's status color. */
+.tach { flex: none; overflow: visible; --tone: var(--faint); }
+.tach path { fill: none; vector-effect: non-scaling-stroke; }
+.tach-ticks { stroke: var(--muted); stroke-width: 1.6; stroke-linecap: round; }
+.tach-track { stroke: var(--grid); stroke-width: 5; }
+.tach-sweep { stroke: var(--tone); stroke-width: 5; stroke-dasharray: var(--progress, 0) 1; transition: stroke-dasharray .35s ease-out; }
+.tach-needle { stroke: var(--ink); stroke-width: 2.4; stroke-linecap: round; transform-origin: 30px 31px; rotate: calc(-90deg + var(--progress, 0) * 180deg); transition: rotate .35s cubic-bezier(.3, 1.5, .5, 1); }
+.tach-hub { fill: var(--ink); }
+.tach:is([data-phase=running], [data-phase=discovering], [data-phase=pausing], [data-phase=resuming], [data-phase=paused], [data-phase=debugging]) { --tone: var(--accent); }
+.tach[data-phase=completed] { --tone: var(--pass); }
+.tach:is([data-phase=completed], [data-phase=stopped])[data-failed=true], .tach[data-phase=error] { --tone: var(--fail); }
+
+/* The dyno sheet. Size .sheet-frame where it's used. */
+.sheet-frame { position: relative; border-left: 1px solid var(--faint); border-bottom: 1px solid var(--faint); }
+.sheet-canvas, .sheet-plot { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.sheet-plot path { vector-effect: non-scaling-stroke; fill: none; }
+.sheet-plot .sheet-area { fill: var(--trace); opacity: .07; stroke: none; }
+.sheet-grid { stroke: var(--grid); stroke-width: 1; }
+.sheet-ceiling { stroke: var(--faint); stroke-width: 1; stroke-dasharray: 3 5; }
+.sheet-ghost { stroke: var(--faint); stroke-width: 1.5; stroke-dasharray: 2 5; stroke-linejoin: round; }
+.sheet-trace { stroke: var(--trace); stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; }
+.sheet-point { stroke: var(--trace); stroke-width: 6; stroke-linecap: round; }
+.sheet-point[data-status=failed] { stroke: var(--fail); stroke-width: 11; }
+.sheet-point:is([data-status=skipped], [data-status=stopped]) { stroke: var(--faint); }
+.sheet-axis { position: absolute; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.sheet-axis-y { left: 8px; top: -20px; }
+.sheet-axis-x { right: 0; bottom: -22px; }
+.sheet-legend { display: flex; gap: 18px; }
+.legend-trace, .legend-ghost { display: inline-flex; align-items: center; gap: 8px; }
+.legend-trace::before, .legend-ghost::before { content: ''; width: 18px; }
+.legend-trace::before { border-top: 2.5px solid var(--trace); }
+.legend-ghost::before { border-top: 2px dotted var(--faint); }
+
+/* Sheet notes ride the curve like the peak note on a printed dyno sheet: a leader line, then plain text. */
+.sheet-flag { --flag-x: 8px; position: absolute; z-index: 1; display: flex; align-items: center; gap: 6px; max-width: min(46%, 320px); margin: 0; translate: var(--flag-x) -130%; color: var(--ink); font-size: 12px; font-weight: 700; font-stretch: 112%; font-variant-numeric: tabular-nums; white-space: nowrap; pointer-events: none; }
+.sheet-flag::before { content: ''; flex: none; width: 22px; height: 12px; translate: 0 7px; border-top: 1px solid currentColor; border-left: 1px solid currentColor; transform: skewX(-35deg); transform-origin: bottom left; }
+.sheet-flag span { overflow: hidden; text-overflow: ellipsis; padding: 1px 4px; background: color-mix(in srgb, var(--surface) 88%, transparent); }
+.sheet-flag[data-side=left] { --flag-x: calc(-100% - 8px); flex-direction: row-reverse; }
+.sheet-flag[data-side=left]::before { border-left: 0; border-right: 1px solid currentColor; transform: skewX(35deg); transform-origin: bottom right; }
+.sheet-flag[data-kind=running] { color: var(--accent-text); }
+
+@media (prefers-reduced-motion: reduce) {
+  .tach-sweep, .tach-needle { transition: none; }
+}

@@ -1,17 +1,13 @@
 @font-face { font-family: 'Archivo Dyno'; font-weight: 100 900; font-stretch: 62% 125%; font-display: swap; src: url('/__dyno__/archivo.woff2') format('woff2'); }
-:root { color-scheme: dark; --bg: #141f2a; --line: #2a3d4f; --ink: #e9eff4; --muted: #90a5b7; --accent: #ffc629; --fail: #ff7a7e; font: 16px/1.55 'Archivo Dyno', system-ui, sans-serif; color: var(--ink); background: var(--bg); }
+:root { color-scheme: dark; font: 16px/1.55 var(--sans); color: var(--ink); background: var(--bg); }
 *, *::before, *::after { box-sizing: border-box; }
 body { margin: 0; min-height: 100dvh; display: grid; place-items: center; background: radial-gradient(circle at 50% 120%, #1d3042, var(--bg) 60%); }
 .control-room { width: min(34rem, 100%); padding: 32px 24px; }
-.wordmark { display: inline-flex; align-items: baseline; font-size: 44px; line-height: 1; font-weight: 860; font-stretch: 125%; letter-spacing: -.035em; transform: skewX(-9deg); }
-.roller { width: .8em; height: .8em; margin-left: .04em; align-self: center; translate: 0 .1em; overflow: visible; }
-.roller-drum { fill: none; stroke: var(--accent); stroke-width: 5.5; }
-.roller-knurl { stroke: var(--accent); stroke-width: 3; stroke-linecap: round; transform-origin: 20px 20px; animation: spin 1.4s linear infinite; }
-.roller-hub { fill: var(--accent); }
-@keyframes spin { to { rotate: 1turn; } }
+.wordmark { font-size: 44px; }
+.roller-knurl { animation: spin 1.4s linear infinite; }
 h1 { margin: 28px 0 6px; font-size: 22px; font-weight: 720; font-stretch: 112%; }
 p { margin: 0; color: var(--muted); }
-button { margin-top: 22px; min-height: 40px; padding: 8px 18px; font: inherit; font-weight: 720; color: #1d1600; background: var(--accent); border: 0; border-radius: 6px; cursor: pointer; }
+button { margin-top: 22px; min-height: 40px; padding: 8px 18px; font: inherit; font-weight: 720; color: var(--on-accent); background: var(--accent); border: 0; border-radius: 6px; cursor: pointer; }
 button:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
 #execution > iframe { display: none; }
 [hidden] { display: none !important; }

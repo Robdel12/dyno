@@ -1,7 +1,7 @@
 import { testTitle } from './suite.js';
 import { timingPhases, timingOperations, timingDuration, timingLabels, failurePlace } from './browser/timing-format.js';
 import { slowestTests } from './browser/timings.js';
-import { pullCurve, pullSheet, pace, tachometer } from './browser/dyno-chart.js';
+import { pullCurve, pullSheet, pace, tachometer, testCount, sheetSpan } from './browser/dyno-chart.js';
 import { escapeMarkup, wordmark } from './browser/markup.js';
 
 export { escapeMarkup };
@@ -106,7 +106,7 @@ export function htmlReport(report, css, { session = false } = {}) {
     <p class="saved-meta">Saved report ${x(report.runId)}${report.startedAt ? `, started ${x(report.startedAt)}` : ''}</p>
     ${report.schedule?.seed != null ? `<p class="saved-meta">Seed: ${x(report.schedule.seed)}</p>` : ''}
     ${curve.total ? `<div class="sheet">
-      <figure class="sheet-chart"><div class="sheet-frame"><div class="sheet-canvas">${pullSheet(curve, { href: (point) => `#test-${point.index}` })}</div><span class="sheet-axis sheet-axis-y">${curve.total} ${curve.total === 1 ? 'test' : 'tests'}</span><span class="sheet-axis sheet-axis-x">${x(timingDuration(curve.time))} of test time</span></div>
+      <figure class="sheet-chart"><div class="sheet-frame"><div class="sheet-canvas">${pullSheet(curve, { href: (point) => `#test-${point.index}` })}</div><span class="sheet-axis sheet-axis-y">${testCount(curve.total)}</span><span class="sheet-axis sheet-axis-x">${x(sheetSpan(curve))}</span></div>
       <figcaption><span class="sheet-legend"><span class="legend-trace">This pull</span></span><span class="sheet-hint">Steep is fast. Flat stretches are slow tests.</span></figcaption></figure>
       <dl class="readouts">${readout('Passed', report.summary.passed, 'passed')}<div class="readout" id="failed-summary" data-failed="${report.summary.failed > 0}"><dt>Failed</dt><dd>${report.summary.failed}</dd></div>${readout('Skipped', report.summary.skipped)}${readout('Not run', report.summary.notRun)}${readout('Run time', x(timingDuration(report.summary.duration)))}${readout('Per test', average === undefined ? '—' : x(timingDuration(average)))}</dl>
     </div>` : ''}
