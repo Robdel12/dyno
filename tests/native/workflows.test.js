@@ -47,8 +47,10 @@ test('uses real input and captures an offscreen element without resizing the app
   await I.assert(() => records.length === 1 && records[0].name === 'Robert');
   await I.find('$(#hover)').then.nativeHover();
   await I.assert(() => app.window.getComputedStyle(app.document.querySelector('#hover')).backgroundColor === 'rgb(20, 160, 80)');
+  await I.find('$(#hover)').text('Pointer inside');
   await I.nativeMove({x:0,y:0});
   await I.assert(() => app.window.getComputedStyle(app.document.querySelector('#hover')).backgroundColor === 'rgb(20, 60, 140)');
+  await I.find('$(#hover)').text('Pointer outside');
   await I.assert(
     () => app.window.innerWidth === 800 && app.window.innerHeight === 600,
     () => 'App did not reach the configured viewport: ' + JSON.stringify({actual:app.window.viewportSnapshot(),events:app.window.viewportChanges})
@@ -68,6 +70,10 @@ test('uses real input and captures an offscreen element without resizing the app
   await I.assert(
     () => app.window.innerWidth === dimensions.width && app.window.innerHeight === dimensions.height && app.window.viewportChanges.every(change => change.width === dimensions.width && change.height === dimensions.height),
     () => 'Element capture changed the app viewport: ' + JSON.stringify({expected:dimensions,setup:setupViewport,beforeCapture,captureReturned,actual:app.window.viewportSnapshot(),events:app.window.viewportChanges,image:{width:image.width,height:image.height,pixelRatio:image.pixelRatio,viewport:image.viewport}})
+  );
+  await I.assert(
+    () => app.window.scrollX === beforeCapture.scrollX && app.window.scrollY === beforeCapture.scrollY,
+    'Element capture changed the app scroll position'
   );
   app.window.viewportObservationStage = 'capture-verified';
   await I.find('Open destination').then.focus().then.nativePress('Enter');
@@ -133,14 +139,18 @@ test('changes the app media query', async ({app, I}) => {
   await I.assert(() => app.window.navigator.language === 'fr-FR' && new app.window.Intl.DateTimeFormat().resolvedOptions().timeZone === 'Europe/Paris');
   await I.assert(() => app.native.capabilities.media);
   let original = app.window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let motion = app.document.querySelector('#motion');
+  await I.assert(() => app.window.getComputedStyle(motion).animationName === (original ? 'none' : 'native-motion'));
   await app.request('/api/media-preference', {method:'POST',body:JSON.stringify({reduced:original})});
   await app.native.setReducedMotion(original ? 'no-preference' : 'reduce');
   await I.assert(() => app.window.matchMedia('(prefers-reduced-motion: reduce)').matches !== original);
+  await I.assert(() => app.window.getComputedStyle(motion).animationName === (original ? 'native-motion' : 'none'));
 });
 test('restores the browser media setting automatically', async ({app, I}) => {
   await app.goto('/');
   let original = await (await app.request('/api/media-preference')).json();
   await I.assert(() => app.window.matchMedia('(prefers-reduced-motion: reduce)').matches === original.reduced);
+  await I.assert(() => app.window.getComputedStyle(app.document.querySelector('#motion')).animationName === (original.reduced ? 'none' : 'native-motion'));
 });
 });`,
     });
