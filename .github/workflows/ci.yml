@@ -90,7 +90,7 @@ jobs:
     name: ${{ matrix.suite }} / macOS / ${{ matrix.engine }}
     needs: checks
     runs-on: macos-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
