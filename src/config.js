@@ -44,6 +44,7 @@
  * | `browser.userAgent` | Browser default | Override the managed browser user agent |
  * | `viewport` | Browser size; managed: 1280 × 800 | Required app viewport dimensions |
  * | `reportDir` | `.dyno/reports` | Saved JSON, JUnit, HTML, and copied images per browser run |
+ * | `coverage` | Disabled | App coverage filters, build baseline, reporters, and thresholds; activate with `--coverage` or `coverage.enabled` |
  * | `artifactsDir` | `.dyno/artifacts` | PNG output directory |
  * | `webServer.url` | Required | HTTP(S) origin without a path |
  * | `webServer.command` | None | App startup command |
@@ -92,6 +93,7 @@ import { resolve, dirname, isAbsolute } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { browserNames } from './browsers.js';
 import { normalizeViewport } from './browser/viewport.js';
+import { normalizeCoverage } from './coverage-config.js';
 
 export function defineConfig(config) {
   return config;
@@ -126,6 +128,7 @@ export function normalizeConfig(input, file, overrides = {}) {
       'seed',
       'random',
       'workers',
+      'coverage',
     ],
     'config',
   );
@@ -272,6 +275,7 @@ export function normalizeConfig(input, file, overrides = {}) {
   let config = {
     root,
     file,
+    coverage: normalizeCoverage(input.coverage, root, overrides.coverage),
     workers: overrides.workers ?? input.workers ?? 1,
     seed: overrides.random ? null : overrides.seed ?? input.seed ?? null,
     random: overrides.random ?? input.random ?? false,

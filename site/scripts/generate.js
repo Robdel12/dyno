@@ -24,7 +24,7 @@ export async function generate() {
   await rm(output, { recursive: true, force: true });
   await rm(join(site, '.generated'), { recursive: true, force: true });
   let used = new Set();
-  for (let [source, target] of [['types/index.d.ts', 'types/dyno.d.ts'], ['types/config.d.ts', 'types/config.d.ts'], ['types/test.d.ts', 'types/test.d.ts'], ['types/fixtures.d.ts', 'types/fixtures.d.ts']])
+  for (let [source, target] of [['types/index.d.ts', 'types/dyno.d.ts'], ['types/config.d.ts', 'types/config.d.ts'], ['types/test.d.ts', 'types/test.d.ts'], ['types/fixtures.d.ts', 'types/fixtures.d.ts'], ['types/coverage.d.ts', 'types/coverage.d.ts']])
     await write(join(site, '.generated', target), documentedTypes(source, await read(source), api, used));
   for (let key of api.keys()) if (!used.has(key)) throw new Error(`Source @api ${key} has no public declaration.`);
   let requiredGuides = [...guideOrder, 'overview', 'api-overview', 'cli'];
@@ -96,6 +96,7 @@ export async function generate() {
     ['Timings', ['src/browser/timings.js']],
     ['Configuration and Node setup', ['src/config.js', 'src/project-worker.js']],
     ['App-process fixtures', ['src/fixtures.js']],
+    ['Code coverage', ['src/coverage-instrument.js', 'src/coverage-config.js']],
   ];
   for (let [title, paths] of groups) {
     reference += `\n## ${title}\n\n| API | Use |\n| --- | --- |\n`;

@@ -1,5 +1,6 @@
 import { captureConsole } from './console.js';
 import { readAppBinding, appController, appRuntime } from './companion.js';
+import { createAppCoverage } from './coverage.js';
 
 // Diagnostics and the reporter live here; the test bundle stays in its own runtime.
 (() => {
@@ -26,13 +27,20 @@ import { readAppBinding, appController, appRuntime } from './companion.js';
       relay({ channel: 'dyno-reporter', kind: 'command', command: 'inspect', runId: binding.runId });
   };
   let stopOutput = captureConsole(console, (entries) => send('app-output', { entries }));
+  let coverage = controller.__dynoCoverage && !location.pathname.startsWith('/__dyno__/')
+    ? createAppCoverage(window, controller, binding, id) : undefined;
   window.__browserTestBridge = Object.freeze({
     id,
     name: binding.appName,
     runId: binding.runId,
     executionId: binding.executionId,
-    stopOutput
+    stopOutput,
+    ...(coverage ? { snapshotCoverage: coverage.snapshot } : {})
   });
+  if (coverage) {
+    coverage.register();
+    window.addEventListener('pagehide', coverage.snapshot);
+  }
   let serialize = (error) => ({ message: error?.message ?? String(error), stack: error?.stack });
   window.addEventListener(
     'error',

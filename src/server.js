@@ -103,6 +103,7 @@ export async function createGateway(
     fixtures,
     interactive,
     releaseFinal,
+    coverage: Boolean(config.coverage?.enabled),
     appURL: config.webServer.url,
     viewport: config.viewport,
     managedViewport: defaultViewport,
@@ -204,6 +205,7 @@ export async function createGateway(
             'guard.js',
             'park.js',
             'companion.js',
+            'coverage.js',
           ].includes(route)
         )
           return send(
@@ -247,6 +249,13 @@ export async function createGateway(
         }
         if (route === 'results' && request.method === 'GET')
           return send('application/json', JSON.stringify(coordinator.values()));
+        if (route === 'coverage' && request.method === 'POST') {
+          if (request.headers.origin && request.headers.origin !== `http://${request.headers.host}`)
+            throw new Error('Coverage requests must be same-origin.');
+          let input = await reporterInput(request, 8_010_000);
+          if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('Invalid coverage request.');
+          return send('application/json', await coordinator.coverage(workerId, input));
+        }
         if (['assignment', 'released'].includes(route) && request.method === 'POST') {
           if (request.headers.origin && request.headers.origin !== `http://${request.headers.host}`)
             throw new Error('Assignments must be same-origin.');

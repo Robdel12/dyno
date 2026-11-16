@@ -123,6 +123,16 @@ Shutdown stops accepting new runs before waiting for pending writes. A join alre
 
 Normal completion, browser replacement and shutdown share terminal cleanup and persistence. Final state becomes visible after the write succeeds. A failed save reports an infrastructure error while preserving accepted outcomes. The gateway keeps a small cache of accepted messages and the last live sequence hash. The browser can repeat one outstanding reporting request after a network failure, without repeating test callbacks, actions or native operations. Changed replays and sequence gaps fail plainly.
 
+## Application coverage
+
+Apps enable Istanbul instrumentation in their own build. The optional `dyno/coverage` helper instruments compiled modules; Dyno does not transform application JavaScript in the gateway. A build-produced zero-hit baseline includes modules that never load. Without that baseline, reports describe loaded files only.
+
+The app bridge hands detached cumulative snapshots synchronously to the persistent companion. This keeps coverage alive across navigation and execution iframe removal, without weakening window identity checks for unload messages. The companion uploads through a separate authenticated endpoint, awaiting acknowledgements before releasing an execution or completing the run. Each document's newest snapshot replaces its previous counters. Released executions fold into one aggregate; independent documents and workers add their hits once.
+
+The coordinator validates counter shapes, ownership, sequence, source definitions, and source-map content. It freezes coverage before saving terminal results. Interrupted collection is explicit; accepted test outcomes remain separate from coverage failures. The existing report staging directory owns coverage HTML, LCOV, and JSON. Repeated rounds merge compatible app coverage once per run and evaluate thresholds on their combined result. Watch runs start fresh.
+
+Collection covers the top-level app window. App workers, embedded frames, server code, and CSS need separate collectors. Source maps with `sourcesContent` let Dyno detect source changes whose counter locations remain the same; an Istanbul schema hash alone does not identify an app build.
+
 ## Timings
 
 The runtime records bounded monotonic intervals around phases, app operations, and named steps. Interactor runs unchanged. Abort ends pending measurements, and immutable snapshots cross the existing result boundary; the gateway validates bounds and drops unknown fields. Inclusive intervals may overlap, so rankings do not add them together.

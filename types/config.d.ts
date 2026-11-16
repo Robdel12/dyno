@@ -2,7 +2,16 @@ export interface Viewport {
   readonly width: number;
   readonly height: number;
 }
+export interface CoverageConfig {
+  readonly enabled?: boolean;
+  readonly include?: readonly string[];
+  readonly exclude?: readonly string[];
+  readonly baseline?: string;
+  readonly reporters?: readonly ('text' | 'html' | 'lcov' | 'json' | 'json-summary')[];
+  readonly thresholds?: Readonly<Partial<Record<'lines' | 'statements' | 'functions' | 'branches', number>>>;
+}
 export interface Config {
+  readonly coverage?: boolean | CoverageConfig;
   readonly testDir?: string;
   readonly seed?: string;
   readonly random?: boolean;

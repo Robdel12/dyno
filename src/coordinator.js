@@ -5,6 +5,8 @@ import { finishRunTimings, recordProjectCleanup, recordProjectPreparation } from
 import { projectOperation } from './project-operation.js';
 import { executionFixtures } from './execution-fixtures.js';
 import { partialOutput, validOutput, snapshotOutput, applyLiveChange, workerView } from './browser/reporting.js';
+import { createCoverageState, acceptCoverage, finalizeCoverage, releaseCoverage, unavailableCoverage } from './coverage-model.js';
+import { publicCoverage } from './coverage-reports.js';
 
 let terminal = (run) => ['completed', 'failed'].includes(run.status);
 let problem = (status, message) => Object.assign(new Error(message), { status });
@@ -20,6 +22,7 @@ export function createCoordinator(config, bundle, {
   let pendingReports = new Set(), waiters = new Map();
   let progress = new Map(), views = new Map(), versions = new Map();
   let commands = new Map();
+  let coverage = new Map();
   let retirements = new Map(), connectionDeadlines = new Map(), joinDeadlines = new Map();
   let stopping = false, closing, managedRun, primaryRun;
   let restarting;
@@ -191,7 +194,20 @@ export function createCoordinator(config, bundle, {
       run = recordProjectCleanup(run, projectExecutions[index].id, result.status === 'fulfilled' ? result.value : result.reason.projectCleanup);
     if (run.managed && event.type === 'fatal') run = retireWorkers(run);
     run = finishRunTimings(run, performance.now());
+    if (config.coverage?.enabled) {
+      let options = { root: config.root, complete: event.type === 'complete', evaluate: !automatic };
+      let result;
+      try { result = await finalizeCoverage(coverage.get(run.runId), config.coverage, options); }
+      catch (error) {
+        try {
+          result = await finalizeCoverage(coverage.get(run.runId), { ...config.coverage, baseline: null }, { ...options, complete: false });
+          result = Object.freeze({ ...result, failed: true, failures: Object.freeze([...result.failures, error.message]) });
+        } catch (fallback) { result = unavailableCoverage(`${error.message} ${fallback.message}`); }
+      }
+      run = Object.freeze({ ...run, coverage: result });
+    }
     event = Object.freeze({ ...event, ...(event.type === 'complete' ? run.summary : { coordination: run.coordination }) });
+    if (run.coverage) event = Object.freeze({ ...event, coverage: publicCoverage(run.coverage) });
     try { await persist(run); }
     catch (error) {
       stopping = true;
@@ -247,12 +263,13 @@ export function createCoordinator(config, bundle, {
       let finished = [...runs.values()].find(run => terminal(run) && !queues.has(run.runId));
       if (!finished) throw problem(429, 'Dyno already has 20 active browser runs. Finish or close one before joining again.');
       for (let control of controls(finished.runId)) control.drop(finished.runId);
-      for (let map of [runs, bundles, receipts, drains, preparations, progress, views, versions, retirements]) map.delete(finished.runId);
+      for (let map of [runs, bundles, receipts, drains, preparations, progress, views, versions, retirements, coverage]) map.delete(finished.runId);
     }
     if (config.replay) selected = selection({ ids: config.replay.selected });
     let run = Object.freeze({ ...createRun(runId, { seed, workers: ids, replay: config.replay }),
       managed, selection: selected, source: snapshot.fingerprint, startedAt: new Date().toISOString() });
     bundles.set(runId, snapshot);
+    if (config.coverage?.enabled) coverage.set(runId, createCoverageState());
     if (managed) {
       managedRun = runId;
       let deadline = AbortSignal.timeout(Math.min(2147483647, 35000 + config.timeout));
@@ -537,10 +554,26 @@ export function createCoordinator(config, bundle, {
         let reply = replay(input.runId, key, digest);
         if (reply) return reply;
         let run = recordProjectCleanup(runs.get(input.runId), input.executionId, cleanup);
+        if (config.coverage?.enabled)
+          coverage.set(run.runId, releaseCoverage(coverage.get(run.runId), { workerId, executionId: input.executionId }));
         publish(releaseTest(run, { workerId, executionId: input.executionId, now: performance.now() }));
         workers.get(workerId).control.releaseExecution(input.runId, input.executionId);
         preparations.get(input.runId)?.delete(input.executionId);
         return remember(input.runId, key, digest, '{}');
+      });
+    },
+    coverage(workerId, input) {
+      return serialize(input.runId, () => {
+        requireOpen();
+        workers.get(workerId).control.authorize(input);
+        if (!config.coverage?.enabled) throw problem(409, 'Application coverage is disabled.');
+        let run = runs.get(input.runId);
+        if (terminal(run)) throw problem(409, 'Coverage for this run is already finalized.');
+        if (!run.assignments.some(assignment => assignment.id === input.executionId &&
+          assignment.workerId === workerId && ['running', 'reported'].includes(assignment.status)))
+          throw problem(409, 'Coverage requires this worker’s current test execution.');
+        coverage.set(run.runId, acceptCoverage(coverage.get(run.runId), input, { workerId }));
+        return '{}';
       });
     },
     event(workerId, input) {

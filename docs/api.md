@@ -142,3 +142,14 @@ Signatures: [browser types](../types/index.d.ts), [configuration](../types/confi
 | `FixtureHold` | An app-owned admission hold. Idle waits for accepted work; resume explicitly reopens this owner's admission after successful reset. Independent holds must compose. |
 | `FixtureOperation` | A real app factory or helper receiving dependencies, JSON input and its execution context. Return committed browser-safe JSON; detached work still needs app-owned drain. |
 | `FixtureController` | App-process fixture lifecycle and named dispatch. Construction can hold app admission; failed or cancelled preparation/drain never reopens it. Close before releasing app dependencies. |
+
+## Code coverage
+
+| API | Use |
+| --- | --- |
+| `CoverageConfig` | Coverage build inputs, original-source filters, report formats, and optional minimum percentages. Set enabled or pass --coverage to collect application coverage. A baseline includes unvisited files from the same instrumented app build. |
+| `CoverageSourceMap` | A version 3 source map from the app's compiler. Include source content to keep the HTML report portable and identify source changes. |
+| `CoverageFile` | Istanbul counters and source locations for one JavaScript module. A fresh helper result has zero hits and can be saved in an all-files baseline. |
+| `CoverageInstrumentOptions` | JavaScript source, its absolute module filename, and an optional compiler source map. |
+| `CoverageInstrumentResult` | Instrumented JavaScript, its composed source map, and the module's zero-hit Istanbul coverage entry. |
+| `instrumentCoverage` | Instrument one compiled JavaScript module for a Dyno coverage run. This Node-only helper does not read files, change environment variables, or write the baseline. The app's build owns those steps. |

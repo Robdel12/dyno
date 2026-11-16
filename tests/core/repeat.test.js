@@ -110,3 +110,28 @@ test('failed final artifact publication leaves durable batch metadata unfinished
   assert.equal(persisted.tests[0].passed, 1);
   await assert.rejects(readFile(join(directory, 'index.html')), { code: 'ENOENT' });
 });
+
+test('coverage evidence limits still publish accepted test counts and a failed coverage result', async t => {
+  let directory = await mkdtemp(join(tmpdir(), 'dyno-repeat-coverage-limit-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  let coverage = { root: directory, include: ['**/*'], exclude: [], reporters: ['json'], thresholds: {} };
+  let path = join(directory, 'app.js');
+  let point = { start: { line: 1, column: 0 }, end: { line: 1, column: 1 } };
+  let result = { status: 'complete', scope: 'loaded-files', failed: false, failures: [], sources: {}, identities: {},
+    data: { [path]: { path, statementMap: { 0: point }, fnMap: {}, branchMap: {}, s: { 0: 1 }, f: {}, b: {} } },
+    summary: { lines: { total: 1, covered: 1, skipped: 0, pct: 100 }, statements: { total: 1, covered: 1, skipped: 0, pct: 100 },
+      functions: { total: 0, covered: 0, skipped: 0, pct: 100 }, branches: { total: 0, covered: 0, skipped: 0, pct: 100 } } };
+  let writer = await createRepeatWriter(directory, { limit: 1, coverage });
+  let completed = { ...run(1, 'root'), coverage: result };
+  let state = acceptRepeatRound(batch(1), completed);
+  assert.equal((await writer.save(state, completed)).limited, true);
+  let paths = await writer.finish(finishRepeat(state, 'evidence-limit'), {});
+  let report = JSON.parse(await readFile(paths.json, 'utf8'));
+  assert.equal(report.tests[0].passed, 1);
+  assert.equal(report.coverage.status, 'partial');
+  assert.equal(report.coverage.failed, true);
+  assert.equal(report.coverage.json, undefined);
+  assert.match(report.coverage.failures.join(' '), /evidence limit/);
+  assert.match(await readFile(paths.junit, 'utf8'), /testcase name="Application coverage"/);
+  assert.match(await readFile(paths.html, 'utf8'), /Application coverage/);
+});
