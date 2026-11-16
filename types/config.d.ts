@@ -37,6 +37,7 @@ export interface Config {
     readonly env?: Readonly<Record<string, string>>;
     readonly ready?: string | RegExp;
     readonly timeout?: number;
+    readonly requestTimeout?: number;
     readonly reuseExistingServer?: boolean;
   };
 }

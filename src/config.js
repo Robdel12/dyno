@@ -50,6 +50,7 @@
  * | `webServer.cwd`, `env` | Config directory, inherited env | App process settings |
  * | `webServer.ready` | Any process output | Ready-message string or RegExp |
  * | `webServer.timeout` | `30000` | App startup deadline |
+ * | `webServer.requestTimeout` | `30000` | App HTTP request inactivity deadline |
  * | `webServer.reuseExistingServer` | `false` | Reuse a responding server |
  * | `setup` | None | Node setup module |
  * | `seed`, `random` | None, `false` | Repeatable randomized priority or a generated seed |
@@ -138,7 +139,7 @@ export function normalizeConfig(input, file, overrides = {}) {
   let webServer = input.webServer;
   keys(
     webServer,
-    ['url', 'command', 'cwd', 'env', 'ready', 'timeout', 'reuseExistingServer'],
+    ['url', 'command', 'cwd', 'env', 'ready', 'timeout', 'requestTimeout', 'reuseExistingServer'],
     'webServer',
   );
   if (!text(webServer.url)) throw new Error('webServer.url is required.');
@@ -305,6 +306,7 @@ export function normalizeConfig(input, file, overrides = {}) {
       url: url.origin,
       cwd: resolve(root, webServer.cwd ?? '.'),
       timeout: webServer.timeout ?? 30000,
+      requestTimeout: webServer.requestTimeout ?? 30000,
       ...(Array.isArray(webServer.command)
         ? { command: Object.freeze([...webServer.command]) }
         : {}),
@@ -326,6 +328,7 @@ export function normalizeConfig(input, file, overrides = {}) {
     expectTimeout: config.expectTimeout,
     runTimeout: config.runTimeout,
     'webServer.timeout': config.webServer.timeout,
+    'webServer.requestTimeout': config.webServer.requestTimeout,
   })) {
     if (!Number.isInteger(value) || value <= 0 || value > 2147483647)
       throw new Error(`${key} must be a positive integer in milliseconds, at most 2147483647.`);

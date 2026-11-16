@@ -284,6 +284,7 @@ Dyno gives each test 10 seconds, including hooks and document startup. Interacto
 | `webServer.cwd`, `env` | Config directory, inherited env | App process settings |
 | `webServer.ready` | Any process output | Ready-message string or RegExp |
 | `webServer.timeout` | `30000` | App startup deadline |
+| `webServer.requestTimeout` | `30000` | App HTTP request inactivity deadline |
 | `webServer.reuseExistingServer` | `false` | Reuse a responding server |
 | `setup` | None | Node setup module |
 | `seed`, `random` | None, `false` | Repeatable randomized priority or a generated seed |
@@ -346,6 +347,8 @@ When a run ends or fails, Dyno stops the processes it started, including descend
 The browser loads Dyno's gateway, which forwards app requests and WebSockets to `webServer.url`. The app fills the main window. Tests load in a companion window and read the app's DOM directly; a small injected script reports readiness and errors and hosts the reporter iframe. Your app needs no test imports.
 
 Redirects to the app are rewritten to the gateway origin. Dyno translates same-origin Origin/Referer headers and matching cookie domains, preserving cookie security attributes. External redirects stay external.
+
+For a long import or report, set `webServer.requestTimeout` to the app HTTP request budget in milliseconds. It defaults to 30,000 ms of inactivity. This is separate from app startup (`webServer.timeout`) and the test deadline (`timeout`).
 
 The app receives `DYNO_URL`, the gateway origin. Use it as your public URL for OAuth or WebAuthn: browser credentials contain that origin, while the upstream receives its own Host. Root-relative URLs work best.
 

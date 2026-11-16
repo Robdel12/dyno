@@ -123,6 +123,7 @@ export async function createGateway(
         if (!url.pathname.startsWith(prefix))
           return proxyRequest(request, response, {
             target: config.webServer.url,
+            requestTimeout: config.webServer.requestTimeout,
             gatewayOrigin: `http://${request.headers.host}`,
           });
         for (let [name, value] of Object.entries(documentPolicy)) response.setHeader(name, value);

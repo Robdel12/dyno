@@ -25,6 +25,8 @@
  *
  * Redirects to the app are rewritten to the gateway origin. Dyno translates same-origin Origin/Referer headers and matching cookie domains, preserving cookie security attributes. External redirects stay external.
  *
+ * For a long import or report, set `webServer.requestTimeout` to the app HTTP request budget in milliseconds. It defaults to 30,000 ms of inactivity. This is separate from app startup (`webServer.timeout`) and the test deadline (`timeout`).
+ *
  * The app receives `DYNO_URL`, the gateway origin. Use it as your public URL for OAuth or WebAuthn: browser credentials contain that origin, while the upstream receives its own Host. Root-relative URLs work best.
  *
  * ## If the app blocks the runner
@@ -89,7 +91,7 @@ export function responseHeaders(input, upstream, gatewayOrigin) {
   return headers;
 }
 
-export function proxyRequest(request, response, { target, gatewayOrigin }) {
+export function proxyRequest(request, response, { target, gatewayOrigin, requestTimeout = 30000 }) {
   let upstream = new URL(target);
   let destination = new URL(request.url, upstream);
   if (destination.origin !== upstream.origin) throw new Error('The app gateway accepts paths on the configured app origin only.');
@@ -133,7 +135,7 @@ export function proxyRequest(request, response, { target, gatewayOrigin }) {
       response.end(`Dyno gateway: ${error.message}`);
     }
   });
-  outgoing.setTimeout(30000, () => outgoing.destroy(new Error('App request exceeded 30 seconds')));
+  outgoing.setTimeout(requestTimeout, () => outgoing.destroy(new Error(`App request exceeded ${requestTimeout} ms`)));
   outgoing.on('error', error => {
     if (!response.headersSent) response.writeHead(502, { 'Content-Type': 'text/plain' });
     response.end(`App server unavailable: ${error.message}`);
