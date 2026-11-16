@@ -39,6 +39,23 @@ Linux browser and package jobs use the official Playwright Noble image, which in
 
 Product runs also write `.dyno/reports/<run-id>/`. Upload the whole folder for portable HTML/images, or give `junit.xml` to a test-results consumer. `run.json` uses an explicit schema version and marks interrupted runs and tests without results. These are separate from the Node test runner's own CI output.
 
+## Local framework coverage
+
+Application coverage (`dyno --coverage`) measures the app under test. To measure Dyno itself, run:
+
+```sh
+npm run test:coverage
+npm run test:coverage:check
+```
+
+The first command runs the real Chromium suite and writes HTML, LCOV, JSON, and a summary under `.dyno/coverage/`. The check command also requires 90% lines, statements, functions, and branches in the combined source and each source group. Host and shared source includes `bin/` and non-browser `src/`; browser source includes `src/browser/`. These groups describe file locations. Shared modules can execute in both Node and browser contexts.
+
+Every product JavaScript file in `bin/` and `src/` starts in a zero-hit baseline. The runner instruments one reusable copy under `.dyno/coverage/source`, leaving the working source unchanged. Node subprocesses and browser documents use matching Istanbul definitions and canonical source paths. Replayed snapshots from one document replace earlier counts; independent executions add their hits once. The browser collector also covers the companion, execution frames, and live reporters.
+
+Use `npm run test:coverage -- --suite core` for a smaller diagnostic run. Subset reports keep the full denominator and are explicitly labeled; they cannot pass the full-suite check. A failed test run or collection failure still fails the command. Coverage reports do not replace the existing test and browser matrix, and a forced process kill can prevent final counters from being saved.
+
+Each invocation replaces the previous local coverage output. Keep any report you need before running it again. This is a local contributor workflow; the application coverage feature does not install this collector in user apps.
+
 ## Documentation
 
 The required Documentation job installs the isolated site toolchain, checks generated Markdown, builds the site and exercises release archives, version switching and search. The Docs workflow assembles Next and frozen release assets. [Working on the docs](documentation.md) covers publishing.

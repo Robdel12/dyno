@@ -422,3 +422,83 @@ test('init rejects an explicit CommonJS package before writing ES module scaffol
     code: 'ENOENT',
   });
 });
+
+test('human-readable setup diagnostics distinguish ready, informational, and failed checks', { timeout: 15000 }, async t => {
+  let fixture = await project(t);
+  let check = async () => {
+    let session = launch(process.execPath, [cli, 'doctor', '--manual'], fixture.directory, t.signal);
+    t.after(() => session.stop());
+    return session.completion;
+  };
+  let ready = await check();
+  assert.equal(ready.code, 0, ready.stderr);
+  assert.match(ready.stdout, /✓ config: Loaded/);
+  assert.match(ready.stdout, /✓ tests: 1 test file\(s\) bundle successfully/);
+  assert.match(ready.stdout, /− browser: URL-only mode/);
+  assert.match(ready.stdout, /✓ app: Will start the app/);
+  await writeFile(join(fixture.directory, 'tests/browser/workflow.test.js'), 'import {');
+  let broken = await check();
+  assert.equal(broken.code, 1);
+  assert.match(broken.stdout, /✗ tests:/);
+  assert.match(broken.stdout, /✓ config:/);
+  let { stdout } = await exec(process.execPath, [cli, 'browsers'], { cwd: fixture.directory, timeout: 5000 });
+  for (let name of ['chromium', 'firefox', 'webkit'])
+    assert(stdout.split('\n').some(line => line.startsWith(name + ' ')), stdout);
+});
+
+test('configuration shape errors name the setting before any app resources start', { timeout: 15000 }, async t => {
+  for (let [config, setting] of [
+    [{ random: 'yes' }, 'random'],
+    [{ seed: '' }, 'seed'],
+    [{ forbidOnly: 1 }, 'forbidOnly'],
+    [{ testDir: '' }, 'testDir'],
+    [{ testMatch: '' }, 'testMatch'],
+    [{ setup: '' }, 'setup'],
+    [{ workers: 0 }, 'workers'],
+    [{ host: 'http://localhost' }, 'host'],
+    [{ reportDir: '' }, 'reportDir'],
+    [{ artifactsDir: 42 }, 'artifactsDir'],
+    [{ browser: { path: 42 } }, 'browser.path'],
+    [{ browser: { args: '--headless' } }, 'browser.args'],
+    [{ browser: { locale: '' } }, 'browser.locale'],
+    [{ browser: { timezoneId: '' } }, 'browser.timezoneId'],
+    [{ webServer: { url: 'file:///tmp/app' } }, 'webServer.url'],
+    [{ webServer: { url: 'http://localhost:1234/app' } }, 'webServer.url'],
+    [{ webServer: { command: [] } }, 'webServer.command'],
+    [{ webServer: { ready: {} } }, 'webServer.ready'],
+    [{ webServer: { cwd: 42 } }, 'webServer.cwd'],
+  ]) {
+    let fixture = await project(t, { config });
+    let result = await fixture.run().completion;
+    assert.equal(result.code, 1, result.stdout + result.stderr);
+    assert(result.events.at(-1).message.includes(setting), result.stdout);
+    assert.equal(result.events.some(event => event.type === 'ready'), false);
+  }
+  let invalidModule = await project(t, { files: { 'dyno.config.js': 'export default null;' } });
+  let invalid = await invalidModule.run().completion;
+  assert.equal(invalid.code, 1);
+  assert.match(invalid.events.at(-1).message, /config must be an object/);
+  let fixture = await project(t);
+  let oversizedSeed = await fixture.run(['--seed', 's'.repeat(257)]).completion;
+  assert.equal(oversizedSeed.code, 1);
+  assert.match(oversizedSeed.events.at(-1).message, /seed.*256 characters/);
+});
+
+test('setup contracts reject invalid lifecycle callbacks and incompatible manual workers before app startup', { timeout: 15000 }, async t => {
+  for (let [source, message] of [
+    ['export default {};', 'setup must export a function'],
+    ["export default () => ({beforeExecution: 'start'});", 'setup.beforeExecution must be a function'],
+    ['export default () => ({createWorker: true});', 'setup.createWorker must be a function'],
+  ]) {
+    let fixture = await project(t, { config: { setup: './setup.js' }, files: { 'setup.js': source } });
+    let result = await fixture.run(['--manual']).completion;
+    assert.equal(result.code, 1, result.stdout + result.stderr);
+    assert(result.stderr.includes(message), result.stderr);
+    assert.equal(result.events.some(event => event.type === 'ready'), false);
+  }
+  let fixture = await project(t);
+  let result = await fixture.run(['--manual', '--workers', '2']).completion;
+  assert.equal(result.code, 1);
+  assert.match(result.stderr, /Manual URL runs use one worker/);
+  assert.equal(result.events.some(event => event.type === 'ready'), false);
+});

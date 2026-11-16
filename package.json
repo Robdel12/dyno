@@ -51,7 +51,9 @@
     "test:capture": "node scripts/test.js capture",
     "test:firefox": "node scripts/test.js browser firefox",
     "test:vizzly": "node bin/dyno.js --config examples/vizzly/dyno.config.js",
-    "test:native": "node scripts/test.js native"
+    "test:native": "node scripts/test.js native",
+    "test:coverage": "node scripts/coverage.js",
+    "test:coverage:check": "node scripts/coverage.js --check"
   },
   "engines": {
     "node": ">=24"
@@ -72,6 +74,7 @@
   },
   "private": true,
   "devDependencies": {
+    "@babel/core": "7.29.13",
     "@types/node": "24.19.2",
     "typescript": "5.9.3"
   },
