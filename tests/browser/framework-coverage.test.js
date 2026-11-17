@@ -43,7 +43,7 @@ import playwright from ${JSON.stringify(pathToFileURL(join(root, 'node_modules/p
 ${portable ? `import { readViewport } from ${JSON.stringify(pathToFileURL(portablePath).href)};` : ''}
 let code = ${JSON.stringify(code)};
 let server = createServer((request, response) => {
-  response.setHeader('Content-Type', 'text/html');
+  response.setHeader('Content-Type', 'text/html; charset=utf-8');
   response.end('<!doctype html><script>' + code[request.url === '/frame' ? 'frame' : 'main'] + '</script>' +
     (request.url === '/main' ? '<iframe id="probe-frame" src="/frame"></iframe><button id="remove-frame">Remove frame</button>' : '') +
     '<a id="next" href="/next">Next</a>');
