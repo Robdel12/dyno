@@ -37,6 +37,7 @@ export interface CoverageFile {
   readonly s: Readonly<Record<string, number>>;
   readonly f: Readonly<Record<string, number>>;
   readonly b: Readonly<Record<string, readonly number[]>>;
+  readonly bT?: Readonly<Record<string, readonly number[]>>;
   readonly inputSourceMap?: CoverageSourceMap;
 }
 

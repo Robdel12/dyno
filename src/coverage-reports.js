@@ -21,11 +21,10 @@ async function writtenFiles(directory, parent = directory) {
 }
 
 export async function writeCoverageReport(result, directory, options, { root }) {
-  let target = directory;
-  await mkdir(target, { recursive: true });
+  await mkdir(directory, { recursive: true });
   let realRoot = realpathSync(root);
   let context = libReport.createContext({
-    dir: target,
+    dir: directory,
     coverageMap: libCoverage.createCoverageMap(structuredClone(result.data)),
     sourceFinder(path) {
       let name = resolve(root, path);
@@ -41,7 +40,7 @@ export async function writeCoverageReport(result, directory, options, { root }) 
     if (!['html', 'lcov', 'json', 'json-summary'].includes(reporter)) throw new Error(`Unknown coverage reporter: ${reporter}.`);
     reports.create(reporter === 'lcov' ? 'lcovonly' : reporter).execute(context);
   }
-  let files = await writtenFiles(target);
+  let files = await writtenFiles(directory);
   return { bytes: files.reduce((total, file) => total + file.bytes, 0), files: files.map(file => file.path) };
 }
 

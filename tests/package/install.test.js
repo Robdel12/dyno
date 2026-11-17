@@ -157,6 +157,11 @@ test('an installed consumer typechecks suites, app APIs, config, fixtures, and i
     `
   import {test,describe,beforeEach,afterEach,Interactor,defineInteractor,type InteractorContext} from 'dyno';
   import {defineConfig} from 'dyno/config';
+  import {instrumentCoverage} from 'dyno/coverage';
+  let compiled = instrumentCoverage({code:'globalThis.answer = 42;',filename:'/project/app.js'});
+  let truthiness: readonly number[] | undefined = compiled.coverage.bT?.['0'];
+  // @ts-expect-error coverage counters are read-only
+  compiled.coverage.bT?.['0']?.push(1);
   declare module 'dyno' {interface Fixtures {contactId:string}}
   defineConfig({cleanupTimeout:1000,webServer:{url:'http://localhost:3000',command:['npm','run','dev']},browser:{name:'webkit',locale:'en-US',timezoneId:'UTC'}});
   // @ts-expect-error browser management has one Playwright backend

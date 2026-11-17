@@ -118,7 +118,8 @@ export function acceptCoverage(state, input, { workerId }) {
   if (error !== undefined && !text(error)) fail('a collection error must be a non-empty message.');
   let key = JSON.stringify([workerId, input.executionId, input.documentId]);
   let previous = state.documents.find(document => document.key === key);
-  let data = coverageData(input.coverage ?? (error ? previous?.data : null) ?? {});
+  let data = coverageData(input.coverage ?? {});
+  if (error && previous && !Object.keys(data).length) data = previous.data;
   let serialized = JSON.stringify({ coverage: data, error });
   let bytes = Buffer.byteLength(serialized);
   if (bytes > coveragePacketLimit) fail('a snapshot exceeds the 8 MiB limit.');

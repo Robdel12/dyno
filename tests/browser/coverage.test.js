@@ -243,6 +243,25 @@ test('malformed app source maps fail coverage while preserving passing tests and
   assert.match(report.coverage.failures.join(' '), /URI malformed/);
 });
 
+test('an unreadable coverage snapshot preserves the completed test and previously collected counters', { timeout: 90000 }, async t => {
+  let fixture = await coverageProject(t, { source: `describe('Broken coverage counters', () => {
+    test('keeps its completed choice', async ({app, I}) => {
+      await app.goto('/'); await I.click('Accept'); await I.find('$([role=status])').text('Accepted');
+      await app.goto('/next'); await I.find('"Next page" $(h1)').visible();
+      app.window.__coverage__.cycle = app.window.__coverage__;
+    });
+  });` });
+  let result = await fixture.run(['--coverage']).completion;
+  assert.equal(result.code, 1, result.stdout + result.stderr);
+  let { report, data } = await savedReport(result);
+  assert.equal(report.tests[0].status, 'passed');
+  assert.equal(report.summary.passed, 1);
+  assert.equal(report.coverage.status, 'partial');
+  assert.equal(report.coverage.failed, true);
+  assert.match(report.coverage.failures.join(' '), /circular|cyclic/i);
+  assert.equal(calls(data[join(fixture.directory, 'src/app.ts')], 'choose'), 1);
+});
+
 test('selected coverage reporters omit formats the project did not request', { timeout: 90000 }, async t => {
   let fixture = await coverageProject(t, { coverage: { reporters: ['html'] } });
   let result = await fixture.run(['--coverage']).completion;

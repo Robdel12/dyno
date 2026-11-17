@@ -90,12 +90,14 @@ test('a collection error preserves acknowledged document counters and makes cove
   let app = instrument(path);
   app.choose(true);
   let state = accept(createCoverageState(), app.snapshot());
-  state = acceptCoverage(state, { ...packet(null, 2), error: 'The app document could not be read.' }, { workerId: '0' });
-  let result = await finalizeCoverage(state, options, { root });
-  assert.equal(result.status, 'partial');
-  assert.equal(result.failed, true);
-  assert.equal(result.data[path].f[0], 1);
-  assert.match(result.failures.join(' '), /could not be read/);
+  for (let coverage of [null, {}]) {
+    let failed = acceptCoverage(state, { ...packet(coverage, 2), error: 'The app document could not be read.' }, { workerId: '0' });
+    let result = await finalizeCoverage(failed, options, { root });
+    assert.equal(result.status, 'partial');
+    assert.equal(result.failed, true);
+    assert.equal(result.data[path].f[0], 1);
+    assert.match(result.failures.join(' '), /could not be read/);
+  }
 });
 
 test('releasing many executions folds their counters once without retaining repeated source maps', async t => {

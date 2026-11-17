@@ -592,7 +592,7 @@ The helper preserves Istanbul's runtime hash in its baseline entry. That hash de
 
 Coverage artifacts live under the saved run's `coverage/` folder. Choose `text`, `html`, `lcov`, `json`, or `json-summary` reporters. HTML shows original source when source maps contain `sourcesContent`. JSON preserves Istanbul data for other tools. Configured thresholds fail the command when a metric falls short.
 
-Dyno collects the app's top-level window across test navigation and cleanup. Workers, service workers, embedded frames, and server-side rendering need their own instrumentation and collection; their globals are outside this collector. Browser crashes and forceful shutdown can prevent a final snapshot. Incomplete collection stays explicit in the saved report.
+Dyno collects the app's top-level window across test navigation and cleanup. Workers, service workers, embedded frames, and server-side rendering need their own instrumentation and collection; their globals are outside this collector. Browser crashes and forceful shutdown can prevent a final snapshot. Incomplete collection stays explicit in the saved report. A collection failure does not replace a completed test's functional result.
 
 ## Understand where time goes
 

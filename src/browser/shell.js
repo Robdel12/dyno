@@ -806,7 +806,9 @@ try {
     if (settings.owned)
       await post('operations', { operation: 'reset-native', executionId: runner.id });
     coverage?.snapshot();
-    await coverage?.flush();
+    let coverageError;
+    try { await coverage?.flush(); }
+    catch (error) { coverageError = error; }
     await syncContext(null);
     let { status, error, additionalErrors = [], duration, output = [], timings } = outcome;
     let reported = await post('events', {
@@ -835,6 +837,8 @@ try {
         attachments: Object.freeze(reported.attachments ?? []),
       },
     });
+    // Accept the completed test before reporting a collection failure.
+    if (coverageError) throw coverageError;
     if (stoppingReason) controller.abort(stoppingReason);
     controller.signal.throwIfAborted();
     if (
