@@ -23,6 +23,9 @@ document.querySelector('#reject').addEventListener('click', () => {
   document.querySelector('output').textContent = choose(false);
 });
 document.querySelector('#finish').addEventListener('click', finish);
+window.addEventListener('pagehide', function depart(): void {
+  document.querySelector('output').textContent = 'Leaving';
+});
 `;
 let oneTest = `describe('Coverage workflow', () => {
   test('accepts a choice', async ({app, I}) => {
@@ -73,6 +76,7 @@ test('coverage preserves exact calls through navigation, cleanup and parking and
   assert.deepEqual(Object.keys(data).sort(), [join(fixture.directory, 'src/app.ts'), join(fixture.directory, 'src/unvisited.ts')]);
   let app = data[join(fixture.directory, 'src/app.ts')];
   assert.equal(calls(app, 'choose'), 3);
+  assert.equal(calls(app, 'depart'), 2);
   assert.equal(calls(app, 'finish'), 2);
   assert.deepEqual(Object.values(app.b), [[2, 1]]);
   let unvisited = data[join(fixture.directory, 'src/unvisited.ts')];
@@ -243,12 +247,17 @@ test('malformed app source maps fail coverage while preserving passing tests and
   assert.match(report.coverage.failures.join(' '), /URI malformed/);
 });
 
-test('an unreadable coverage snapshot preserves the completed test and previously collected counters', { timeout: 90000 }, async t => {
+for (let [name, mutation, departing, expected] of [
+  ['cyclic counters', 'app.window.__coverage__.cycle = app.window.__coverage__;', false, /circular|cyclic/i],
+  ['late cyclic counters', 'app.window.__coverage__.cycle = app.window.__coverage__;', true, /circular|cyclic/i],
+  ['late oversized maps', "for (let file of Object.values(app.window.__coverage__)) file.inputSourceMap.sourcesContent[0] = 'x'.repeat(8_000_000);", true, /exceeds the 8 MB limit/],
+]) test(`${name} preserve the completed test and previously collected counters`, { timeout: 90000 }, async t => {
   let fixture = await coverageProject(t, { source: `describe('Broken coverage counters', () => {
     test('keeps its completed choice', async ({app, I}) => {
       await app.goto('/'); await I.click('Accept'); await I.find('$([role=status])').text('Accepted');
       await app.goto('/next'); await I.find('"Next page" $(h1)').visible();
-      app.window.__coverage__.cycle = app.window.__coverage__;
+      ${departing ? `app.window.addEventListener('pagehide', () => {${mutation}});
+      await app.goto('/'); await I.find('Accept').visible();` : mutation}
     });
   });` });
   let result = await fixture.run(['--coverage']).completion;
@@ -258,7 +267,7 @@ test('an unreadable coverage snapshot preserves the completed test and previousl
   assert.equal(report.summary.passed, 1);
   assert.equal(report.coverage.status, 'partial');
   assert.equal(report.coverage.failed, true);
-  assert.match(report.coverage.failures.join(' '), /circular|cyclic/i);
+  assert.match(report.coverage.failures.join(' '), expected);
   assert.equal(calls(data[join(fixture.directory, 'src/app.ts')], 'choose'), 1);
 });
 
