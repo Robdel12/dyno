@@ -71,7 +71,7 @@
  * }
  * ```
  *
- * `startTestProject` is your helper. Return `webServer` overrides, app `env`, JSON-safe `fixtures` for tests, and a `teardown` function. Keep credentials out of browser fixtures. Register owned releases with `onCleanup` as resources are acquired. They run even if setup throws before returning. Setup messages go to stderr.
+ * `startTestProject` is your helper. Return `webServer` overrides, app `env`, JSON-safe `fixtures` for tests, and a `teardown` function. Keep credentials out of browser fixtures. Register cleanup with `onCleanup` as you acquire each resource. These callbacks run even if setup throws. Setup messages go to stderr.
  *
  * Use project factories to create committed records and real sessions. Return the IDs and paths a scenario needs, then exercise the behavior through the app. Share immutable fixture inputs rather than mutable records. For concurrent runs, [give each worker its own resources](guide.md#concurrent-runs).
  *
@@ -79,13 +79,13 @@
  *
  * ## Finish work before reusing resources
  *
- * A fresh page doesn't stop server writes, background jobs, or service workers. Return `drain` when your project needs to join that work between tests. Close admission for the old scenario, release any held requests, and leave its resources ready for reuse.
+ * A fresh page doesn't stop server writes, background jobs, or service workers. Return `drain` to finish that work between tests. Stop new work from the old scenario, release held requests, and wait for its work to finish before reusing resources.
  *
- * Between tests Dyno retires the old document, then calls `drain({ runId, executionId, workerId, test, signal })`. It runs once per non-skipped execution, including the last one before results are saved. The final successful document can remain for inspection, so its backend admission still needs to close during drain. Its duration appears in session timings.
+ * Between tests Dyno retires the old document, then calls `drain({ runId, executionId, workerId, test, signal })`. It runs once per non-skipped execution, including the last one before results are saved. The final app can stay open for inspection, so drain must still stop it from starting new backend work. Its duration appears in session timings.
  *
- * Keep draining within `cleanupTimeout` and honor its signal. A failure ends the session and saves accepted results; remaining tests stay unassigned. Callbacks must honor cancellation. Dyno retains their original promises until settlement before resource destruction; uncooperative Node work can delay shutdown. Make teardown safe after a drain failure.
+ * Keep draining within `cleanupTimeout` and honor its cancellation signal. A failure ends the session and saves accepted results; remaining tests stay unassigned. Dyno waits for your callback before releasing resources, so ignoring cancellation can delay shutdown. Teardown must still work after a drain failure.
  *
- * Setup owns CLI-session resources, worker setup owns private resources, and optional `beforeExecution` resets or binds each scenario before browser hooks. Preparation uses the selected test timeout, leaving the remaining budget for browser work. Timings distinguish preparation from execution cleanup. For a multi-process app, use one project command to start the real stack and handle shutdown.
+ * Use shared setup for session resources, worker setup for private resources, and `beforeExecution` to prepare each scenario before browser hooks. Preparation uses part of the test timeout; browser work gets the remaining time. Timings show preparation and cleanup separately. For a multi-process app, use one project command to start the stack and handle shutdown.
  */
 
 import { access } from 'node:fs/promises';

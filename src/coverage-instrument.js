@@ -1,12 +1,12 @@
 /**
  * @guide coverage Code coverage
- * Run `dyno run --coverage` to collect JavaScript coverage from your app. Dyno saves coverage beside the run report and prints a terminal summary. Collection runs in the browser, so managed and manually connected browsers use the same path.
+ * Run `dyno --coverage` to see which app code your tests exercise. Dyno prints a summary and saves coverage beside the run report. It works in managed and manually connected browsers.
  *
  * ## Instrument your app
  *
  * Your app's build adds Istanbul counters to the code it serves. Existing Istanbul build plugins work with Dyno's collector. Enable them when `process.env.DYNO_COVERAGE === '1'`; Dyno sets that variable on app servers it starts for coverage runs. A reused server must already serve an instrumented build.
  *
- * Dyno's optional Node helper instruments one compiled JavaScript module. Call it after your language or framework compiler, before bundling, and pass the compiler's source map. Keep instrumentation off in ordinary development and production builds.
+ * You can also use Dyno's Node helper to instrument compiled JavaScript. Call it after your compiler and before bundling, with the compiler's source map. Keep instrumentation off in normal development and production builds.
  *
  * ```js
  * import { instrumentCoverage } from 'dyno/coverage';
@@ -19,7 +19,7 @@
  * // Serve result.code, preserve result.map, and save result.coverage in your baseline.
  * ```
  *
- * The helper accepts JavaScript, not raw TypeScript, JSX, or framework templates. Compile those first. It uses `globalThis` directly and does not require `unsafe-eval` in your app's CSP.
+ * Compile TypeScript, JSX, and framework templates to JavaScript first. The helper uses `globalThis` directly, so your app's CSP doesn't need `unsafe-eval`.
  *
  * ## Include files you never visit
  *
@@ -35,9 +35,11 @@
  * }
  * ```
  *
- * Paths are relative to the config directory. Include and exclude rules apply to original source paths after source-map remapping. Without a baseline, Dyno labels the report **loaded files**: modules that never ran cannot contribute to that percentage. Thresholds apply to the reported scope. Coverage is disabled by default. `enabled: true` collects on every run; otherwise use `--coverage`. Pass `--no-coverage` to disable collection for a configured run.
+ * Paths are relative to the config directory. Include and exclude rules match original source paths after mapping. Without a baseline, the report says **loaded files** and leaves unvisited modules out of the percentage. Thresholds apply to that reported set.
  *
- * The helper preserves Istanbul's runtime hash in its baseline entry. That hash describes counters and embedded source-map data. Without `sourcesContent`, same-length source edits can keep the same hash; use complete compiler maps and rebuild the baseline together with the app.
+ * Coverage is off by default. Set `enabled: true` to collect on every run, or use `--coverage` when you need it. `--no-coverage` turns it off for one run.
+ *
+ * The helper keeps Istanbul's hash of the counters and source-map data. Without `sourcesContent`, same-length edits can keep that hash. Include source content and rebuild the baseline with the app.
  *
  * `examples/coverage` includes a small app build that compiles TypeScript, instruments each module, writes a baseline, and serves the result. From the repository, run `node bin/dyno.js --config examples/coverage/dyno.config.js --coverage`.
  *
@@ -45,7 +47,7 @@
  *
  * Coverage artifacts live under the saved run's `coverage/` folder. Choose `text`, `html`, `lcov`, `json`, or `json-summary` reporters. HTML shows original source when source maps contain `sourcesContent`. JSON preserves Istanbul data for other tools. Configured thresholds fail the command when a metric falls short.
  *
- * Dyno collects the app's top-level window across test navigation and cleanup. Workers, service workers, embedded frames, and server-side rendering need their own instrumentation and collection; their globals are outside this collector. Browser crashes and forceful shutdown can prevent a final snapshot. Incomplete collection stays explicit in the saved report. A collection failure does not replace a completed test's functional result.
+ * Dyno collects from the app's main window across navigation and cleanup. Workers, service workers, embedded frames, and server-side rendering need separate collectors. Crashes and forced shutdown can lose final counters; the saved report marks incomplete collection. Collection failures fail the command while preserving completed test results.
  */
 
 import { isAbsolute } from 'node:path';

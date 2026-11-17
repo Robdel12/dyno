@@ -305,7 +305,7 @@ export default async function setup({ session, signal, onCleanup }) {
 }
 ```
 
-`startTestProject` is your helper. Return `webServer` overrides, app `env`, JSON-safe `fixtures` for tests, and a `teardown` function. Keep credentials out of browser fixtures. Register owned releases with `onCleanup` as resources are acquired. They run even if setup throws before returning. Setup messages go to stderr.
+`startTestProject` is your helper. Return `webServer` overrides, app `env`, JSON-safe `fixtures` for tests, and a `teardown` function. Keep credentials out of browser fixtures. Register cleanup with `onCleanup` as you acquire each resource. These callbacks run even if setup throws. Setup messages go to stderr.
 
 Use project factories to create committed records and real sessions. Return the IDs and paths a scenario needs, then exercise the behavior through the app. Share immutable fixture inputs rather than mutable records. For concurrent runs, [give each worker its own resources](guide.md#concurrent-runs).
 
@@ -313,13 +313,13 @@ Use [named app fixtures](guide.md#named-app-fixtures) to call your real factorie
 
 ### Finish work before reusing resources
 
-A fresh page doesn't stop server writes, background jobs, or service workers. Return `drain` when your project needs to join that work between tests. Close admission for the old scenario, release any held requests, and leave its resources ready for reuse.
+A fresh page doesn't stop server writes, background jobs, or service workers. Return `drain` to finish that work between tests. Stop new work from the old scenario, release held requests, and wait for its work to finish before reusing resources.
 
-Between tests Dyno retires the old document, then calls `drain({ runId, executionId, workerId, test, signal })`. It runs once per non-skipped execution, including the last one before results are saved. The final successful document can remain for inspection, so its backend admission still needs to close during drain. Its duration appears in session timings.
+Between tests Dyno retires the old document, then calls `drain({ runId, executionId, workerId, test, signal })`. It runs once per non-skipped execution, including the last one before results are saved. The final app can stay open for inspection, so drain must still stop it from starting new backend work. Its duration appears in session timings.
 
-Keep draining within `cleanupTimeout` and honor its signal. A failure ends the session and saves accepted results; remaining tests stay unassigned. Callbacks must honor cancellation. Dyno retains their original promises until settlement before resource destruction; uncooperative Node work can delay shutdown. Make teardown safe after a drain failure.
+Keep draining within `cleanupTimeout` and honor its cancellation signal. A failure ends the session and saves accepted results; remaining tests stay unassigned. Dyno waits for your callback before releasing resources, so ignoring cancellation can delay shutdown. Teardown must still work after a drain failure.
 
-Setup owns CLI-session resources, worker setup owns private resources, and optional `beforeExecution` resets or binds each scenario before browser hooks. Preparation uses the selected test timeout, leaving the remaining budget for browser work. Timings distinguish preparation from execution cleanup. For a multi-process app, use one project command to start the real stack and handle shutdown.
+Use shared setup for session resources, worker setup for private resources, and `beforeExecution` to prepare each scenario before browser hooks. Preparation uses part of the test timeout; browser work gets the remaining time. Timings show preparation and cleanup separately. For a multi-process app, use one project command to start the stack and handle shutdown.
 
 ## Connect your app server
 
@@ -358,8 +358,7 @@ The gateway accepts UTF-8 HTML, including gzip, deflate, and Brotli, up to 10 MB
 
 ## Named app fixtures
 
-Browser tests can ask the real app process to seed committed records or perform small test operations.
-Import the Node helpers from `dyno/fixtures`; keep factories and database connections in your app.
+Use `app.fixture` to create committed records through your app's real factories, then test them through the UI. Import the Node helpers from `dyno/fixtures`; your app keeps its factories and database connections.
 
 ```js
 import { defineFixtureOperations, createFixtureController, createFixtureHttpHandler } from 'dyno/fixtures';
@@ -377,9 +376,7 @@ let controller = createFixtureController({
 let handleFixtures = createFixtureHttpHandler(controller, { token: privateControlToken });
 ```
 
-Call `handleFixtures(request, response)` before delegating to your ordinary Node app handler.
-It returns whether it handled the request. Keep control reachable outside the app runtime being paused.
-An app with parsed endpoints can call `controller.dispatch()` directly; it needs no HTTP adapter.
+Call `handleFixtures(request, response)` before your normal Node app handler. It returns whether it handled the request. Keep it reachable while app requests are paused. If your framework already parses requests, call `controller.dispatch()` directly.
 
 Connect the worker's lifecycle callbacks in Node setup:
 
@@ -394,31 +391,17 @@ return {
 };
 ```
 
-Register `controller.close()` before releasing its app dependencies. A reset requires `pause()` to
-synchronously return an admission hold with `idle({ signal })` and `resume()`. Construction acquires
-that initial hold. Begin waits for idle, resets exclusively, then resumes. Resume commits preparation;
-if the caller loses the response after that point, the worker is open and can still be drained by
-execution identity. Drain closes admission and starts your app drain before waiting, so it can stop
-producers or end streams. Keep the hold until
-the next successful preparation. Failed or canceled reset/drain never reopens the worker.
+Close the controller before releasing its app dependencies. For reset support, `pause()` must immediately return a hold with `idle({ signal })` and `resume()`. Creating the controller takes that hold, blocking new app work.
 
-Tests call `await app.fixture('seed.user', { email: 'alice@example.test' })`, then exercise the real app
-through navigation and Interactor. Omitted input means null. Operations return JSON; reset may return
-a JSON record of execution fixture values or undefined. Drain returns no browser data.
+Before each test, `begin` waits for existing work, resets the app, then resumes requests. Once resumed, the worker is prepared even if the reply is lost; you can still drain it by execution ID. Drain blocks new work and starts your drain callback before waiting, so the callback can stop producers or close streams. Requests stay paused until the next successful preparation. Failed or cancelled reset/drain leaves them paused.
 
-The default routes are POST `/__dyno_fixtures__/begin`, `/call` and `/drain`. Set the same base `path` on handler and control client to change them. Control uses a private
-token; browser calls receive only their execution capability and same-origin call path. Calls never
-retry or follow redirects. Keep tokens and returned records out of your own logs.
+In a test, call `await app.fixture('seed.user', { email: 'alice@example.test' })`, then use navigation and Interactor to exercise the app. Omitted input means `null`. Operations return JSON. Reset may return an object of fixture values or `undefined`; drain returns no browser data.
 
-Input is limited to 64 KiB, result envelopes to 1 MiB, and JSON depth to 64. Values must be ordinary
-JSON: no undefined properties, functions, dates, custom serializers, sparse arrays or cycles.
-Callback errors have fixed public messages with their original cause available only in Node.
+The default routes are POST `/__dyno_fixtures__/begin`, `/call` and `/drain`. To change them, set the same base `path` on the handler and control client. The private control token stays in Node. Browser calls get a same-origin path and a token for their execution only. Calls never retry or follow redirects. Keep tokens and returned records out of logs.
 
-Aborting HTTP cannot undo committed writes or queued work. Operations must honor their signal;
-the controller retains their actual promises until settlement. Your app still owns jobs, service
-workers, database reset and shutdown. A delayed ordinary app request has no fixture execution
-envelope, so stopping its source remains app policy. Close is terminal; it uses its own cleanup
-signal and never resumes admission.
+Input is limited to 64 KiB, result envelopes to 1 MiB, and JSON depth to 64. Use plain JSON: no undefined properties, functions, dates, custom serializers, sparse arrays or cycles. Callback errors use fixed public messages; the original cause stays in Node.
+
+Cancelling a request can't undo committed writes or queued work. Honor the operation's signal; the controller waits for the operation to finish. Your app still owns jobs, service workers, database reset, shutdown, and ordinary requests that arrive late. Closing the controller is permanent: it uses a separate cleanup signal and never reopens requests.
 
 ## Run and inspect
 
@@ -455,11 +438,11 @@ dyno --repeat 100 --replay .dyno/reports/<run-id>/schedule.json
 
 `--repeat N` runs the complete selection N times, including the first run. It supports managed headless runs; combining it with `--ui`, `--manual`, or `--watch` fails before startup. Tests keep their normal hooks and per-execution fixture preparation. Setup runs once, and browser storage, servers, and project worker resources survive between rounds. Keep scenario reset and backend cleanup in your project.
 
-Each automatic execution removes its test runtime and parks the app before project draining, including the final test. A round must finish cleanup and save its results before the next starts. Each round gets its own `runTimeout`. A failed test stays in the batch result while later rounds continue; cleanup, browser, preparation, persistence, or deadline failures stop repetition. Ctrl-C saves accepted partial results and stops further rounds.
+After each test, Dyno removes its runtime and parks the app before project cleanup, including after the final test. A round finishes cleanup and saves its results before the next starts. Each round gets its own `runTimeout`. A failed test stays in the batch result while later rounds continue; cleanup, browser, preparation, persistence, or deadline failures stop repetition. Ctrl-C saves accepted partial results and stops further rounds.
 
 Without a seed, rounds use declared priority. With `--seed`, round one uses that literal seed and later rounds derive repeatable seeds from it. `--random` generates and prints a root seed; pass it to `--seed` to reproduce the series. The count does not affect seed derivation, so rerunning through the first failing round preserves the prefix. Repeated `--replay` keeps the recorded worker queues fixed.
 
-The summary prints commands to replay the first failing round and rerun the original selection through it. A focused rerun can remove the predecessor that caused a failure. A round-only replay also omits state accumulated in earlier rounds. Seeds reproduce priority, and schedules reproduce queues; neither controls app randomness, backend data, or asynchronous timing. Keep app code and data stable while collecting results. Dyno pins the test bundle, not the running application.
+The summary prints commands to replay the first failing round and rerun the original selection through it. A focused rerun can remove the predecessor that caused a failure. A round-only replay also omits state accumulated in earlier rounds. Seeds reproduce priority, and schedules reproduce queues; neither controls app randomness, backend data, or asynchronous timing. Keep app code and data stable while collecting results. Dyno keeps the test bundle fixed; your app can still change.
 
 See [saved reports](guide.md#saved-reports) for batch counts, schedules, images, and evidence limits. Passing many times is evidence under those conditions; it does not prove a test can never fail.
 
@@ -547,13 +530,13 @@ Round evidence and retained reports share a 256 MiB budget. Reaching it stops re
 
 ## Code coverage
 
-Run `dyno run --coverage` to collect JavaScript coverage from your app. Dyno saves coverage beside the run report and prints a terminal summary. Collection runs in the browser, so managed and manually connected browsers use the same path.
+Run `dyno --coverage` to see which app code your tests exercise. Dyno prints a summary and saves coverage beside the run report. It works in managed and manually connected browsers.
 
 ### Instrument your app
 
 Your app's build adds Istanbul counters to the code it serves. Existing Istanbul build plugins work with Dyno's collector. Enable them when `process.env.DYNO_COVERAGE === '1'`; Dyno sets that variable on app servers it starts for coverage runs. A reused server must already serve an instrumented build.
 
-Dyno's optional Node helper instruments one compiled JavaScript module. Call it after your language or framework compiler, before bundling, and pass the compiler's source map. Keep instrumentation off in ordinary development and production builds.
+You can also use Dyno's Node helper to instrument compiled JavaScript. Call it after your compiler and before bundling, with the compiler's source map. Keep instrumentation off in normal development and production builds.
 
 ```js
 import { instrumentCoverage } from 'dyno/coverage';
@@ -566,7 +549,7 @@ let result = instrumentCoverage({
 // Serve result.code, preserve result.map, and save result.coverage in your baseline.
 ```
 
-The helper accepts JavaScript, not raw TypeScript, JSX, or framework templates. Compile those first. It uses `globalThis` directly and does not require `unsafe-eval` in your app's CSP.
+Compile TypeScript, JSX, and framework templates to JavaScript first. The helper uses `globalThis` directly, so your app's CSP doesn't need `unsafe-eval`.
 
 ### Include files you never visit
 
@@ -582,9 +565,11 @@ coverage: {
 }
 ```
 
-Paths are relative to the config directory. Include and exclude rules apply to original source paths after source-map remapping. Without a baseline, Dyno labels the report **loaded files**: modules that never ran cannot contribute to that percentage. Thresholds apply to the reported scope. Coverage is disabled by default. `enabled: true` collects on every run; otherwise use `--coverage`. Pass `--no-coverage` to disable collection for a configured run.
+Paths are relative to the config directory. Include and exclude rules match original source paths after mapping. Without a baseline, the report says **loaded files** and leaves unvisited modules out of the percentage. Thresholds apply to that reported set.
 
-The helper preserves Istanbul's runtime hash in its baseline entry. That hash describes counters and embedded source-map data. Without `sourcesContent`, same-length source edits can keep the same hash; use complete compiler maps and rebuild the baseline together with the app.
+Coverage is off by default. Set `enabled: true` to collect on every run, or use `--coverage` when you need it. `--no-coverage` turns it off for one run.
+
+The helper keeps Istanbul's hash of the counters and source-map data. Without `sourcesContent`, same-length edits can keep that hash. Include source content and rebuild the baseline with the app.
 
 `examples/coverage` includes a small app build that compiles TypeScript, instruments each module, writes a baseline, and serves the result. From the repository, run `node bin/dyno.js --config examples/coverage/dyno.config.js --coverage`.
 
@@ -592,7 +577,7 @@ The helper preserves Istanbul's runtime hash in its baseline entry. That hash de
 
 Coverage artifacts live under the saved run's `coverage/` folder. Choose `text`, `html`, `lcov`, `json`, or `json-summary` reporters. HTML shows original source when source maps contain `sourcesContent`. JSON preserves Istanbul data for other tools. Configured thresholds fail the command when a metric falls short.
 
-Dyno collects the app's top-level window across test navigation and cleanup. Workers, service workers, embedded frames, and server-side rendering need their own instrumentation and collection; their globals are outside this collector. Browser crashes and forceful shutdown can prevent a final snapshot. Incomplete collection stays explicit in the saved report. A collection failure does not replace a completed test's functional result.
+Dyno collects from the app's main window across navigation and cleanup. Workers, service workers, embedded frames, and server-side rendering need separate collectors. Crashes and forced shutdown can lose final counters; the saved report marks incomplete collection. Collection failures fail the command while preserving completed test results.
 
 ## Understand where time goes
 
@@ -786,7 +771,9 @@ export default async function setup({ session, signal, onCleanup }) {
 
 These helpers belong to your project. `worker` has a string `id` and numeric `index`. Each call returns `{ webServer, env, fixtures, beforeExecution, drain, teardown }`, overriding setup defaults. Share immutable build output; keep databases, queues, files, and mutable app state private. A deliberately stateless app can share a server.
 
-If setup starts the server, return its URL with `command: undefined` and `reuseExistingServer: true`. Worker teardown runs before shared setup teardown. Register each release with `onCleanup` before the next fallible step. Registration closes when the factory settles; callbacks run once in reverse order even after setup fails. Returned `teardown` joins that same cleanup stack. Do not register the same release twice. The frozen `session.id` is shared across workers and stays stable during watch reruns; combine it with worker identity when naming private backend resources. The same setup path works with one worker.
+If setup starts the server, return its URL with `command: undefined` and `reuseExistingServer: true`. Register each resource's cleanup with `onCleanup` before starting the next step. Callbacks run once in reverse order, even if setup fails. Register them before the factory returns. A returned `teardown` joins the same stack; don't register it twice. Worker teardown runs before shared teardown.
+
+The frozen `session.id` stays the same across workers and watch reruns. Include it with the worker ID in private resource names so simultaneous Dyno sessions stay separate. This setup works with one worker too.
 
 ### Protect shared resources
 
@@ -798,7 +785,7 @@ test('copies a token', async ({ I }) => {
 }, { resources: ['clipboard'] });
 ```
 
-Dyno reserves the names together until document retirement and project draining finish. Other eligible tests continue. Global Pause stops new assignments at test boundaries; `app.pause()` holds only its worker. Stop or worker loss saves accepted outcomes and images, drains, and closes the run. Tests and workers aren't automatically retried.
+Dyno reserves these resources together until it retires the document and finishes project cleanup. Other tests can continue if their resources are free. Global Pause stops new assignments at test boundaries; `app.pause()` holds only its worker. Stop or worker loss saves accepted results and images, drains, and closes the run. Dyno doesn't automatically retry tests or workers.
 
 ### Randomize order
 

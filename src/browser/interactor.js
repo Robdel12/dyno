@@ -53,7 +53,7 @@
  */
 
 /**
- * An Interactor.js instance rooted in the app’s current document. Dyno adds app-aware events, independent scopes, file inputs and explicit native actions. Use the test’s `I` as your root. Actions are awaitable and support `.then` chaining. Interactor.js owns selectors, convergence and assertions.
+ * An Interactor.js instance rooted in the app’s current document. Dyno adds app-aware events, independent scopes, file inputs and explicit native actions. Use the test’s `I` as your root. Actions are awaitable and support `.then` chaining. Interactor.js handles selectors, waiting for the UI, and assertions.
  *
  * @api Interactor
  */

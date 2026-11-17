@@ -13,7 +13,7 @@ npx dyno --browser webkit
 
 Runs never download browsers. On Linux, `dyno install --with-deps` also installs [system dependencies](https://playwright.dev/docs/browsers#install-system-dependencies) and may need administrator access. Use `dyno browsers` to see downloaded builds and paths.
 
-Headless Chromium uses Playwright's default headless shell. On macOS, Chromium `--ui`, Chrome, Edge and custom Chromium executables reject captures taller than 16,384 physical pixels. Full Chromium can repeat content beyond that height while reporting valid dimensions. Use default headless Chromium for long-page images. This is a conservative support limit; some custom builds may work beyond it.
+Headless Chromium uses Playwright's default headless shell. On macOS, headed Chromium, Chrome, Edge, and custom Chromium builds can repeat content in images taller than 16,384 physical pixels while reporting valid dimensions. Dyno rejects those captures. Use default headless Chromium for long-page images; some custom builds may work, but Dyno doesn't support them beyond that limit.
 
 ## Choose a browser
 
@@ -33,7 +33,7 @@ A URL-only browser can't take screenshots or resize its tab. Required captures f
 
 ## Native capabilities
 
-Use `app.native.capabilities` to choose browser-specific coverage explicitly. Required operations fail when unsupported; Dyno doesn't substitute a synthetic event.
+Check `app.native.capabilities` before testing browser-specific behavior. Required operations fail when unsupported; Dyno won't substitute a synthetic event.
 
 | Feature | Chromium / Chrome / Edge | Firefox | WebKit | Manual URL |
 | --- | --- | --- | --- | --- |
