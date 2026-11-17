@@ -1,14 +1,12 @@
 # Design
 
-Dyno is named after a dynamometer: the rolling road where a car runs at full throttle while instruments record what it does. The reporter is the instrument panel for that cell. Every run is a *pull*, the overview is the *dyno sheet* printed from it, and status marks come from the hardware in the room (gauges, rollers, sheet notes, hazard tape).
+Dyno is named after a dynamometer, the rollers that measure a car under load. The reporter borrows its gauges, rollers, printed sheets, and hazard tape. A run is a *pull*, and its chart is the *dyno sheet*. The docs use the same visual language.
 
-The same brand runs through the docs site, so reading about Dyno feels like standing in the same cell.
-
-The app gets the screen while tests run. The reporter helps you find a failure, read its output, and get back to the app. Everything below serves those three jobs. When you add UI, start from this doc and [brand.css](../src/browser/brand.css), not from a UI kit.
+The app gets the screen while tests run. The reporter helps you find a failure, read its output, and get back to the app. Start UI work with this guide and [brand.css](../src/browser/brand.css).
 
 ## The rule
 
-Borrow from the dyno cell, not from UI kits. Before you add an element, ask what a dyno operator would look at to learn the same thing. If the answer is a gauge, a printed note, or a roller, draw that. If the answer is "a badge," find another way.
+Before adding an element, ask how a dyno operator would read the same information: a gauge, a printed note, or a roller. Keep that connection clear and avoid generic UI-kit decoration.
 
 Never use these patterns. They read as generic, generated UI:
 
@@ -163,7 +161,7 @@ The docs are a [Starlight](https://starlight.astro.build) site in [site](../site
 
 - **Tokens:** Starlight's grays map to the reporter's ink, muted, faint, line, surface, and background. `--sl-color-accent` is hazard yellow and `--sl-color-text-accent` is the trace blue, so links stay blue and primary buttons are yellow plates. Dark is the dyno cell and light is the printed sheet. Only the few shades Starlight needs that the reporter doesn't (two extra grays, the page background, and accent tints) live in docs.css.
 - **Wordmark:** the site title is the shared wordmark from [markup.js](../src/browser/markup.js). Its roller turns as you scroll, like the drum under a car on the dyno, using a scroll-driven animation where the browser supports one.
-- **Homepage:** a splash hero with the title and two actions, next to an example pull drawn by the real `dyno-chart.js`. On load, the trace draws in left to right, the tach sweeps, and the sheet note prints. That's the site's one orchestrated moment. **Run it again** replays the suite after its slow test got faster, with the first pull as a ghost, so the hero teaches the ghost feature by doing it. A faint sheet grid sits behind the hero.
+- **Homepage:** a splash hero with the title and two actions, next to an example pull drawn by the real `dyno-chart.js`. On load, the trace draws in left to right, the tach sweeps, and the sheet note prints. This is the site's main animation. **Run it again** replays the suite after its slow test got faster, with the first pull as a ghost, so the hero teaches the ghost feature by doing it. A faint sheet grid sits behind the hero.
 - **404:** "Not on the sheet," with a big tach whose needle never left zero. The tach is the hero image, passed as data, so the 404 uses Starlight's own hero.
 - **Sidebar:** the current page sits on a small roller, the same mark as a running test. Group labels are wide and heavy. There are no left border lines on nested lists.
 - **Callouts:** tinted plates with a border and no left rail. Caution and danger callouts get the hazard tape along the top, the cell's "stop and look" sign. This is the only other place hazard stripes appear.

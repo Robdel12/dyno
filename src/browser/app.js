@@ -406,7 +406,7 @@ function maskRectangles(elements, document, policy, metrics) {
 }
 
 /**
- * Call a named fixture in this worker's actual app process. Dyno supplies the execution capability, bounded JSON, cancellation, and a named timing step. Configure the optional fixture controller through beforeExecution. Omitted input is null. Calls never retry or follow redirects; abort cannot undo a committed write. Await every call before finishing the test or hook.
+ * Call a named fixture in this worker's app process. Connect the fixture controller through `beforeExecution`; Dyno handles access, JSON limits, cancellation, and timing. Omitted input means `null`. Calls never retry or follow redirects, and cancellation can't undo committed writes. Await every call before the test or hook ends.
  *
  * @api Application.fixture
  */

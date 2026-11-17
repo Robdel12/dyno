@@ -6,7 +6,7 @@ Node manages processes, bundles, and output. The browser executes tests and Inte
 
 [bin/dyno.js](../bin/dyno.js) owns process signals, exit codes, and terminal streams. [cli.js](../src/cli.js) builds a fresh Commander command tree for parsing, validation, and generated help. Its output and exit hooks return control to Dyno; only immutable options or help/version results leave the parser. [commands.js](../src/commands.js) dispatches those options; [cli-run.js](../src/cli-run.js) owns a test session's resources and reverse-order cleanup. [cli-output.js](../src/cli-output.js) formats human output and JSON events. Project console output goes to stderr.
 
-[watch-session.js](../src/watch-session.js) coordinates the filesystem watcher and immutable watch transitions. It serializes builds, retains queued edits, and waits for an active build during shutdown. Cancelled builds don't emit spurious failures; reload failures explain how to reconnect the browser.
+[watch-session.js](../src/watch-session.js) coordinates the filesystem watcher and immutable watch transitions. It runs one build at a time, keeps queued edits, and waits for an active build during shutdown. Cancelling a build doesn't report a false failure; reload failures explain how to reconnect.
 
 Every command shares cancellation, including browser installation. Shutdown cancels execution before draining cleanup and finalizing session timing. Browser-result deadlines also cancel managed browser opening. There is one command path for each operation.
 
@@ -35,13 +35,13 @@ The gateway forwards app requests and WebSocket upgrades to the app server. Its 
 
 ## Test definitions
 
-The bundled entry loads test modules sequentially through the registration boundary. Each file gets its own registration boundary, including when module evaluation awaits an import. Tests and hooks must belong to a named describe; file-level declarations fail. `describe` callbacks register synchronously.
+The bundle loads test modules one at a time. Each file registers its own definitions, including across awaited imports. Tests and hooks must belong to a named `describe`; file-level declarations fail. `describe` callbacks run synchronously.
 
 [suite.js](../src/suite.js) builds immutable trees and compiles inherited hooks, focus/skip decisions, and stable file/suite/name IDs into an execution plan. Only serializable test descriptors, including declared resources, cross into the host and gateway; callbacks remain in the test runtime. Named suite paths and hook scopes are explicit in the plan.
 
-`run.js` owns one immutable catalog, priority, workers, assignments and accepted outcomes. Hosts request an execution ID before starting a test; outcomes must match that worker, execution and stable test ID. Results can arrive out of order while reports retain catalog order. Every worker must register the same catalog before dispatch. The CLI uses one coordinator for one or many workers. Each worker has a private browser context, gateway and project resources.
+`run.js` keeps the test catalog, priority, workers, assignments, and accepted results in immutable state. Before starting a test, hosts request an execution ID. Results must match the worker, execution, and stable test ID. They can arrive out of order; reports keep catalog order. Workers must register matching catalogs before receiving work. One coordinator handles any worker count, with a private browser context, gateway, and project resources per worker.
 
-Resource names belong to test descriptors. Dispatch reserves the complete set together, and an accepted result does not release it. Before taking another assignment, the host removes the old runtime, replaces the app document with a small parked document, then waits for project draining. The persistent controller and project-owned storage survive. A failed or timed-out project drain stops new assignments without changing accepted results. The final assignment stays marked as retained, so reports do not claim its document was released. The final app can stay available for inspection; terminal cleanup still drains its project work before saving.
+Tests declare the resources they need. Dyno reserves the whole set together and keeps it after accepting the result. Before taking another assignment, the host removes the test runtime, parks the app on a blank document, and waits for project cleanup. The controller and project storage survive. A failed or timed-out drain stops new assignments without changing accepted results. The final app can stay open for inspection; its assignment stays marked as retained, and its project work still drains before saving.
 
 ## State and windows
 
@@ -57,11 +57,11 @@ The reporter owns its route, search, and filter. Its iframe is created on first 
 
 Each worker publishes changed fields and new output through one ordered publisher. The coordinator merges progress by owned assignment, while accepted outcomes remain the final result. Embedded and standalone reporters consume the same bounded event stream; hidden embedded reporters disconnect and reopen with a fresh snapshot. Reporter commands await acknowledgements in their HTTP response, so closing the overlay cannot lose a pending reply.
 
-The gateway validates each whole change before applying it. Accepted events own final test data; progress cannot finish a run or overwrite an accepted outcome. Fatal results retain unfinished console output without pretending the test completed. Pure reporting helpers create immutable views from those sources.
+The gateway validates each change before applying it. Progress updates can't finish a run or overwrite an accepted result. Fatal errors retain unfinished console output without claiming the test completed. Pure reporting helpers turn these inputs into immutable views.
 
 Standalone observers receive sequenced batches of changed test records. They commit a batch only after its final marker; a reconnect starts a new snapshot. Slow readers retain one in-flight batch and one latest view, with backpressure between records. Each encoded record is limited to 8 MB, with a shared 32 MB reservation for its string and encoded buffer. Object/transport overhead is separate. Command queues and connection counts are bounded too. Exceeding a delivery limit closes that reporter with an explanation; results and saved reports continue independently.
 
-Rendering coalesces through a message turn, so a suspended background animation clock cannot stall the reporter. Route, command and terminal changes render immediately.
+A message task batches rendering, so a paused background animation clock can't stall the reporter. Route, command, and final-result changes render immediately.
 
 ## Window ownership
 
@@ -75,7 +75,7 @@ Execution and cleanup have separate abort signals. Finishing execution cancels i
 
 Reporter Stop asks the runtime to cancel and finish bounded cleanup. App loss interrupts execution and cancels pending operations. Closing or reloading the companion destroys its test JavaScript; it cannot resume that execution. Start a new run with a fresh binding. Shared backend resources still belong in Node setup teardown.
 
-Unload messages are best effort. The gateway connection and bounded run deadlines also detect lost ownership; checking `window.closed` alone is insufficient.
+Unload messages aren't guaranteed. Dyno also checks the gateway connection and run deadlines to detect a lost browser; `window.closed` alone isn't enough.
 
 ## Managed browsers
 
@@ -93,7 +93,7 @@ The worker retains the original app page. The companion becoming active cannot r
 
 ## Editing tests
 
-`doctor` validates config, bundling, browser prerequisites, and the app URL without acquiring processes. Test watches use filesystem events for the test directory and imported project helpers. Immutable watch state tracks builds and browser runs independently. Edits during either stay queued; the next run gets the latest source. Config and Node setup changes require restart.
+`doctor` checks config, bundling, browser prerequisites, and the app URL without starting processes. Test watches use filesystem events for the test directory and imported project helpers. Immutable watch state tracks builds and browser runs independently. Edits during either stay queued; the next run gets the latest source. Config and Node setup changes require restart.
 
 `app.pause()` uses a browser message, without a driver. It suspends the execution deadline and host watchdog while retaining the test and app. Continue hides the reporter before resuming the remaining budget. Cleanup cannot pause, and headless runs reject the call.
 
@@ -127,7 +127,7 @@ Normal completion, browser replacement and shutdown share terminal cleanup and p
 
 Apps enable Istanbul instrumentation in their own build. The optional `dyno/coverage` helper instruments compiled modules; Dyno does not transform application JavaScript in the gateway. A build-produced zero-hit baseline includes modules that never load. Without that baseline, reports describe loaded files only.
 
-The app bridge admits cumulative counters synchronously to the persistent companion. The companion checks window identity while the old document is still current, then detaches its counters on a message turn after app `pagehide` handlers finish. It releases that document reference before uploading through a separate authenticated endpoint, awaiting acknowledgements before releasing an execution or completing the run. Each document's newest snapshot replaces its previous counters. Released executions fold into one aggregate; independent documents and workers add their hits once.
+The app bridge sends cumulative counters to the persistent companion synchronously. The companion checks the source window before navigation, then copies the counters in a message task after app `pagehide` handlers finish. It drops the old document reference before uploading through a separate authenticated endpoint. Uploads must be acknowledged before an execution is released or the run completes. New snapshots replace earlier counters from the same document; independent documents and workers add their hits once. Released executions merge into one aggregate.
 
 The coordinator validates counter shapes, ownership, sequence, source definitions, and source-map content. It freezes coverage before saving terminal results. Interrupted collection is explicit; accepted test outcomes remain separate from coverage failures. The existing report staging directory owns coverage HTML, LCOV, and JSON. Repeated rounds merge compatible app coverage once per run and evaluate thresholds on their combined result. Watch runs start fresh.
 
@@ -145,7 +145,7 @@ Interactor owns clicks, typing, app keyboard handlers, and scrolling through loc
 
 Requests carry execution and document identity. The worker checks the original page bridge immediately before dispatch. Geometry stays tied to that document; keys may navigate within their execution. Cancellation rejects queued requests and late results, but cannot undo delivered input. The checks detect races rather than making browser input atomic.
 
-The controller resets managed native state after each test. The gateway also restores it on completion, replacement, and shutdown. Cleanup must finish before another execution proceeds; failed restoration ends the session. Locale and time zone are context configuration. Native calls use the existing first-class timing model.
+The controller resets managed native state after each test. The gateway also restores it on completion, replacement, and shutdown. Cleanup must finish before another execution proceeds; failed restoration ends the session. Locale and time zone are context configuration. Native calls appear in the same timing reports as other operations.
 
 Element screenshots extend the existing capture path with a document-coordinate clip and checked PNG dimensions. They keep the viewport and scroll position unchanged. Fractional edges round outward to include the element's painted bounds; element capture cannot combine full-page or mask options.
 
@@ -155,17 +155,17 @@ Declared order is the default. An explicit or generated seed ranks stable test I
 
 The CLI, live reporter and saved report expose the seed. `schedule.json` records selected IDs, priority, actual assignments and completion order. Version 2 schedules include the source-content fingerprint and catalog. `--replay` validates those inputs and restores each recorded worker queue; an interrupted prefix explicitly omits unassigned tests. Replay constrains queue heads even when a later queued test could bypass a resource. It reproduces queues, not asynchronous interleaving.
 
-## Shared coordination
+## Repeated runs and shared resources
 
 Managed headless `--repeat` composes ordinary runs inside one CLI session. `repeat.js` folds accepted round outcomes into immutable per-test counts; the existing run model still accepts one execution per stable test ID. Each seeded round uses a versioned root-derived seed, with the literal root preserved for round one. Queue replay stays fixed. The coordinator's common replacement path receives the next seed and reuses the pinned test bundle, worker contexts, servers and project resources.
 
-Automatic repeated executions park their final app document before project draining and release, including when there is no later real test. The next round waits for terminal persistence and the current serialized operation to settle. Each round has its own browser-result deadline; lifecycle and storage failures stop advancement. Ordinary interactive completion keeps the final app inspectable as before. Storage and backend reset remain project-owned.
+Repeated runs park the final app document before draining and releasing resources, even after the last test. The next round waits for results to be saved and the current operation to finish. Each round has its own browser-result deadline; cleanup and storage failures stop repetition. Interactive runs can still keep the final app open for inspection. Your project owns storage and backend reset.
 
 `repeat-reports.js` saves compact round outcomes and schedules independently of the coordinator's 20-run cache. Failed/interrupted and final rounds use the ordinary portable formatter. Successful intermediate captures are removed after evidence persistence. A 256 MiB evidence limit stops further rounds explicitly; accepted counts and aggregate/session metadata remain available outside that budget. The test fingerprint does not identify the running app or backend, and rerunning a batch prefix does not replay asynchronous interleaving.
 
 `coordinator.js` owns run snapshots, processes results in order, and coordinates assignment waiting, message replays, draining and final saves. `run.js` contains pure ownership/resource transitions. Private gateways bind requests to their worker ID; posted worker IDs cannot borrow a peer execution. Cross-gateway image reads resolve accepted UUIDs from the same canonical outcomes.
 
-Project setup runs once per CLI session and optionally returns `createWorker`. Both receive one frozen session identity and immediate cleanup registration. Registration seals when acquisition settles; partial failures use the same cleanup stack as returned teardown. Every started acquisition settles before worker resources or shared parents are destroyed. The factory supplies private server/env/fixtures/beforeExecution/drain/teardown descriptors. Startup joins every worker task before cleanup, including on partial failure. Cleanup finishes the coordinator and gateways before stopping app servers, worker projects and shared setup. Browser shutdown follows.
+Project setup runs once per CLI session and can return `createWorker`. Both receive a frozen session ID and `onCleanup`. Register releases before the factory returns; partial failures use the same cleanup stack as returned teardown. Dyno waits for all started setup callbacks before releasing worker or shared resources. Each factory supplies private server, environment, fixtures, preparation, drain, and teardown settings. Cleanup closes the coordinator and gateways first, then app servers, worker projects, shared setup, and finally the browser.
 
 Managed rerun and watch retire all old documents, drain the previous run, rebuild once and reopen one new group. Manual refresh parks its old app through browser APIs before joining. A missing controller has a bounded reconnection window; a lost managed worker ends the shared run without retrying it. Browser document retirement precedes project draining on failure. Project callbacks must honor cancellation; Dyno cannot force arbitrary Node code to stop.
 
@@ -173,10 +173,10 @@ Managed rerun and watch retire all old documents, drain the previous run, rebuil
 
 ## Execution preparation and fixtures
 
-The coordinator reserves an assignment, then runs its optional `beforeExecution` outside run serialization. Duplicate assignment requests join one preparation. Its JSON result is bound to that runtime through an exact source/run/execution message handshake; it never changes gateway-wide settings or enters frame URLs. Static and execution fixture keys cannot collide. Preparation consumes the selected test timeout; delivery/replay recomputes its remaining budget. Browser debug pause keeps its existing behavior. Preparation timings share the coordinator clock and appear inside execution duration, separately from cleanup.
+The coordinator reserves an assignment, then runs `beforeExecution` without blocking the run queue. Duplicate assignment requests wait for the same preparation. A handshake checks the source window, run, and execution before passing its JSON to the test runtime. The result never enters frame URLs or gateway-wide settings, and its keys can't replace static fixtures. Preparation uses the test timeout; delivery and replay recalculate the time left. Preparation timings use the coordinator clock and count toward execution duration, separately from cleanup. Debug pauses work as usual.
 
-Stop, rerun, controller loss and shutdown abort pending preparation before waiting on run queues. A failed preparation prevents worker reuse. The coordinator retains the callback's actual promise until settlement before resource destruction; arbitrary Node work must honor cancellation. Successful final documents remain available for inspection while app-owned drain closes backend admission. Shutdown explicitly retires retained managed documents before app and project resources close.
+Stop, rerun, controller loss, and shutdown cancel pending preparation before waiting on run queues. A failed preparation prevents worker reuse. Dyno waits for the callback before releasing resources, so Node work must honor cancellation. The final app can stay open for inspection while project drain stops new backend work. Shutdown retires retained managed documents before closing app and project resources.
 
-The optional `dyno/fixtures` module composes named operation definitions and a transport-neutral app-process controller. Dependencies are explicit worker-owned handles. Its Node HTTP codec and control client share one bounded JSON protocol outside the gateway's reserved path. Begin and drain use private control credentials; browser calls use only a fresh execution capability. Reset runs exclusively before opening an execution. Cancellation never implies a write was rolled back, so the controller retains real operation work through drain. Failed or cancelled lifecycle work cannot reopen admission later. Ordinary calls are never retried or redirected.
+The optional `dyno/fixtures` module combines named operations with an app-process controller that accepts explicit worker dependencies. Its HTTP handler and control client share a JSON protocol with size limits, outside the gateway's reserved path. Begin and drain use private control credentials; browser calls get a fresh token for their execution. Reset finishes before the execution opens. Cancellation can't roll back writes, so drain still waits for operations to finish. Failed or cancelled preparation/drain leaves app requests paused. Calls never retry or follow redirects.
 
-A parsed framework endpoint can call the same controller directly. Keep its control plane outside the app runtime being paused. Dyno owns no database implementation, queue discovery or required Cricket integration; app admission holds and explicit background-work draining supply those boundaries.
+A framework that parses requests can call the controller directly. Keep its control endpoints reachable while app requests are paused. Your app chooses the database, queues, request holds, and background-work cleanup; no Cricket integration is required.

@@ -65,9 +65,7 @@ export function defineFixtureOperations(...maps) {
 }
 
 /**
- * Own fixture admission for one real app worker. Operations receive `(context, input, execution)`;
- * reset and drain receive `(context, execution)`. Execution contains identity and an abort signal.
- * A reset requires a synchronous app admission hold, acquired before the controller returns.
+ * Control fixture access for one app worker. Operations receive `(context, input, execution)`; reset and drain receive `(context, execution)`. Execution has IDs and an abort signal. For reset support, the controller immediately pauses app requests when created.
  *
  * @api createFixtureController
  */
@@ -345,8 +343,7 @@ export function connectFixtureControl({ url, workerId, token, path = defaultFixt
 
 /**
  * @guide fixtures Named app fixtures
- * Browser tests can ask the real app process to seed committed records or perform small test operations.
- * Import the Node helpers from `dyno/fixtures`; keep factories and database connections in your app.
+ * Use `app.fixture` to create committed records through your app's real factories, then test them through the UI. Import the Node helpers from `dyno/fixtures`; your app keeps its factories and database connections.
  *
  * ```js
  * import { defineFixtureOperations, createFixtureController, createFixtureHttpHandler } from 'dyno/fixtures';
@@ -364,9 +361,7 @@ export function connectFixtureControl({ url, workerId, token, path = defaultFixt
  * let handleFixtures = createFixtureHttpHandler(controller, { token: privateControlToken });
  * ```
  *
- * Call `handleFixtures(request, response)` before delegating to your ordinary Node app handler.
- * It returns whether it handled the request. Keep control reachable outside the app runtime being paused.
- * An app with parsed endpoints can call `controller.dispatch()` directly; it needs no HTTP adapter.
+ * Call `handleFixtures(request, response)` before your normal Node app handler. It returns whether it handled the request. Keep it reachable while app requests are paused. If your framework already parses requests, call `controller.dispatch()` directly.
  *
  * Connect the worker's lifecycle callbacks in Node setup:
  *
@@ -381,31 +376,17 @@ export function connectFixtureControl({ url, workerId, token, path = defaultFixt
  * };
  * ```
  *
- * Register `controller.close()` before releasing its app dependencies. A reset requires `pause()` to
- * synchronously return an admission hold with `idle({ signal })` and `resume()`. Construction acquires
- * that initial hold. Begin waits for idle, resets exclusively, then resumes. Resume commits preparation;
- * if the caller loses the response after that point, the worker is open and can still be drained by
- * execution identity. Drain closes admission and starts your app drain before waiting, so it can stop
- * producers or end streams. Keep the hold until
- * the next successful preparation. Failed or canceled reset/drain never reopens the worker.
+ * Close the controller before releasing its app dependencies. For reset support, `pause()` must immediately return a hold with `idle({ signal })` and `resume()`. Creating the controller takes that hold, blocking new app work.
  *
- * Tests call `await app.fixture('seed.user', { email: 'alice@example.test' })`, then exercise the real app
- * through navigation and Interactor. Omitted input means null. Operations return JSON; reset may return
- * a JSON record of execution fixture values or undefined. Drain returns no browser data.
+ * Before each test, `begin` waits for existing work, resets the app, then resumes requests. Once resumed, the worker is prepared even if the reply is lost; you can still drain it by execution ID. Drain blocks new work and starts your drain callback before waiting, so the callback can stop producers or close streams. Requests stay paused until the next successful preparation. Failed or cancelled reset/drain leaves them paused.
  *
- * The default routes are POST `/__dyno_fixtures__/begin`, `/call` and `/drain`. Set the same base `path` on handler and control client to change them. Control uses a private
- * token; browser calls receive only their execution capability and same-origin call path. Calls never
- * retry or follow redirects. Keep tokens and returned records out of your own logs.
+ * In a test, call `await app.fixture('seed.user', { email: 'alice@example.test' })`, then use navigation and Interactor to exercise the app. Omitted input means `null`. Operations return JSON. Reset may return an object of fixture values or `undefined`; drain returns no browser data.
  *
- * Input is limited to 64 KiB, result envelopes to 1 MiB, and JSON depth to 64. Values must be ordinary
- * JSON: no undefined properties, functions, dates, custom serializers, sparse arrays or cycles.
- * Callback errors have fixed public messages with their original cause available only in Node.
+ * The default routes are POST `/__dyno_fixtures__/begin`, `/call` and `/drain`. To change them, set the same base `path` on the handler and control client. The private control token stays in Node. Browser calls get a same-origin path and a token for their execution only. Calls never retry or follow redirects. Keep tokens and returned records out of logs.
  *
- * Aborting HTTP cannot undo committed writes or queued work. Operations must honor their signal;
- * the controller retains their actual promises until settlement. Your app still owns jobs, service
- * workers, database reset and shutdown. A delayed ordinary app request has no fixture execution
- * envelope, so stopping its source remains app policy. Close is terminal; it uses its own cleanup
- * signal and never resumes admission.
+ * Input is limited to 64 KiB, result envelopes to 1 MiB, and JSON depth to 64. Use plain JSON: no undefined properties, functions, dates, custom serializers, sparse arrays or cycles. Callback errors use fixed public messages; the original cause stays in Node.
+ *
+ * Cancelling a request can't undo committed writes or queued work. Honor the operation's signal; the controller waits for the operation to finish. Your app still owns jobs, service workers, database reset, shutdown, and ordinary requests that arrive late. Closing the controller is permanent: it uses a separate cleanup signal and never reopens requests.
  */
 
 /**
@@ -425,14 +406,14 @@ export function connectFixtureControl({ url, workerId, token, path = defaultFixt
  * @api FixtureExecution
  */
 /**
- * An app-owned admission hold. Idle waits for accepted work; resume explicitly reopens this owner's admission after successful reset. Independent holds must compose.
+ * A pause on new app work. `idle` waits for accepted work to finish; `resume` releases this hold after reset. Resuming one hold must leave any other holds in place.
  * @api FixtureHold
  */
 /**
- * A real app factory or helper receiving dependencies, JSON input and its execution context. Return committed browser-safe JSON; detached work still needs app-owned drain.
+ * An app factory or helper with explicit dependencies, JSON input, and execution context. Return browser-safe JSON after committing writes; your app must still drain any background work.
  * @api FixtureOperation
  */
 /**
- * App-process fixture lifecycle and named dispatch. Construction can hold app admission; failed or cancelled preparation/drain never reopens it. Close before releasing app dependencies.
+ * Run named fixtures in the app process. Creating the controller can pause app requests; failed or cancelled preparation/drain leaves them paused. Close it before releasing app dependencies.
  * @api FixtureController
  */

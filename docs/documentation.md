@@ -1,6 +1,6 @@
 # Working on the docs
 
-Guides and API copy live in JavaScript JSDoc, beside the code they describe. Astro and Starlight build the site with their own dependencies; installing Dyno never installs docs tooling.
+Edit guides and API copy in the JavaScript JSDoc beside the code. Astro and Starlight build the site with separate dependencies, so installing Dyno doesn't install docs tooling.
 
 ## Write once
 
@@ -22,7 +22,7 @@ After editing source comments, run `npm --prefix site run generate -- --write-ma
 
 ## Build versions
 
-Next builds from the current checkout. A release tag such as `v0.1.0` must match `package.json` and have a clean tree. Release docs keep that checkout's HTML, assets, search index, and commit metadata. We don't rebuild old versions with today's generator.
+Next uses the current checkout. For a release, start from a clean tree with a tag such as `v0.1.0` matching `package.json`. Release docs keep that version's HTML, assets, search index, and commit metadata. We don't rebuild old versions with today's generator.
 
 Publishing a GitHub release triggers the Release documentation workflow. It attaches a package tarball and `dyno-docs-<tag>.tar.gz`; existing assets are never overwritten. Cut a new version to fix released docs. This doesn't publish to npm—Dyno is still marked private.
 
@@ -32,7 +32,7 @@ Prereleases appear in the version picker. The homepage prefers the newest stable
 
 ## Publish
 
-GitHub Pages uses **GitHub Actions** as its source, with `DYNO_DOCS_DEPLOY=true` as the repository variable. The workflow uploads a reviewable artifact before deploying through the `github-pages` environment. Local builds never deploy.
+GitHub Pages uses **GitHub Actions** as its source, with `DYNO_DOCS_DEPLOY=true` as the repository variable. The workflow uploads a build you can review before deploying through the `github-pages` environment. Local builds never deploy.
 
 The default URL base is `/dyno/`. Set `DYNO_DOCS_PATH` consistently to host elsewhere; change `site` in `site/astro.config.js` for a custom domain. `DYNO_DOCS_VERSION` defaults to `next`. Builds go to `site/dist`; assembled output goes to `site/published`. Archive assembly rejects conflicting versions or mixed URL bases.
 

@@ -47,7 +47,7 @@
 
 /**
  * @guide api-overview API reference
- * Write tests with browser APIs; configure the app and its resources in Node. This reference covers arguments, return values, and available capabilities. Start with the [first test guide](guide.md#write-your-first-test) if you're setting up a project.
+ * Write tests with browser APIs and set up app resources in Node. This reference covers arguments, return values, and browser support. Start with the [first test guide](guide.md#write-your-first-test) if you're setting up a project.
  *
  * - [describe](api/dyno/variables/describe/) and [test](api/dyno/variables/test/) organize your tests.
  * - [TestContext](api/dyno/interfaces/testcontext/) has the values passed to tests and hooks.

@@ -1,5 +1,5 @@
 /**
- * One inclusive interval in an execution. Numbers are milliseconds from the browser’s monotonic clock. Nested and parallel intervals overlap; do not add them together.
+ * One recorded interval, including time in nested steps. Numbers are milliseconds from the browser's monotonic clock. Nested and parallel intervals overlap, so don't add them together.
  *
  * @api TimingEntry
  */

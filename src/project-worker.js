@@ -1,11 +1,11 @@
 /**
- * Prepare one assignment before browser hooks start. Return optional JSON fixtures and a fixture transport binding. Keys must not replace static fixture keys. Preparation consumes this test's timeout and runs once across assignment reply replays. Callbacks must honor cancellation; Dyno joins actual settlement before resource destruction, so uncooperative Node work can delay shutdown. Interrupted or failed preparation requires restarting Dyno. Only the app owns database reset and independent jobs.
+ * Prepare a test before its browser hooks start. Return optional JSON fixtures and a fixture connection without replacing static fixture keys. This runs once per assignment, even if its reply is replayed, and uses the test's timeout. Honor cancellation: Dyno waits for your callback before releasing resources. Failed or interrupted preparation requires a restart. Your app still owns database reset and background jobs.
  *
  * @api ProjectWorker.beforeExecution
  */
 
 /**
- * Inputs to shared project setup: configuration, acquisition signal, immutable CLI session identity, and immediate cleanup registration.
+ * Your config, setup cancellation signal, immutable session ID, and `onCleanup` callback.
  *
  * @api ProjectContext
  */
@@ -17,25 +17,25 @@
  */
 
 /**
- * Register one owned release during acquisition. Callbacks run once in reverse order after app work stops, including when setup throws. Do not reuse the aborted acquisition signal for cleanup or register work after the factory settles.
+ * Register cleanup as you acquire each resource. Callbacks run once in reverse order after app work stops, even if setup throws. Register before setup returns, and don't use its aborted signal for cleanup.
  *
  * @api ProjectContext.onCleanup
  */
 
 /**
- * Project acquisition inputs plus this worker's immutable string ID and numeric index. Resource names still need session identity to separate simultaneous runs.
+ * Setup inputs plus this worker's immutable string ID and numeric index. Include the session ID in resource names to keep simultaneous runs separate.
  *
  * @api ProjectWorkerContext
  */
 
 /**
- * One owned test execution, with run/worker/execution IDs, the selected test descriptor, and a cancellation signal. Preparation and cleanup get separate live signals.
+ * The run, worker, and execution IDs, selected test, and cancellation signal. Preparation and cleanup get separate signals.
  *
  * @api ProjectExecution
  */
 
 /**
- * An execution-owned, same-origin fixture call path and capability. Produced by the fixture control helper; private control credentials never enter this value.
+ * The same-origin fixture path and access token for one execution, created by the fixture control helper. Private control credentials stay in Node.
  *
  * @api FixtureTransport
  */
@@ -72,7 +72,7 @@
 
 /**
  * @api ProjectWorker.drain
- * Wait for work this execution started after document retirement between tests. The final successful document can remain for inspection; close app admission and join its backend work anyway. Honor cancellation. Failed draining ends the run and saves accepted results; teardown must remain safe afterward.
+ * Stop new work from this test and wait for its backend work to finish after Dyno retires the document. The final app may stay open for inspection; drain its backend work anyway. Honor cancellation. A failure ends the run and saves accepted results, so teardown must still be safe.
  */
 
 /**
@@ -88,7 +88,7 @@
  */
 
 /**
- * Create private resources for a worker. Required for concurrent managed runs. Manual runs always use one worker. Use onCleanup while acquiring resources so partial setup is released if the factory throws.
+ * Create private resources for a worker. Required for concurrent managed runs; manual runs use one worker. Register releases with `onCleanup` as you go so a setup failure also cleans up.
  *
  * @api ProjectSetup.createWorker
  */
@@ -117,7 +117,9 @@
  *
  * These helpers belong to your project. `worker` has a string `id` and numeric `index`. Each call returns `{ webServer, env, fixtures, beforeExecution, drain, teardown }`, overriding setup defaults. Share immutable build output; keep databases, queues, files, and mutable app state private. A deliberately stateless app can share a server.
  *
- * If setup starts the server, return its URL with `command: undefined` and `reuseExistingServer: true`. Worker teardown runs before shared setup teardown. Register each release with `onCleanup` before the next fallible step. Registration closes when the factory settles; callbacks run once in reverse order even after setup fails. Returned `teardown` joins that same cleanup stack. Do not register the same release twice. The frozen `session.id` is shared across workers and stays stable during watch reruns; combine it with worker identity when naming private backend resources. The same setup path works with one worker.
+ * If setup starts the server, return its URL with `command: undefined` and `reuseExistingServer: true`. Register each resource's cleanup with `onCleanup` before starting the next step. Callbacks run once in reverse order, even if setup fails. Register them before the factory returns. A returned `teardown` joins the same stack; don't register it twice. Worker teardown runs before shared teardown.
+ *
+ * The frozen `session.id` stays the same across workers and watch reruns. Include it with the worker ID in private resource names so simultaneous Dyno sessions stay separate. This setup works with one worker too.
  *
  * ## Protect shared resources
  *
@@ -129,7 +131,7 @@
  * }, { resources: ['clipboard'] });
  * ```
  *
- * Dyno reserves the names together until document retirement and project draining finish. Other eligible tests continue. Global Pause stops new assignments at test boundaries; `app.pause()` holds only its worker. Stop or worker loss saves accepted outcomes and images, drains, and closes the run. Tests and workers aren't automatically retried.
+ * Dyno reserves these resources together until it retires the document and finishes project cleanup. Other tests can continue if their resources are free. Global Pause stops new assignments at test boundaries; `app.pause()` holds only its worker. Stop or worker loss saves accepted results and images, drains, and closes the run. Dyno doesn't automatically retry tests or workers.
  *
  * ## Randomize order
  *

@@ -45,8 +45,11 @@ export function createCLIOutput({ json, stdout = process.stdout, stderr = proces
         case 'test': {
           let mark = { passed: '✓', skipped: '−', failed: '✗' }[event.status];
           line(`${mark} ${testTitle(event)}${event.duration === undefined ? '' : ` (${Math.round(event.duration)} ms)`}`);
-          for (let error of [event.error, ...(event.additionalErrors ?? [])].filter(Boolean))
-            log(`[${error.phase ?? 'test'}] ${error.stack ?? error.message}`);
+          for (let error of [event.error, ...(event.additionalErrors ?? [])].filter(Boolean)) {
+            let detail = error.stack || error.message;
+            if (error.stack && !error.stack.includes(error.message)) detail = `${error.message}\n${error.stack}`;
+            log(`[${error.phase ?? 'test'}] ${detail}`);
+          }
           break;
         }
         case 'attachment':
