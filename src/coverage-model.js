@@ -115,7 +115,7 @@ export function acceptCoverage(state, input, { workerId }) {
     !Number.isSafeInteger(input.sequence) || input.sequence < 1)
     fail('a snapshot needs worker, execution, document, and positive sequence identifiers.');
   let error = typeof input.error === 'string' ? input.error : input.error?.message;
-  if (error !== undefined && !text(error)) fail('a collection error must be a non-empty message.');
+  if (input.error !== undefined && !text(error)) fail('a collection error must be a non-empty message.');
   let key = JSON.stringify([workerId, input.executionId, input.documentId]);
   let previous = state.documents.find(document => document.key === key);
   let data = coverageData(input.coverage ?? {});

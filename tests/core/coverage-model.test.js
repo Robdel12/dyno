@@ -82,6 +82,8 @@ test('coverage rejects changed app builds, malformed counters, and counters that
   bad[path].s.extra = 0;
   assert.throws(() => accept(createCoverageState(), bad), /invalid statements/);
   assert.throws(() => acceptCoverage(state, packet(data, 0), { workerId: '0' }), /positive sequence/);
+  for (let error of [null, 42, {}])
+    assert.throws(() => acceptCoverage(state, { ...packet(data, 2), error }, { workerId: '0' }), /collection error/);
 });
 
 test('a collection error preserves acknowledged document counters and makes coverage partial', async t => {
