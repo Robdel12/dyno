@@ -6,6 +6,7 @@ import { EventEmitter, once } from 'node:events';
 import { join } from 'node:path';
 import { runInNewContext } from 'node:vm';
 import { createInstrumenter } from 'istanbul-lib-instrument';
+import { instrumentCoverage } from '../../src/coverage-instrument.js';
 import { project } from '../helpers/project.js';
 import { loadConfig } from '../../src/config.js';
 import { buildSuite } from '../../src/build.js';
@@ -239,6 +240,41 @@ test('invalid outcome and interruption envelopes cannot complete or fail an othe
   await app.finish(assignment);
 });
 
+test('the coverage endpoint enforces enabled collection, owned executions, and the final report cutoff', { timeout: 15000 }, async t => {
+  let disabled = await gateway(t, {}, { coverage: false });
+  let response = await disabled.post('coverage', { executionId: 'foreign', documentId: 'doc', sequence: 1, coverage: {} });
+  assert.equal(response.status, 409);
+  assert.match(await response.text(), /coverage is disabled/);
+
+  let app = await gateway(t, {}, { coverage: true });
+  let { post, url } = app;
+  let assignment = await app.start();
+  let filename = join(app.directory, 'app.js');
+  let output = instrumentCoverage({ code: 'globalThis.choose = () => 42; choose();', filename });
+  let sandbox = {};
+  runInNewContext(output.code, sandbox);
+  let packet = { executionId: assignment.id, documentId: 'document', sequence: 1,
+    coverage: JSON.parse(JSON.stringify(sandbox.__coverage__)) };
+  assert.equal((await post('coverage', { ...packet, executionId: 'foreign' })).status, 409);
+  assert.equal((await post('coverage', packet, { Origin: 'https://foreign.example' })).status, 400);
+  assert.equal((await post('coverage', { ...packet, connectionKey: 'foreign' })).status, 403);
+  assert.equal((await post('coverage', packet)).status, 200);
+  assert.equal((await post('coverage', packet)).status, 200);
+  let changed = structuredClone(packet);
+  changed.coverage[filename].s[0]++;
+  assert.equal((await post('coverage', changed)).status, 400);
+  assert.equal((await post('events', { type: 'test', executionId: packet.executionId, testId: descriptor.id,
+    index: 0, name: descriptor.name, status: 'passed', duration: 1 })).status, 200);
+  assert.equal((await post('released', { requestId: 'release', executionId: packet.executionId })).status, 200);
+  assert.equal((await post('coverage', { ...packet, sequence: 2 })).status, 409);
+  assert.equal((await post('events', { type: 'complete', duration: 1 })).status, 200);
+  let [saved] = await (await fetch(url + 'results', { signal: t.signal })).json();
+  assert.equal(saved.outcomes[0].status, 'passed');
+  assert.equal(saved.coverage.status, 'complete');
+  assert.equal(saved.coverage.summary.functions.pct, 100);
+  assert.equal((await post('coverage', { ...packet, sequence: 3 })).status, 409);
+});
+
 test('coverage integrations reject malformed maps and retain truthiness counters and acknowledged data through collection failure', { timeout: 15000 }, async t => {
   let app = await gateway(t, {}, { coverage: true });
   let assignment = await app.start();
@@ -272,7 +308,7 @@ test('coverage integrations reject malformed maps and retain truthiness counters
   let other = {};
   runInNewContext(instrumenter.instrumentSync('globalThis.answer = 42;', otherFilename), other);
   assert.equal((await app.post('coverage', { ...packet, documentId: 'second', coverage: JSON.parse(JSON.stringify(other.__coverage__)) })).status, 200);
-  assert.equal((await app.post('coverage', { ...packet, sequence: 2, coverage: null,
+  assert.equal((await app.post('coverage', { ...packet, sequence: 2, coverage: {},
     error: 'The app document closed before its final coverage snapshot.' })).status, 200);
   let run = await app.finish(assignment, { release: true });
   assert.equal(run.coverage.status, 'partial');

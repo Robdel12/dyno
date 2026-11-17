@@ -30,6 +30,13 @@ let complete = (baseline, counters) => Object.fromEntries(Object.entries(counter
   return [path, file];
 }));
 
+export function frameworkCoverageTarget({ summaries, scope, errors, testExitCode }) {
+  let measured = scope === 'all-suites' && testExitCode === 0 && !errors.length;
+  let scopes = Object.fromEntries(Object.entries(summaries).map(([name, summary]) =>
+    [name, measured && ['lines', 'statements', 'functions', 'branches'].every(metric => summary[metric].pct >= 90)]));
+  return { minimum: 90, met: Object.values(scopes).every(Boolean), scopes };
+}
+
 export async function frameworkCoverageReport({ directory, baseline, sources, root, scope }) {
   let buildId = createHash('sha256').update(JSON.stringify(baseline)).digest('hex');
   let documents = new Map();

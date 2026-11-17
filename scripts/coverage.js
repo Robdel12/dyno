@@ -4,7 +4,7 @@ import { cp, glob, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promi
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { instrumentFrameworkSource } from './coverage/instrument.js';
-import { frameworkCoverageReport } from './coverage/report.js';
+import { frameworkCoverageReport, frameworkCoverageTarget } from './coverage/report.js';
 
 let root = fileURLToPath(new URL('../', import.meta.url));
 let args = process.argv.slice(2);
@@ -52,15 +52,12 @@ let child = spawn(process.execPath, ['scripts/test.js', suite], {
 let [code, signal] = await once(child, 'exit');
 let result = { ...await frameworkCoverageReport({ directory, baseline, sources, root, scope: suite === 'all' ? 'all-suites' : `subset:${suite}` }),
   testExitCode: code ?? 1, testSignal: signal ?? null };
-let scopes = Object.fromEntries(Object.entries(result.summaries).map(([name, summary]) =>
-  [name, ['lines', 'statements', 'functions', 'branches'].every(metric => summary[metric].pct >= 90)]));
-let targetMet = Object.values(scopes).every(Boolean);
-result.target = { minimum: 90, met: targetMet, scopes };
+result.target = frameworkCoverageTarget(result);
 await writeFile(join(directory, 'summary.json'), JSON.stringify(result, null, 2) + '\n');
 console.table(Object.fromEntries(Object.entries(result.summaries).map(([name, summary]) => [name,
   Object.fromEntries(['lines', 'statements', 'functions', 'branches'].map(metric => [metric, summary[metric].pct]))])));
 console.log(`Framework coverage: ${join(directory, 'report/index.html')}`);
 for (let error of result.errors) console.error(`Coverage collection: ${error}`);
-let failed = check && !targetMet;
-if (failed) console.error('Framework coverage is below the 90% target.');
+let failed = check && !result.target.met;
+if (failed) console.error('Framework coverage requires a passing full suite, complete collection, and 90% in every metric.');
 process.exitCode = (code ?? 1) || (result.errors.length || failed ? 1 : 0);

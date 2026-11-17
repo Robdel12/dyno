@@ -7,8 +7,9 @@ import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promis
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { runInNewContext } from 'node:vm';
 import { createInstrumenter } from 'istanbul-lib-instrument';
-import { frameworkCoverageReport } from '../../scripts/coverage/report.js';
+import { frameworkCoverageReport, frameworkCoverageTarget } from '../../scripts/coverage/report.js';
 
 let root = fileURLToPath(new URL('../../', import.meta.url));
 
@@ -72,4 +73,33 @@ test('framework reports count independent executions once and retain untouched p
   assert.equal(coverage[visited].f[0], 3);
   assert.equal(coverage[join(directory, 'src/browser/unused.js')].f[0], 0);
   assert.match(await readFile(join(directory, 'report/index.html'), 'utf8'), /All files/);
+});
+
+test('a framework target requires a successful full suite without collection errors', async t => {
+  let directory = await mkdtemp(join(tmpdir(), 'dyno-self-target-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  await mkdir(join(directory, 'raw'));
+  let baseline = {}, sources = {}, coverage = {};
+  for (let name of ['src/shared.js', 'src/browser/app.js']) {
+    let filename = join(directory, name);
+    let source = 'globalThis.answer = () => 42; answer();';
+    let instrumenter = createInstrumenter({ esModules: true });
+    let code = instrumenter.instrumentSync(source, filename);
+    baseline[filename] = instrumenter.lastFileCoverage();
+    sources[filename] = source;
+    let app = {};
+    runInNewContext(code, app);
+    coverage[filename] = app.__coverage__[filename];
+  }
+  let buildId = createHash('sha256').update(JSON.stringify(baseline)).digest('hex');
+  await writeFile(join(directory, 'raw/node.json'), JSON.stringify({ schemaVersion: 1, buildId, kind: 'node', id: 'execution', coverage }));
+  let report = await frameworkCoverageReport({ directory, baseline, sources, root: directory, scope: 'all-suites' });
+  assert.equal(frameworkCoverageTarget({ ...report, testExitCode: 0 }).met, true);
+  await writeFile(join(directory, 'raw/errors-final.json'), JSON.stringify(['Final counters could not be delivered.']));
+  let partial = await frameworkCoverageReport({ directory, baseline, sources, root: directory, scope: 'all-suites' });
+  assert.equal(partial.summaries.combined.lines.pct, 100);
+  assert.equal(partial.collection, 'partial');
+  assert.equal(frameworkCoverageTarget({ ...partial, testExitCode: 0 }).met, false);
+  assert.equal(frameworkCoverageTarget({ ...report, scope: 'subset:core', testExitCode: 0 }).met, false);
+  assert.equal(frameworkCoverageTarget({ ...report, testExitCode: 1 }).met, false);
 });
