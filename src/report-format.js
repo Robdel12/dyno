@@ -30,7 +30,22 @@ export function junitReport(report) {
   let interrupted = report.status === 'interrupted';
   if (interrupted)
     cases += `\n<testcase name="Run interrupted" classname="Dyno"><error message="${x(report.error?.message ?? 'The run did not complete.')}">${x(report.error ? failureText(report.error) : 'The run did not complete.')}</error></testcase>`;
-  return `<?xml version="1.0" encoding="UTF-8"?>\n<testsuites tests="${report.tests.length + Number(interrupted)}" failures="${report.summary.failed}" errors="${Number(interrupted)}" skipped="${report.summary.skipped + report.summary.notRun}" time="${report.summary.duration / 1000}"><testsuite name="Dyno" tests="${report.tests.length + Number(interrupted)}" failures="${report.summary.failed}" errors="${Number(interrupted)}" skipped="${report.summary.skipped + report.summary.notRun}" time="${report.summary.duration / 1000}">${cases}</testsuite></testsuites>\n`;
+  let coverageFailed = Number(Boolean(report.coverage?.failed));
+  if (coverageFailed)
+    cases += `\n<testcase name="Application coverage" classname="Dyno"><failure message="${x(report.coverage.failures.join(' '))}" type="coverage">${x(report.coverage.failures.join('\n'))}</failure></testcase>`;
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<testsuites tests="${report.tests.length + Number(interrupted) + coverageFailed}" failures="${report.summary.failed + coverageFailed}" errors="${Number(interrupted)}" skipped="${report.summary.skipped + report.summary.notRun}" time="${report.summary.duration / 1000}"><testsuite name="Dyno" tests="${report.tests.length + Number(interrupted) + coverageFailed}" failures="${report.summary.failed + coverageFailed}" errors="${Number(interrupted)}" skipped="${report.summary.skipped + report.summary.notRun}" time="${report.summary.duration / 1000}">${cases}</testsuite></testsuites>\n`;
+}
+
+function coverageMarkup(coverage) {
+  if (!coverage) return '';
+  let x = escapeMarkup;
+  return `<section class="run-info"><h2>Application coverage</h2>
+    <p>${x(coverage.status)} · ${coverage.scope === 'all-files' ? 'All included files' : 'Loaded files only'}</p>
+    <dl class="readouts">${['lines', 'statements', 'functions', 'branches'].map(name =>
+      `<div class="readout"><dt>${name}</dt><dd>${x(coverage.summary?.[name]?.pct ?? '—')}%</dd></div>`).join('')}</dl>
+    ${coverage.html ? `<p><a href="${x(coverage.html)}">Open coverage report</a></p>` : ''}
+    ${coverage.failures.length ? `<ul>${coverage.failures.map(reason => `<li>${x(reason)}</li>`).join('')}</ul>` : ''}
+  </section>`;
 }
 
 function errorMarkup(error) {
@@ -113,6 +128,7 @@ export function htmlReport(report, css, { session = false } = {}) {
     ${report.coordination ? `<p class="saved-meta">${report.coordination.workers.length} ${report.coordination.workers.length === 1 ? 'worker' : 'workers'}, ${x(timingDuration(report.coordination.wallDuration))} wall, ${x(timingDuration(report.coordination.testWorkDuration))} summed test work</p>
       <details class="run-info"><summary>Worker timings</summary><ul>${report.coordination.workers.map(worker => `<li>Worker ${x(worker.id)}: ${x(timingDuration(worker.executionDuration))} execution, ${x(timingDuration(worker.handoffDuration))} handoff, ${x(timingDuration(worker.queueDuration))} queue to assignment, ${x(timingDuration(worker.unassignedDuration))} unassigned</li>`).join('')}</ul></details>` : ''}
     ${report.error ? errorMarkup(report.error) : ''}
+    ${coverageMarkup(report.coverage)}
     ${slow.length ? `<details class="run-info"><summary>Slowest tests</summary><ol class="slow-test-list">${slow.map(test => `<li><a href="#test-${test.index}">${x(testTitle(test))}</a><span>${x(timingDuration(test.duration))}</span></li>`).join('')}</ol></details>` : ''}
     <label class="saved-search"><span>Filter tests</span><input type="search" id="search" placeholder="Search files, suites, and test output"></label>
     <p id="empty" class="empty-list" hidden>No tests match this filter.</p>

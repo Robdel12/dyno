@@ -2,6 +2,7 @@ import { createExecution, transition } from './execution.js';
 import { normalizeViewport } from './viewport.js';
 import { selectTests } from './suite-model.js';
 import { liveChange } from './reporting.js';
+import { createBrowserCoverage } from './coverage.js';
 
 let root = '/__dyno__/';
 let id = () => [...crypto.getRandomValues(new Uint32Array(4))].join('-');
@@ -12,7 +13,7 @@ let serialized = (error) => ({
 });
 let state = createExecution({ width: 1280, height: 800 });
 let controller = new AbortController();
-let runId, connectionKey, settings, resource, resume, stream, stoppingReason;
+let runId, connectionKey, settings, resource, resume, stream, stoppingReason, coverage;
 let contextSync = Promise.resolve();
 let operationQueue = Promise.resolve();
 let appWindow = window.opener;
@@ -59,7 +60,7 @@ let post = async (route, input = {}, signal) => {
     } catch (error) {
       // Only idempotent reporting requests can repeat after a lost response.
       // Actions and test callbacks are never retried.
-      if (attempt || !['events', 'view', 'assignment', 'released'].includes(route) || requestSignal.aborted ||
+      if (attempt || !['events', 'view', 'assignment', 'released', 'coverage'].includes(route) || requestSignal.aborted ||
         error.name !== 'TypeError') throw error;
     }
   }
@@ -620,10 +621,12 @@ async function parkDocument(executionId, timeout) {
 }
 
 async function parkApp(executionId) {
+  coverage?.snapshot();
   resource?.remove();
   resource = undefined;
   window.__dynoAppRuntime = null;
   await parkDocument(executionId, settings.cleanupTimeout);
+  await coverage?.flush();
   await post('released', { requestId: id(), executionId }, controller.signal);
 }
 
@@ -711,6 +714,11 @@ try {
     identity: settings.identity,
     capabilities: settings.capabilities,
   });
+  if (settings.coverage) {
+    coverage = createBrowserCoverage({ appWindow, runId, origin: location.origin, post,
+      execution: () => resource?.id });
+    window.__dynoCoverage = Object.freeze({ receive: coverage.receive });
+  }
   stream = new EventSource(root + `stream?run=${encodeURIComponent(runId)}&role=host`);
   stream.addEventListener('watch', (event) =>
     update({ type: 'watch.changed', watch: JSON.parse(event.data) }),
@@ -797,6 +805,10 @@ try {
     await operationQueue;
     if (settings.owned)
       await post('operations', { operation: 'reset-native', executionId: runner.id });
+    coverage?.snapshot();
+    let coverageError;
+    try { await coverage?.flush(); }
+    catch (error) { coverageError = error; }
     await syncContext(null);
     let { status, error, additionalErrors = [], duration, output = [], timings } = outcome;
     let reported = await post('events', {
@@ -825,6 +837,8 @@ try {
         attachments: Object.freeze(reported.attachments ?? []),
       },
     });
+    // Accept the completed test before reporting a collection failure.
+    if (coverageError) throw coverageError;
     if (stoppingReason) controller.abort(stoppingReason);
     controller.signal.throwIfAborted();
     if (
@@ -838,6 +852,9 @@ try {
   let failed = state.tests.filter((test) => test.status === 'failed').length;
   let skipped = state.tests.filter((test) => test.status === 'skipped').length;
   let duration = performance.now() - started;
+  coverage?.snapshot();
+  await coverage?.flush();
+  coverage?.close();
   await post('events', {
     type: 'complete',
     passed: tests.length - failed - skipped,
@@ -847,6 +864,14 @@ try {
   });
   update({ type: 'completed', duration });
 } catch (error) {
+  try {
+    coverage?.snapshot();
+    await coverage?.flush();
+  } catch (coverageError) {
+    if (!error.message.includes(coverageError.message))
+      error = new Error(`${error.message} ${coverageError.message}`);
+  }
+  coverage?.close();
   if (resource && settings?.owned) {
     try {
       await operationQueue;

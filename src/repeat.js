@@ -57,6 +57,7 @@ let quote = value => `'${String(value).replaceAll("'", "'\\''")}'`;
 // Commands are display text. They are never executed by Dyno.
 function runArguments(options) {
   let args = ['dyno'];
+  if (options.coverage !== undefined) args.push(options.coverage ? '--coverage' : '--no-coverage');
   for (let key of ['config', 'browser', 'browserPath', 'test', 'replay', 'host', 'port', 'reportDir'])
     if (options[key] !== undefined) args.push('--' + key.replace(/[A-Z]/g, value => '-' + value.toLowerCase()), quote(options[key]));
   for (let key of ['id', 'file', 'suite'])

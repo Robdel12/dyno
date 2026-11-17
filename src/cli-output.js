@@ -11,7 +11,7 @@ export function createCLIOutput({ json, stdout = process.stdout, stderr = proces
     json, line, log,
     diagnostic: (text) => write(stderr, text),
     close: (stream) => closed.add(stream),
-    event(event, { persistent = false, savedRuns = 0 } = {}) {
+    event(event, { persistent = false, savedRuns = 0, coverageText = true } = {}) {
       if (event.type === 'error') {
         if (json) line(JSON.stringify(event));
         log(`${event.phase ? `${event.phase}: ` : 'dyno: '}${event.message}`);
@@ -84,6 +84,14 @@ export function createCLIOutput({ json, stdout = process.stdout, stderr = proces
           line(`Repeated-run report: ${event.html}`);
           break;
         case 'report-saved': line(`Report: ${event.html}`); break;
+        case 'coverage':
+          if (coverageText) {
+            line(`Coverage (${event.scope === 'all-files' ? 'all included files' : 'loaded files'}): ${event.status}`);
+            for (let name of ['lines', 'statements', 'functions', 'branches'])
+              if (event.summary?.[name]) line(`  ${name}: ${event.summary[name].pct}%`);
+          }
+          for (let failure of event.failures) log(`Coverage: ${failure}`);
+          break;
         case 'browser-stopped':
           if (!event.graceful) log('Browser required forced cleanup. See session.json for timings.');
           break;

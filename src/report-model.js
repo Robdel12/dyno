@@ -1,6 +1,7 @@
 import { testDescriptor } from './suite.js';
 import { createSchedule } from './schedule-model.js';
 import { snapshotTimings, performanceSummary } from './browser/timings.js';
+import { publicCoverage } from './coverage-reports.js';
 
 let freeze = (value) => Object.freeze(value);
 let errorSnapshot = (error) =>
@@ -68,6 +69,7 @@ export function createReport(run) {
     schemaVersion: 1,
     runId: run.runId,
     status: run.status === 'completed' ? 'completed' : 'interrupted',
+    ...(run.coverage ? { coverage: publicCoverage(run.coverage) } : {}),
     ...(run.startedAt ? { startedAt: run.startedAt } : {}),
     ...(run.userAgent ? { userAgent: run.userAgent } : {}),
     summary: freeze({

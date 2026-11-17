@@ -19,6 +19,7 @@ import { createTimings } from './browser/timings.js';
 import { readReplay } from './schedule.js';
 import { createRepeat, repeatSeed, acceptRepeatRound, finishRepeat, repeatCommand } from './repeat.js';
 import { createRepeatWriter } from './repeat-reports.js';
+import { publicCoverage } from './coverage-reports.js';
 
 async function duringStartup(signal, start) {
   let controller = new AbortController();
@@ -80,6 +81,7 @@ export async function runTests(options, { signal, output }) {
   let instances = [];
   let launchKeys = [];
   let writer = createReportWriter(config.reportDir, {
+    coverage: { ...config.coverage, root: config.root },
     redact: value => launchKeys.reduce((text, key) => text.replaceAll(key, '[private launch]'), value)
   });
   let savedRuns = 0;
@@ -102,6 +104,8 @@ export async function runTests(options, { signal, output }) {
     }
     let result = await writer.save(run, sessionSnapshot('running'));
     savedRuns++;
+    if (run.coverage) output.event({ type: 'coverage', runId: run.runId, ...publicCoverage(run.coverage) },
+      { coverageText: config.coverage.reporters.includes('text') });
     output.event({ type: 'report-saved', ...result });
   };
   let persistent = options.ui || options.manual || options.watch;
@@ -213,7 +217,8 @@ export async function runTests(options, { signal, output }) {
         instances = [...instances, instance];
         if (browser) gateway.attachSession(browser, launchKey);
         let appServer = await measure(`Worker ${id} app server ready`, () => duringStartup(startupSignal, startupSignal => startWebServer(
-          { ...project.config.webServer, env: { ...project.config.webServer.env, DYNO_URL: gateway.origin } },
+          { ...project.config.webServer, env: { ...project.config.webServer.env, DYNO_URL: gateway.origin,
+            DYNO_COVERAGE: config.coverage.enabled ? '1' : '0' } },
           { signal: startupSignal, onReady: headers => gateway.setDocumentPolicy(headers),
             output: message => output.diagnostic(`[app] ${message}`) }
         )));
@@ -260,6 +265,7 @@ export async function runTests(options, { signal, output }) {
         command: repeatCommand(options, { seed: config.seed, count: options.repeat, workers: config.workers }) });
       batchWriter = await createRepeatWriter(join(config.reportDir, 'repeat-' + sessionId), {
         options,
+        coverage: { ...config.coverage, root: config.root },
         redact: value => launchKeys.reduce((text, key) => text.replaceAll(key, '[private launch]'), value)
       });
       output.event({ type: 'repeat-start', batchId: batch.id, requested: batch.requested, seed: batch.seed,
@@ -302,7 +308,7 @@ export async function runTests(options, { signal, output }) {
           return instance.browser.open(url.href);
         })));
         previous = await sessionTimings.measure('lifecycle', 'Browser results', () => pending.promise, { signal: runSignal });
-        if (previous.failed) exitCode = 1;
+        if (previous.failed || previous.coverage?.failed) exitCode = 1;
       } finally {
         deadline?.removeEventListener('abort', expired);
       }
@@ -334,6 +340,14 @@ export async function runTests(options, { signal, output }) {
         let prefixCommand = batch.firstFailure ? repeatCommand(options, { seed: batch.seed,
           count: batch.firstFailure.round, workers: config.workers }) : undefined;
         let saved = await batchWriter.finish(batch, session, { prefixCommand });
+        if (saved.coverage) {
+          output.event({ type: 'coverage', batchId: batch.id, ...saved.coverage },
+            { coverageText: config.coverage.reporters.includes('text') });
+          if (saved.coverage.failed) {
+            exitCode = 1;
+            session = Object.freeze({ ...session, status: 'failed' });
+          }
+        }
         output.event({ type: 'repeat-complete', ...batch, ...saved,
           ...(prefixCommand ? { prefixCommand } : {}) });
       } catch (error) {

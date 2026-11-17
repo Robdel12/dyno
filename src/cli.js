@@ -135,6 +135,8 @@ Tests, actions, and assertions execute in the browser. Use --manual for Safari a
     .addOption(valueOption('--seed <value>', 'Run in a repeatable randomized order'))
     .addOption(new Option('--random', 'Generate and print a seed for this run').conflicts('seed'))
     .option('--watch', 'Rerun when tests or imported helpers change')
+    .option('--coverage', 'Collect Istanbul coverage from the instrumented app')
+    .option('--no-coverage', 'Disable application coverage for this run')
     .addOption(valueOption('--test <name>', 'Exact test name or suite-qualified title'))
     .addOption(new Option('--id <id>', 'Stable test ID; repeat to select several').argParser(collect))
     .addOption(new Option('--file <path>', 'Test file or filename; repeat to select several').argParser(collect))
@@ -172,6 +174,7 @@ Examples:
 export function configOverrides(options) {
   return {
     workers: options.workers, port: options.port, host: options.host, browser: options.browser,
-    browserPath: options.browserPath, reportDir: options.reportDir, seed: options.seed, random: options.random
+    browserPath: options.browserPath, reportDir: options.reportDir, seed: options.seed, random: options.random,
+    coverage: options.coverage,
   };
 }

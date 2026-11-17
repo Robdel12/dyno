@@ -19,7 +19,7 @@ export default defineConfig({
     expressiveCode: { styleOverrides: { borderRadius: '8px', frames: { frameBoxShadowCssValue: 'none' } } },
     components: { Header: './src/components/Header.astro', SiteTitle: './src/components/SiteTitle.astro', Hero: './src/components/Hero.astro' },
     plugins: [starlightTypeDoc({
-      entryPoints: ['./.generated/types/dyno.d.ts', './.generated/types/config.d.ts', './.generated/types/fixtures.d.ts'],
+      entryPoints: ['./.generated/types/dyno.d.ts', './.generated/types/config.d.ts', './.generated/types/fixtures.d.ts', './.generated/types/coverage.d.ts'],
       tsconfig: './tsconfig.json',
       typeDoc: {
         name: 'API reference',

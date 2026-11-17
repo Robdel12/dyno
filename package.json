@@ -19,6 +19,10 @@
     "./fixtures": {
       "types": "./types/fixtures.d.ts",
       "default": "./src/fixtures.js"
+    },
+    "./coverage": {
+      "types": "./types/coverage.d.ts",
+      "default": "./src/coverage-instrument.js"
     }
   },
   "files": [
@@ -57,6 +61,11 @@
     "commander": "15.0.0",
     "esbuild": "0.28.2",
     "interactor.js": "git+https://github.com/wwilsman/interactor.js.git#d22e523485359a924cedfbc32ee3912c80319dbb",
+    "istanbul-lib-coverage": "3.2.2",
+    "istanbul-lib-instrument": "6.0.3",
+    "istanbul-lib-report": "3.0.1",
+    "istanbul-lib-source-maps": "5.0.6",
+    "istanbul-reports": "3.2.0",
     "parse5": "8.0.0",
     "playwright-core": "1.64.1",
     "pngjs": "7.0.0"

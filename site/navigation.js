@@ -12,7 +12,7 @@ export let guideNavigation = [
   ] },
   guides('Write tests', ['interactors', 'suites', 'custom-interactors']),
   guides('Set up your app', ['configuration', 'app-server', 'fixtures']),
-  guides('Run and debug', ['running', 'debugging', 'reports', 'timings']),
+  guides('Run and debug', ['running', 'debugging', 'reports', 'coverage', 'timings']),
   guides('Browser features', ['screenshots', 'viewport', 'native', 'limits']),
   guides('Larger suites', ['concurrency', 'vizzly']),
 ];

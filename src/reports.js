@@ -28,8 +28,9 @@ import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { createReport, missingImages } from './report-model.js';
 import { junitReport, htmlReport } from './report-format.js';
+import { writeCoverageReport } from './coverage-reports.js';
 
-export function createReportWriter(directory, { redact = (value) => value } = {}) {
+export function createReportWriter(directory, { redact = (value) => value, coverage } = {}) {
   let writes = new WeakMap();
   let saved = new Set();
   let save = async (run, session, { maxBytes = Infinity } = {}) => {
@@ -39,6 +40,16 @@ export function createReportWriter(directory, { redact = (value) => value } = {}
     try {
       await mkdir(directory, { recursive: true });
       staging = await mkdtemp(join(directory, `.${run.runId}-`));
+      let coverageBytes = 0;
+      if (run.coverage) {
+        let artifacts = await writeCoverageReport(run.coverage, join(staging, 'coverage'), coverage, { root: coverage?.root });
+        coverageBytes = artifacts.bytes;
+        report = { ...report, coverage: { ...report.coverage,
+          ...(coverage?.reporters.includes('html') ? { html: 'coverage/index.html' } : {}),
+          ...(artifacts.files.includes('coverage-final.json') ? { json: 'coverage/coverage-final.json' } : {}),
+          ...(artifacts.files.includes('coverage-summary.json') ? { summaryFile: 'coverage/coverage-summary.json' } : {}),
+          ...(coverage?.reporters.includes('lcov') ? { lcov: 'coverage/lcov.info' } : {}) } };
+      }
       let images = run.outcomes
         .flatMap((test) => test.attachments ?? [])
         .filter((image) => image.status === 'captured');
@@ -63,7 +74,7 @@ export function createReportWriter(directory, { redact = (value) => value } = {}
         ...(session ? [['session.json', JSON.stringify(session, null, 2) + '\n']] : [])
       ].map(([name, contents]) => [name, redact(contents)]);
       let files = reportFiles();
-      let bytes = imageBytes + files.reduce((total, [, contents]) => total + Buffer.byteLength(contents), 0);
+      let bytes = coverageBytes + imageBytes + files.reduce((total, [, contents]) => total + Buffer.byteLength(contents), 0);
       if (bytes > maxBytes) throw Object.assign(new Error('Repeated-run evidence reached its storage limit.'), { code: 'DYNO_EVIDENCE_LIMIT' });
       let copiedBytes = 0;
       for (let image of images) {
@@ -80,7 +91,7 @@ export function createReportWriter(directory, { redact = (value) => value } = {}
         report = missingImages(report, missing);
         files = reportFiles();
       }
-      bytes = copiedBytes + files.reduce((total, [, contents]) => total + Buffer.byteLength(contents), 0);
+      bytes = coverageBytes + copiedBytes + files.reduce((total, [, contents]) => total + Buffer.byteLength(contents), 0);
       if (bytes > maxBytes) throw Object.assign(new Error('Repeated-run evidence reached its storage limit.'), { code: 'DYNO_EVIDENCE_LIMIT' });
       await Promise.all(files.map(([name, contents]) => writeFile(join(staging, name), contents)));
       await rename(staging, target);
