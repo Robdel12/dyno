@@ -21,8 +21,11 @@ let freeze = value => {
   }
   return value;
 };
-let canonical = value => Array.isArray(value) ? value.map(canonical) : record(value)
-  ? Object.fromEntries(Object.keys(value).sort().map(key => [key, canonical(value[key])])) : value;
+function canonical(value) {
+  if (Array.isArray(value)) return value.map(canonical);
+  if (!record(value)) return value;
+  return Object.fromEntries(Object.keys(value).sort().map(key => [key, canonical(value[key])]));
+}
 let digest = value => createHash('sha256').update(JSON.stringify(canonical(value))).digest('hex');
 let inside = (root, path) => {
   let name = relative(root, path);
@@ -180,7 +183,9 @@ function selected(path, options, root) {
 function result(map, { scope, complete, failures, observed, sources = {}, identities = {}, options, evaluate }) {
   let totals = map.getCoverageSummary();
   let summary = Object.fromEntries(metrics.map(metric => [metric, totals[metric]]));
-  let status = !observed || !map.files().length ? 'unavailable' : complete && !failures.length ? 'complete' : 'partial';
+  let status = 'partial';
+  if (!observed || !map.files().length) status = 'unavailable';
+  else if (complete && !failures.length) status = 'complete';
   let reasons = [...new Set(failures)];
   if (status === 'unavailable') reasons.push('No application coverage was collected for the selected files. Enable Istanbul instrumentation in the app test build.');
   else if (!complete) reasons.push('Coverage collection ended before every worker completed.');
