@@ -37,9 +37,11 @@
     "docs/design.md",
     "docs/ci.md",
     "docs/documentation.md",
-    "types"
+    "types",
+    "vendor"
   ],
   "scripts": {
+    "vendor:interactor": "node scripts/vendor-interactor.js",
     "test": "node scripts/test.js",
     "test:core": "node scripts/test.js core",
     "test:browser": "node scripts/test.js browser",
@@ -62,7 +64,6 @@
     "@jridgewell/trace-mapping": "0.3.31",
     "commander": "15.0.0",
     "esbuild": "0.28.2",
-    "interactor.js": "git+https://github.com/wwilsman/interactor.js.git#d22e523485359a924cedfbc32ee3912c80319dbb",
     "istanbul-lib-coverage": "3.2.2",
     "istanbul-lib-instrument": "6.0.3",
     "istanbul-lib-report": "3.0.1",
@@ -76,6 +77,7 @@
   "devDependencies": {
     "@babel/core": "7.29.13",
     "@types/node": "24.19.2",
+    "pnpm": "11.28.13",
     "typescript": "5.9.3"
   },
   "types": "./types/index.d.ts"

@@ -1,6 +1,6 @@
 import type { TestDescriptor } from './test.js';
 export type { TestDescriptor } from './test.js';
-import { Interactor as BrowserInteractor } from 'interactor.js';
+import { Interactor as BrowserInteractor } from '../vendor/interactor/types/index.js';
 
 export interface UploadFile {
   readonly bytes: BlobPart;

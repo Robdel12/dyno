@@ -20,7 +20,7 @@ test('builds exact-tag docs, preserves them through source edits, and reads both
   t.after(() => rm(directory, { recursive: true, force: true }));
   let checkout = join(directory, 'checkout');
   await mkdir(checkout);
-  for (let path of ['src', 'types', 'bin', 'examples', 'docs', 'site', 'README.md', 'vision.md', 'package.json', 'package-lock.json', '.gitignore'])
+  for (let path of ['src', 'types', 'vendor', 'bin', 'examples', 'docs', 'site', 'README.md', 'vision.md', 'package.json', 'package-lock.json', '.gitignore'])
     await cp(join(root, path), join(checkout, path), { recursive: true, filter: path => !ignored.has(basename(path)) && !path.endsWith(`${sep}src${sep}content${sep}docs`) && !basename(path).startsWith('tmp-') });
   await symlink(join(root, 'node_modules'), join(checkout, 'node_modules'), 'dir');
   await cp(join(root, 'site/node_modules'), join(checkout, 'site/node_modules'), { recursive: true, mode: constants.COPYFILE_FICLONE, filter: path => basename(path) !== '.vite' });

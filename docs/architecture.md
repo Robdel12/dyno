@@ -12,6 +12,8 @@ Every command shares cancellation, including browser installation. Shutdown canc
 
 ## Interactor
 
+Dyno ships the pinned Interactor source and generated types in `vendor/interactor`, with its MIT license and upstream commit. Apps don't need a Git subdependency or an Interactor build step. To refresh the snapshot, update the revision in `scripts/vendor-interactor.js` and run `npm run vendor:interactor`. Keep upstream code unchanged; Dyno's extensions stay in `src/browser/interactor.js`.
+
 The exported `Interactor` and each test's `I` use the same app-aware class. Its public Interactor extension points supply app-realm events/files, form replacement, rendered assertions, and dynamic scopes. Scopes create independent contexts with the same assertion settings and signal; they resolve their roots again after navigation. Interactor.js still owns selectors, chaining, retries, and stability checks. Apps keep domain page objects and fixture I/O.
 
 `defineInteractor({ actions, assertions })` registers actions and assertions through Interactor's public API on a private subclass with its own assertion class. Its returned function binds that definition to an existing Interactor and optional selector. Definitions never register methods on `I` or siblings. Binding and `scope()` share one context-copy path; neither caches app elements. The small subclass keeps registrations independent.

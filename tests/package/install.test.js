@@ -4,83 +4,89 @@ import { join } from 'node:path';
 import { rm, writeFile, readFile } from 'node:fs/promises';
 import { project, exec, repository } from '../helpers/project.js';
 
-test('the packaged artifact installs and runs the documented first-test workflow', {
-  timeout: 150000,
-}, async (t) => {
-  let fixture = await project(t);
-  let { stdout: packed } = await exec(
-    'npm',
-    ['pack', '--json', '--ignore-scripts', '--pack-destination', fixture.directory],
-    { cwd: repository, timeout: 10000 },
-  );
-  let [pack] = JSON.parse(packed);
-  assert.ok(pack.files.some((file) => file.path === 'src/browsers.js'));
-  assert.ok(pack.files.some((file) => file.path === 'docs/browsers.md'));
-  assert.ok(pack.files.some((file) => file.path === 'docs/architecture.md'));
-  assert.ok(pack.files.some((file) => file.path === 'docs/documentation.md'));
-  assert.equal(pack.files.some((file) => file.path.startsWith('site/')), false);
-  assert.equal(
-    pack.files.some((file) => file.path.startsWith('tests/')),
-    false,
-  );
-  await exec(
-    'npm',
-    [
-      'install',
-      '--ignore-scripts=false',
-      '--no-audit',
-      '--no-fund',
-      '--cache',
-      join(fixture.directory, '.npm-cache'),
-      join(fixture.directory, pack.filename),
-    ],
-    { cwd: fixture.directory, timeout: 60000 },
-  );
-  await rm(join(fixture.directory, 'dyno.config.js'));
-  let bin = join(fixture.directory, 'node_modules/dyno/bin/dyno.js');
-  let { stdout: help } = await exec(process.execPath, [bin, 'run', '--help', '--json'], {
-    cwd: fixture.directory,
-    timeout: 5000,
+async function installArtifact(fixture, filename, manager) {
+  if (manager === 'pnpm') {
+    let policy = 'blockExoticSubdeps: true\nallowBuilds:\n  esbuild: true\n';
+    await writeFile(join(fixture.directory, 'pnpm-workspace.yaml'), policy);
+    await exec(process.execPath, [join(repository, 'node_modules/pnpm/bin/pnpm.mjs'),
+      'add', '--save-dev', '--store-dir', join(fixture.directory, '.pnpm-store'), filename],
+    { cwd: fixture.directory, timeout: 60000, env: { ...process.env, CI: 'true' } });
+    assert.equal(await readFile(join(fixture.directory, 'pnpm-workspace.yaml'), 'utf8'), policy);
+    return;
+  }
+  await exec('npm', ['install', '--ignore-scripts=false', '--no-audit', '--no-fund',
+    '--cache', join(fixture.directory, '.npm-cache'), filename],
+  { cwd: fixture.directory, timeout: 60000 });
+}
+
+for (let manager of ['npm', 'pnpm']) {
+  test(`the packaged artifact installs with ${manager} and runs the documented first-test workflow`, {
+    timeout: 150000,
+  }, async (t) => {
+    let fixture = await project(t);
+    let { stdout: packed } = await exec(
+      'npm',
+      ['pack', '--json', '--ignore-scripts', '--pack-destination', fixture.directory],
+      { cwd: repository, timeout: 10000 },
+    );
+    let [pack] = JSON.parse(packed);
+    assert.ok(pack.files.some((file) => file.path === 'src/browsers.js'));
+    assert.ok(pack.files.some((file) => file.path === 'docs/browsers.md'));
+    assert.ok(pack.files.some((file) => file.path === 'docs/architecture.md'));
+    assert.ok(pack.files.some((file) => file.path === 'docs/documentation.md'));
+    assert.ok(pack.files.some((file) => file.path === 'vendor/interactor/LICENSE'));
+    assert.equal(pack.files.some((file) => file.path.startsWith('site/')), false);
+    assert.equal(
+      pack.files.some((file) => file.path.startsWith('tests/')),
+      false,
+    );
+    await installArtifact(fixture, join(fixture.directory, pack.filename), manager);
+    await rm(join(fixture.directory, 'dyno.config.js'));
+    let bin = join(fixture.directory, 'node_modules/dyno/bin/dyno.js');
+    let { stdout: help } = await exec(process.execPath, [bin, 'run', '--help', '--json'], {
+      cwd: fixture.directory,
+      timeout: 5000,
+    });
+    let helpEvent = JSON.parse(help);
+    assert.equal(helpEvent.type, 'help');
+    assert.match(helpEvent.text, /Usage: dyno run/);
+    assert.match(helpEvent.text, /--suite/);
+    await exec(process.execPath, [bin, 'init'], { cwd: fixture.directory, timeout: 5000 });
+    await writeFile(
+      join(fixture.directory, 'tests/browser/home.test.js'),
+      `import { describe, test } from 'dyno'; describe('Workflow', () => {
+  test('installed package opens the app', async ({app,I}) => { await app.goto('/'); await I.find('Fixture app').visible(); await app.screenshot('installed app'); });
+  });`,
+    );
+    await writeFile(
+      join(fixture.directory, 'dyno.config.js'),
+      `import {defineConfig} from 'dyno/config'; export default defineConfig({port:0, browser:{name:${JSON.stringify(process.env.DYNO_TEST_BROWSER ?? 'chromium')}}, webServer:{command:[${JSON.stringify(process.execPath)},${JSON.stringify(join(repository, 'tests/fixtures/app-server.js'))}],url:'http://127.0.0.1:${fixture.port}',env:{PORT:'${fixture.port}'}}});`,
+    );
+    let { stdout, stderr } = await exec(process.execPath, [bin, '--json'], {
+      cwd: fixture.directory,
+      timeout: 70000,
+    });
+    let events = stdout
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line));
+    assert.equal(events.find((event) => event.type === 'complete').passed, 2, stderr + stdout);
+    assert.equal(events.find((event) => event.type === 'ready').browser.provider, 'playwright');
+    assert.ok(
+      events.some((event) => event.type === 'attachment' && event.attachment.status === 'captured'),
+      stdout,
+    );
+    let installed = JSON.parse(
+      await readFile(join(fixture.directory, 'node_modules/dyno/package.json'), 'utf8'),
+    );
+    assert.ok(installed.dependencies['playwright-core']);
+    assert.equal(installed.dependencies.astro, undefined);
+    assert.equal(installed.scripts.prepare, undefined);
+    assert.equal(installed.scripts.postinstall, undefined);
+    assert.equal(installed.peerDependencies?.['playwright-core'], undefined);
+    await assert.rejects(fetch(`http://127.0.0.1:${fixture.port}`));
   });
-  let helpEvent = JSON.parse(help);
-  assert.equal(helpEvent.type, 'help');
-  assert.match(helpEvent.text, /Usage: dyno run/);
-  assert.match(helpEvent.text, /--suite/);
-  await exec(process.execPath, [bin, 'init'], { cwd: fixture.directory, timeout: 5000 });
-  await writeFile(
-    join(fixture.directory, 'tests/browser/home.test.js'),
-    `import { describe, test } from 'dyno'; describe('Workflow', () => {
-test('installed package opens the app', async ({app,I}) => { await app.goto('/'); await I.find('Fixture app').visible(); await app.screenshot('installed app'); });
-});`,
-  );
-  await writeFile(
-    join(fixture.directory, 'dyno.config.js'),
-    `import {defineConfig} from 'dyno/config'; export default defineConfig({port:0, browser:{name:${JSON.stringify(process.env.DYNO_TEST_BROWSER ?? 'chromium')}}, webServer:{command:[${JSON.stringify(process.execPath)},${JSON.stringify(join(repository, 'tests/fixtures/app-server.js'))}],url:'http://127.0.0.1:${fixture.port}',env:{PORT:'${fixture.port}'}}});`,
-  );
-  let { stdout, stderr } = await exec(process.execPath, [bin, '--json'], {
-    cwd: fixture.directory,
-    timeout: 70000,
-  });
-  let events = stdout
-    .trim()
-    .split('\n')
-    .map((line) => JSON.parse(line));
-  assert.equal(events.find((event) => event.type === 'complete').passed, 2, stderr + stdout);
-  assert.equal(events.find((event) => event.type === 'ready').browser.provider, 'playwright');
-  assert.ok(
-    events.some((event) => event.type === 'attachment' && event.attachment.status === 'captured'),
-    stdout,
-  );
-  let installed = JSON.parse(
-    await readFile(join(fixture.directory, 'node_modules/dyno/package.json'), 'utf8'),
-  );
-  assert.ok(installed.dependencies['playwright-core']);
-  assert.equal(installed.dependencies.astro, undefined);
-  assert.equal(installed.scripts.prepare, undefined);
-  assert.equal(installed.scripts.postinstall, undefined);
-  assert.equal(installed.peerDependencies?.['playwright-core'], undefined);
-  await assert.rejects(fetch(`http://127.0.0.1:${fixture.port}`));
-});
+}
 
 test('a developer can install the checkout, initialize a project, and run its first browser test', {
   timeout: 90000,
@@ -139,19 +145,7 @@ test('an installed consumer typechecks suites, app APIs, config, fixtures, and i
   let [pack] = JSON.parse(packed);
   assert.ok(pack.files.some((file) => file.path === 'types/index.d.ts'));
   assert.ok(pack.files.some((file) => file.path === 'types/config.d.ts'));
-  await exec(
-    'npm',
-    [
-      'install',
-      '--ignore-scripts=false',
-      '--no-audit',
-      '--no-fund',
-      '--cache',
-      join(fixture.directory, '.npm-cache'),
-      join(fixture.directory, pack.filename),
-    ],
-    { cwd: fixture.directory, timeout: 60000 },
-  );
+  await installArtifact(fixture, join(fixture.directory, pack.filename), 'pnpm');
   await writeFile(
     join(fixture.directory, 'consumer.ts'),
     `

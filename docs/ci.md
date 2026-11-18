@@ -7,7 +7,7 @@
 | Suite | Command | CI coverage |
 | --- | --- | --- |
 | Core | `npm run test:core` | CLI errors, immutable state, cleanup, and proxy transforms on Linux Node 24/26 and macOS Node 24; no browser needed |
-| Package | `npm run test:package` | Fresh tarball and checkout installs, init, and a real Chromium test on Node 26 |
+| Package | `npm run test:package` | Fresh npm and pnpm 11 tarball installs, checkout installs, types, init, and a real Chromium test on Node 26 |
 | Browser | `npm run test:browser -- firefox` | Real app, gateway, viewport, and process workflows in Chromium, Firefox, and WebKit on Linux and macOS, using Node 24 |
 | Execution | `npm run test:execution -- firefox` | Native concurrency, ownership, queue replay, seeded order, suite hooks, cleanup, pause, watch and replacement workflows in all three engines on Linux and macOS |
 | Repeat | `npm run test:repeat -- firefox` | Repeated selections, seeded batches, resource reuse, cancellation and cleanup in all three engines on Linux and macOS |
@@ -50,7 +50,7 @@ npm run test:coverage:check
 
 Both commands run the real Chromium suite and save HTML, LCOV, JSON, and a summary under `.dyno/coverage/`. The check command also requires 90% lines, statements, functions, and branches overall and in each source group. Host/shared source means `bin/` and non-browser `src/`; browser source means `src/browser/`. The groups follow file locations, even when a shared module runs in both Node and the browser.
 
-Every product JavaScript file in `bin/` and `src/` starts in a zero-hit baseline. The runner instruments one reusable copy under `.dyno/coverage/source`, leaving the working source unchanged. Node subprocesses and browser documents use matching Istanbul definitions and canonical source paths. Replayed snapshots from one document replace earlier counts; independent executions add their hits once. The browser collector also covers the companion, execution frames, and live reporters.
+Every Dyno JavaScript file in `bin/` and `src/` starts in a zero-hit baseline. The vendored Interactor snapshot is third-party code and isn't part of this target. The runner instruments one reusable copy under `.dyno/coverage/source`, leaving the working source unchanged. Node subprocesses and browser documents use matching Istanbul definitions and canonical source paths. Replayed snapshots from one document replace earlier counts; independent executions add their hits once. The browser collector also covers the companion, execution frames, and live reporters.
 
 Use `npm run test:coverage -- --suite core` for a smaller run. Its report is labeled as a subset, still counts all product files, and can't pass the full-suite check. Failed tests or collection errors fail the command too. Keep running the full browser matrix; a coverage percentage can't replace it. A forced process kill can lose final counters.
 

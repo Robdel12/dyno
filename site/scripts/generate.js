@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { glob, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { cp, glob, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { sourceDocs, documentedTypes } from './source.js';
@@ -23,6 +23,7 @@ export async function generate() {
   let output = join(site, 'src/content/docs');
   await rm(output, { recursive: true, force: true });
   await rm(join(site, '.generated'), { recursive: true, force: true });
+  await cp(join(root, 'vendor/interactor/types'), join(site, '.generated/vendor/interactor/types'), { recursive: true });
   let used = new Set();
   for (let [source, target] of [['types/index.d.ts', 'types/dyno.d.ts'], ['types/config.d.ts', 'types/config.d.ts'], ['types/test.d.ts', 'types/test.d.ts'], ['types/fixtures.d.ts', 'types/fixtures.d.ts'], ['types/coverage.d.ts', 'types/coverage.d.ts']])
     await write(join(site, '.generated', target), documentedTypes(source, await read(source), api, used));
