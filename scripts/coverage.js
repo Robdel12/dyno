@@ -24,7 +24,7 @@ let stage = join(directory, 'source');
 await rm(directory, { recursive: true, force: true });
 await mkdir(join(directory, 'raw'), { recursive: true });
 await mkdir(stage);
-for (let path of ['AGENTS.md', 'vision.md', 'README.md', 'package.json', 'package-lock.json', 'src', 'bin', 'types', 'tests', 'scripts', 'docs', 'examples'])
+for (let path of ['AGENTS.md', 'vision.md', 'README.md', 'package.json', 'package-lock.json', 'src', 'bin', 'types', 'vendor', 'tests', 'scripts', 'docs', 'examples'])
   await cp(join(root, path), join(stage, path), { recursive: true, filter: path => !path.includes('/.dyno/') && !path.includes('/node_modules/') });
 await symlink(join(root, 'node_modules'), join(stage, 'node_modules'));
 let baseline = {};

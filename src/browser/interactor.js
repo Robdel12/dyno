@@ -190,7 +190,7 @@
  * Ordinary actions use DOM methods and synthetic events. For browser defaults such as Tab order or CSS hover, use [native browser behavior](guide.md#native-browser-actions).
  */
 
-import { Interactor as BrowserInteractor } from 'interactor.js';
+import { Interactor as BrowserInteractor } from '../../vendor/interactor/lib/index.js';
 
 export class Interactor extends BrowserInteractor {
   static Assert = class extends BrowserInteractor.Assert {};

@@ -28,7 +28,7 @@ export async function inspectOfflineReport(t, path, browser, { images = 0, timin
   let script = await build({
     stdin: {
       contents: `
-    import {Interactor} from 'interactor.js';
+    import {Interactor} from './vendor/interactor/lib/index.js';
     (async()=>{let UI=new Interactor({root:()=>document.body});
     let step='heading';
     try{
