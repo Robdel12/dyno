@@ -15,7 +15,7 @@ async function abortable(work, signal) {
   }
 }
 
-export function createNative({ context, page, capabilities, close }) {
+export function createNative({ context, page, capabilities, close, raise }) {
   let owner;
   let client;
   let authenticator;
@@ -343,7 +343,7 @@ export function createNative({ context, page, capabilities, close }) {
         if (input.kind === 'pointer' && (input.x >= binding.width || input.y >= binding.height))
           throw new Error('Native pointer coordinates must be inside the app viewport.');
         request = { ...request, input };
-        if (['key', 'pointer'].includes(input.kind)) await page.bringToFront();
+        if (['key', 'pointer'].includes(input.kind)) await raise();
         await check(request);
         assertActive(request);
         let next = { runId: request.runId, executionId: request.context.executionId };
