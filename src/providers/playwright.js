@@ -2,6 +2,7 @@ import { browserChannel, chromiumFamily } from '../browsers.js';
 import { nativeCapabilities } from '../native.js';
 import { createNative } from './native.js';
 import { createChromiumCapture } from './chromium-capture.js';
+import { createEmulation } from './chromium-emulation.js';
 
 // Only finding a new context's CDP ID runs one at a time: it diffs the
 // browser's context IDs. Windows then open for each worker in parallel.
@@ -89,8 +90,10 @@ export async function open(browser, plan, viewport, onExit, onDiagnostic = () =>
       close: stop,
       raise,
     });
-    let chromiumCapture = chromium
-      ? createChromiumCapture({ context, page, plan, close: stop }) : undefined;
+    // Visible Chromium windows scale an oversized viewport down to fit the screen.
+    let emulation = chromium ? createEmulation({ context, plan, fit: !plan.headless }) : undefined;
+    let chromiumCapture = emulation ? createChromiumCapture({ page, plan, close: stop, emulation }) : undefined;
+    await emulation?.apply(page);
     // The companion window runs each run's controller. It's opened once and
     // reused: opening a window takes focus, navigating an existing one doesn't.
     let companion;
@@ -126,6 +129,7 @@ export async function open(browser, plan, viewport, onExit, onDiagnostic = () =>
             page.waitForEvent('popup', { timeout }),
             page.getByRole('button', { name: 'Start tests', exact: true }).press('Enter', { timeout, noWaitAfter: true }),
           ]);
+          await emulation?.apply(companion, page.viewportSize());
         }
       },
       activate: raise,
@@ -147,7 +151,9 @@ export async function open(browser, plan, viewport, onExit, onDiagnostic = () =>
       resize: async (size) => {
         await raise();
         await page.setViewportSize(size);
-        await chromiumCapture?.resize(size);
+        let viewport = { width: size.width, height: size.height };
+        await emulation?.apply(page, viewport);
+        if (companion && !companion.isClosed()) await emulation?.apply(companion, viewport);
       },
       capture: ({ fullPage = false, clip } = {}) => {
         if (chromiumCapture && (fullPage || clip)) return chromiumCapture.capture({ clip });

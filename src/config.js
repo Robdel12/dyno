@@ -42,7 +42,7 @@
  * | `browser.deviceScaleFactor` | `1` | Playwright pixel ratio from 1 to 3 |
  * | `browser.isMobile`, `browser.hasTouch` | `false` | Emulate mobile viewport behavior and touch input |
  * | `browser.userAgent` | Browser default | Override the managed browser user agent |
- * | `viewport` | Browser size; managed: 1280 × 800 | Required app viewport dimensions |
+ * | `viewport` | Browser size; managed: 1280 × 800 | Required app viewport dimensions. A visible Chromium window scales a viewport larger than your screen down to fit; the app and its screenshots stay full size. |
  * | `reportDir` | `.dyno/reports` | Saved JSON, JUnit, HTML, and copied images per browser run |
  * | `coverage` | Disabled | App coverage filters, build baseline, reporters, and thresholds; activate with `--coverage` or `coverage.enabled` |
  * | `artifactsDir` | `.dyno/artifacts` | PNG output directory |
