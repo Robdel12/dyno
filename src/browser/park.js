@@ -1,8 +1,8 @@
-import { readAppBinding, appController } from './companion.js';
+import { readAppBinding, connectController } from './companion.js';
 
 let binding = readAppBinding(window.name);
-let controller = appController(window, binding);
 let requestId = new URLSearchParams(location.search).get('request');
-if (controller && requestId)
-  controller.postMessage({ channel: 'dyno-park', runId: binding.runId,
-    executionId: binding.executionId, requestId }, location.origin);
+if (binding && requestId)
+  connectController(window, binding).then((controller) =>
+    controller.postMessage({ channel: 'dyno-park', runId: binding.runId,
+      executionId: binding.executionId, requestId }, location.origin));
