@@ -679,6 +679,10 @@ try {
   let joined = await post('capture', { launchKey, previous, selection: selected }, controller.signal);
   ({ runId, connectionKey } = joined);
   window.__dynoController = Object.freeze({ runId });
+  let reporterLink = document.getElementById('reporter-link');
+  reporterLink.href = root + `reporter?run=${encodeURIComponent(runId)}`;
+  reporterLink.textContent = reporterLink.href;
+  document.getElementById('reporter').hidden = false;
   try {
     sessionStorage.setItem('dyno:previous', JSON.stringify({ runId, connectionKey }));
   } catch {}
