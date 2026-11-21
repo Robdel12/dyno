@@ -1,107 +1,63 @@
-import { testTitle } from './suite.js';
-import { timingDuration, slowWorkLabel } from './browser/timing-format.js';
+import { styleText } from 'node:util';
+import metadata from '../package.json' with { type: 'json' };
+import { initialTerminal, terminalStep } from './output/terminal.js';
+import { initialLLM, llmStep } from './output/llm.js';
+
+let reporters = {
+  terminal: { initial: initialTerminal, step: terminalStep },
+  llm: { initial: initialLLM, step: llmStep },
+};
+
+// Color only reaches a stream that supports it. NO_COLOR and FORCE_COLOR apply.
+let painter = (stream, enabled) => enabled
+  ? (format, text) => styleText(format, String(text), { stream })
+  : (format, text) => String(text);
+
+function commandLines(event, paint) {
+  switch (event.type) {
+    case 'help': return [event.text];
+    case 'version': return [event.version];
+    case 'initialized': return [event.message];
+    case 'browsers':
+      return event.browsers.map(browser => `${browser.name.padEnd(10)} ${browser.installed ? browser.path : paint('dim', 'not installed')}`);
+    case 'diagnosis':
+      return event.checks.map(check => {
+        let [mark, color] = { passed: ['✓', 'green'], failed: ['✗', 'red'], info: ['−', 'dim'] }[check.status];
+        return `${paint(color, mark)} ${check.name}: ${check.message}`;
+      });
+  }
+}
 
 // Only this boundary writes CLI output. Project console output uses stderr.
-export function createCLIOutput({ json, stdout = process.stdout, stderr = process.stderr }) {
+// `format` is 'terminal' (people), 'llm' (agents), or 'json' (machines).
+export function createCLIOutput({ format = 'terminal', stdout = process.stdout, stderr = process.stderr, cwd = process.cwd() }) {
+  let json = format === 'json';
   let closed = new Set();
   let write = (stream, text) => { if (!closed.has(stream)) stream.write(text); };
   let line = (text) => write(stdout, text + '\n');
   let log = (text) => write(stderr, text + '\n');
+  let reporter = reporters[format];
+  let state = reporter?.initial;
+  let paint = painter(stdout, format === 'terminal');
+  let paintErr = painter(stderr, format === 'terminal');
   return Object.freeze({
-    json, line, log,
     diagnostic: (text) => write(stderr, text),
     close: (stream) => closed.add(stream),
-    event(event, { persistent = false, savedRuns = 0, coverageText = true } = {}) {
+    // `view` describes the run: { persistent, options, showCoverage }.
+    event(event, { persistent = false, options, showCoverage = true } = {}) {
       if (event.type === 'error') {
         if (json) line(JSON.stringify(event));
-        log(`${event.phase ? `${event.phase}: ` : 'dyno: '}${event.message}`);
+        log(paintErr('red', `${event.phase ? `${event.phase}: ` : 'dyno: '}${event.message}`));
         return;
       }
       if (json) { line(JSON.stringify(event)); return; }
-      switch (event.type) {
-        case 'help': line(event.text); break;
-        case 'version': line(event.version); break;
-        case 'initialized': line(event.message); break;
-        case 'browsers':
-          for (let browser of event.browsers)
-            line(`${browser.name.padEnd(10)} ${browser.installed ? browser.path : 'not installed'}`);
-          break;
-        case 'diagnosis':
-          for (let check of event.checks) {
-            let mark = { passed: '✓', failed: '✗', info: '−' }[check.status];
-            line(`${mark} ${check.name}: ${check.message}`);
-          }
-          break;
-        case 'ready':
-          line(`\nDyno: ${event.url}\nApp: ${event.appURL}\n${event.files.length} test file(s) bundled`);
-          if (event.workers?.length > 1) line(`${event.workers.length} isolated browser workers`);
-          if (event.replay) line(`Replay: ${event.replay.selected} assigned tests${event.replay.omitted ? `; ${event.replay.omitted} unassigned tests omitted` : ''}`);
-          break;
-        case 'capture': if (persistent) line(`Reporter: ${event.reporterURL}`); break;
-        case 'start':
-          line(`\nRunning ${event.tests.length} browser tests`);
-          if (event.seed !== null && event.seed !== undefined) line(`Seed: ${event.seed}`);
-          break;
-        case 'test': {
-          let mark = { passed: '✓', skipped: '−', failed: '✗' }[event.status];
-          line(`${mark} ${testTitle(event)}${event.duration === undefined ? '' : ` (${Math.round(event.duration)} ms)`}`);
-          for (let error of [event.error, ...(event.additionalErrors ?? [])].filter(Boolean)) {
-            let detail = error.stack || error.message;
-            if (error.stack && !error.stack.includes(error.message)) detail = `${error.message}\n${error.stack}`;
-            log(`[${error.phase ?? 'test'}] ${detail}`);
-          }
-          break;
-        }
-        case 'attachment':
-          line(event.attachment.status === 'captured'
-            ? `Screenshot: ${event.attachment.path}`
-            : `Image skipped: ${event.attachment.name} (${event.attachment.reason})`);
-          break;
-        case 'complete':
-          line(`\n${event.passed} passed, ${event.failed} failed, ${event.skipped} skipped (${Math.round(event.duration)} ms)`);
-          if (event.coordination?.workers.length > 1)
-            line(`${event.coordination.workers.length} workers · ${timingDuration(event.coordination.wallDuration)} wall · ${timingDuration(event.coordination.testWorkDuration)} summed test work`);
-          for (let test of event.performance?.slowestTests.slice(0, 3) ?? []) {
-            let work = slowWorkLabel({ entries: test.slowestWork });
-            line(`Slow: ${testTitle(test)} · ${timingDuration(test.duration)}${work ? ` · ${work}` : ''}`);
-          }
-          break;
-        case 'fatal': log(`Browser run failed: ${event.error?.message ?? 'Unknown error'}`); break;
-        case 'watch': log(`Watch: ${event.message ?? event.status}`); break;
-        case 'repeat-start':
-          line(`Repeating ${event.requested} rounds; browser storage and project worker resources are reused.`);
-          if (event.seed !== null) line(`Root seed: ${event.seed}`);
-          line(`Reproduce: ${event.command}`);
-          break;
-        case 'repeat-round': line(`\nRound ${event.round}/${event.requested}`); break;
-        case 'repeat-complete':
-          line(`\nRepeated runs: ${event.status} · ${event.completed}/${event.requested} rounds completed · ${event.failedRounds} with failures`);
-          for (let test of event.tests)
-            line(`${testTitle(test)}: ${test.passed} passed, ${test.failed} failed, ${test.skipped} skipped, ${test.notRun} not run`);
-          if (event.firstFailure) {
-            line(`First failure: round ${event.firstFailure.round} · ${event.firstFailure.error?.message ?? 'Run interrupted'}`);
-            if (event.firstFailureReplay) line(`Replay this round: ${event.firstFailureReplay}`);
-            line(`Rerun through failure: ${event.prefixCommand}`);
-          }
-          if (event.reason) log(`Repeated runs stopped: ${event.reason}`);
-          line(`Repeated-run report: ${event.html}`);
-          break;
-        case 'report-saved': line(`Report: ${event.html}`); break;
-        case 'coverage':
-          if (coverageText) {
-            line(`Coverage (${event.scope === 'all-files' ? 'all included files' : 'loaded files'}): ${event.status}`);
-            for (let name of ['lines', 'statements', 'functions', 'branches'])
-              if (event.summary?.[name]) line(`  ${name}: ${event.summary[name].pct}%`);
-          }
-          for (let failure of event.failures) log(`Coverage: ${failure}`);
-          break;
-        case 'browser-stopped':
-          if (!event.graceful) log('Browser required forced cleanup. See session.json for timings.');
-          break;
-        case 'session-timing':
-          line(`Session: ${timingDuration(event.timings.duration)} through cleanup.${savedRuns ? ' Details: session.json beside the saved report.' : ''}`);
-          break;
-      }
+      let lines = commandLines(event, paint);
+      if (lines) { for (let text of lines) line(text); return; }
+      let result = reporter.step(state, event, {
+        paint, paintErr, cwd, persistent, options, showCoverage, version: metadata.version,
+      });
+      state = result.state;
+      for (let [stream, text] of result.writes) (stream === 'err' ? log : line)(text);
     }
   });
 }

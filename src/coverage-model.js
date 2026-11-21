@@ -8,7 +8,7 @@ import libSourceMaps from 'istanbul-lib-source-maps';
 
 export let coveragePacketLimit = 8 * 1024 * 1024;
 export let coverageRunLimit = 32 * 1024 * 1024;
-let metrics = ['lines', 'statements', 'functions', 'branches'];
+export let metrics = ['lines', 'statements', 'functions', 'branches'];
 let record = value => value && typeof value === 'object' && !Array.isArray(value) &&
   [Object.prototype, null].includes(Object.getPrototypeOf(value));
 let text = value => typeof value === 'string' && value.length > 0 && value.length <= 4096;

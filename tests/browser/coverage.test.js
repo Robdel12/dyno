@@ -288,6 +288,6 @@ test('selected coverage reporters omit formats the project did not request', { t
   t.after(() => plain.stop());
   let printed = await plain.completion;
   assert.equal(printed.code, 0, printed.stderr);
-  assert.match(printed.stdout, /Report:/);
-  assert.doesNotMatch(printed.stdout, /Coverage \(/);
+  assert.match(printed.stdout, /Report +/);
+  assert.doesNotMatch(printed.stdout, /Coverage +\d/);
 });
