@@ -21,6 +21,14 @@ import { createRepeat, repeatSeed, acceptRepeatRound, finishRepeat, repeatComman
 import { createRepeatWriter } from './repeat-reports.js';
 import { publicCoverage } from './coverage-reports.js';
 
+// A gateway bound to every interface is reachable from other devices on the network.
+function deviceURLs(host, url) {
+  if (!['0.0.0.0', '::'].includes(host)) return [];
+  return Object.values(networkInterfaces()).flat()
+    .filter(entry => entry && !entry.internal && entry.family === 'IPv4')
+    .map(entry => url.replace(/127\.0\.0\.1|\[::1\]/, entry.address));
+}
+
 async function duringStartup(signal, start) {
   let controller = new AbortController();
   let abort = () => controller.abort(signal.reason);
@@ -84,7 +92,6 @@ export async function runTests(options, { signal, output }) {
     coverage: { ...config.coverage, root: config.root },
     redact: value => launchKeys.reduce((text, key) => text.replaceAll(key, '[private launch]'), value)
   });
-  let savedRuns = 0;
   let saveRun = async (run) => {
     if (batch && coordinator.isPrimary(run.runId)) {
       let next = acceptRepeatRound(batch, run);
@@ -95,27 +102,29 @@ export async function runTests(options, { signal, output }) {
       // intermediate captures must not accumulate outside the evidence budget.
       for (let image of run.outcomes.flatMap(outcome => outcome.attachments ?? []))
         if (image.status === 'captured') await rm(image.path, { force: true });
-      if (result.saved) { savedRuns++; output.event({ type: 'report-saved', ...result.saved }); }
+      if (result.saved) output.event({ type: 'report-saved', ...result.saved });
       if (result.limited) {
         batchReason = 'evidence-limit';
         throw new Error('Repeated-run evidence reached 256 MiB. Accepted counts were saved; no further rounds will start.');
       }
-      return;
+      return result.saved;
     }
     let result = await writer.save(run, sessionSnapshot('running'));
-    savedRuns++;
-    if (run.coverage) output.event({ type: 'coverage', runId: run.runId, ...publicCoverage(run.coverage) },
-      { coverageText: config.coverage.reporters.includes('text') });
+    if (run.coverage) output.event({ type: 'coverage', runId: run.runId, ...publicCoverage(run.coverage) });
     output.event({ type: 'report-saved', ...result });
+    // The coordinator attaches these paths to the run's complete or fatal event.
+    return result;
   };
   let persistent = options.ui || options.manual || options.watch;
+  // What the human and agent reporters need to know about this run.
+  let view = { persistent, options, showCoverage: config.coverage.reporters.includes('text') };
   let report = (event) => {
     if (event.type === 'capture') {
       let gateway = instances.find(instance => instance.id === event.workerId)?.gateway;
       event = { ...event, reporterURL: `${gateway.origin}/__dyno__/reporter?run=${encodeURIComponent(event.runId)}` };
     }
     if (coordinator?.isPrimary(event.runId)) watcher?.observe(event);
-    output.event(event, { persistent });
+    output.event(event, view);
     if (coordinator?.isPrimary(event.runId) && !persistent) {
       if (event.type === 'complete') pending.resolve(event);
       if (event.type === 'fatal') failed(new Error(event.error?.message ?? 'Browser runtime failed.'));
@@ -274,16 +283,9 @@ export async function runTests(options, { signal, output }) {
     output.event({
       type: 'ready', url: captureURL(first).href, appURL: first.config.webServer.url,
       workers: instances.map(instance => ({ id: instance.id, url: captureURL(instance).href, appURL: instance.config.webServer.url })),
-      files: bundle.files, browser: browserInfo, seed: config.seed,
+      files: bundle.files, browser: browserInfo, seed: config.seed, devices: deviceURLs(config.host, gateway.url),
       ...(replay ? { replay: { selected: replay.selected.length, omitted: replay.omitted } } : {}),
     });
-    if (['0.0.0.0', '::'].includes(config.host) && !output.json) {
-      for (let entries of Object.values(networkInterfaces()))
-        for (let entry of entries ?? []) {
-          if (!entry.internal && entry.family === 'IPv4')
-            output.line(`Device: ${gateway.url.replace(/127\.0\.0\.1|\[::1\]/, entry.address)}`);
-        }
-    }
     let expired = () => {
       let message = `No complete browser result within ${config.runTimeout} ms. The browser may be disconnected, blocked, or stuck.`;
       let output = instances.map(instance => instance.browser?.logs?.trim()).filter(Boolean).join('\n');
@@ -341,8 +343,7 @@ export async function runTests(options, { signal, output }) {
           count: batch.firstFailure.round, workers: config.workers }) : undefined;
         let saved = await batchWriter.finish(batch, session, { prefixCommand });
         if (saved.coverage) {
-          output.event({ type: 'coverage', batchId: batch.id, ...saved.coverage },
-            { coverageText: config.coverage.reporters.includes('text') });
+          output.event({ type: 'coverage', batchId: batch.id, ...saved.coverage }, view);
           if (saved.coverage.failed) {
             exitCode = 1;
             session = Object.freeze({ ...session, status: 'failed' });
@@ -356,7 +357,7 @@ export async function runTests(options, { signal, output }) {
         output.event({ type: 'error', phase: 'report', message: error.message });
       }
     }
-    output.event({ type: 'session-timing', ...session }, { savedRuns: batchWriter ? 0 : savedRuns });
+    output.event({ type: 'session-timing', ...session });
     runSignal.removeEventListener('abort', aborted);
   }
   if (signal.aborted && !finalizationErrors.length) signal.throwIfAborted();

@@ -208,7 +208,10 @@ export function createCoordinator(config, bundle, {
     }
     event = Object.freeze({ ...event, ...(event.type === 'complete' ? run.summary : { coordination: run.coordination }) });
     if (run.coverage) event = Object.freeze({ ...event, coverage: publicCoverage(run.coverage) });
-    try { await persist(run); }
+    try {
+      let report = await persist(run);
+      if (report) event = Object.freeze({ ...event, report });
+    }
     catch (error) {
       stopping = true;
       publish(Object.freeze({ ...run, status: 'failed', stopped: false,

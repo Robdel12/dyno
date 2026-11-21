@@ -4,7 +4,8 @@ import { runCLI } from '../src/commands.js';
 import { createCLIOutput } from '../src/cli-output.js';
 
 let args = process.argv.slice(2);
-let output = createCLIOutput({ json: args.includes('--json') });
+let format = args.includes('--json') ? 'json' : args.includes('--llm') ? 'llm' : 'terminal';
+let output = createCLIOutput({ format });
 let controller = new AbortController();
 let interruption;
 let stop = (name, code) => {

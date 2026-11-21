@@ -72,6 +72,12 @@ export function repeatCommand(options, { seed, count, workers }) {
   return args.join(' ');
 }
 
+// Reruns one test with the options that selected and configured this run.
+export function testCommand(options, test) {
+  return runArguments({ ...options, replay: undefined, test: [...test.suites, test.name].join(' › '),
+    id: [], suite: [], file: test.file ? [test.file] : [] }).join(' ');
+}
+
 export function replayCommand(options, path) {
   return runArguments({ ...options, replay: path, test: undefined, id: [], file: [], suite: [] }).join(' ');
 }

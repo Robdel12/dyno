@@ -62,6 +62,12 @@
  *
  * `dyno --json` writes one JSON event per stdout line. Config, setup, teardown and app logs go to stderr. Use the process exit code as the outcome: `0` passes, `1` fails, `130` means SIGINT, and `143` means SIGTERM. Cleanup failure exits `1`, including after interruption.
  *
+ * The default output groups results by file and suite, then lists each failure with its code, project stack frames, console output and a command that reruns just that test. Colors turn off when stdout isn't a terminal or `NO_COLOR` is set.
+ *
+ * ## Hand the output to a coding agent
+ *
+ * `dyno --llm` prints a compact Markdown summary instead. It skips passing tests and progress lines. Each failure gets its file and line, the error, a code excerpt, project stack frames, recent console output and a rerun command. It ends with the path to `run.json`, which has everything it leaves out. It can't be combined with `--json`.
+ *
  * [Saved reports](guide.md#saved-reports) give you portable HTML, JSON, JUnit and images after the session stops.
  */
 
@@ -108,6 +114,7 @@ export function parseCLI(args) {
     .description('Run acceptance tests in the browser, from a URL.')
     .version(metadata.version, '-v, --version', 'Print the installed version')
     .option('--json', 'Write JSON events to stdout and diagnostics to stderr')
+    .addOption(new Option('--llm', 'Write a compact Markdown summary for coding agents').conflicts('json'))
     .exitOverride()
     .configureOutput({ writeOut: value => { text += value; }, writeErr: value => { diagnostic += value; } })
     .configureHelp({ showGlobalOptions: true })

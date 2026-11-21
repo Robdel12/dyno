@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, writeFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { launch, project, repository } from '../helpers/project.js';
 import { openURL } from '../helpers/manual.js';
 
@@ -26,6 +26,9 @@ function terminalText(session) {
     });
   });
 }
+
+// The summary prints the report path relative to the project directory.
+let reportPath = (stdout, directory) => resolve(directory, stdout.match(/^ {2}Report +(\S+)$/m)[1]);
 
 function terminalRun(t, fixture, args = []) {
   let session = launch(process.execPath, [join(repository, 'bin/dyno.js'), ...args], fixture.directory, t.signal);
@@ -61,15 +64,18 @@ test('terminal output explains functional outcomes, saved screenshots, and indep
   });
   let result = await terminalRun(t, fixture);
   assert.equal(result.code, 1, result.stdout + result.stderr);
-  for (let text of ['Dyno:', 'Running 3 browser tests', '✓ Terminal workflow › saves a choice',
-    '− Terminal workflow › unfinished work', '✗ Terminal workflow › explains a failure',
-    'Screenshot:', 'Coverage (all included files): complete', 'functions: 50%',
-    '1 passed, 1 failed, 1 skipped', 'Slow:', 'Session:']) assert(result.stdout.includes(text), result.stdout);
-  assert.match(result.stderr, /The confirmation is missing/);
-  assert.match(result.stderr, /confirm@\/src\/contact.js:12:3/);
-  assert.equal(result.stderr.split('The confirmation is missing').length - 1, 1);
-  assert.match(result.stderr, /functions coverage is 50%, below the 100% threshold/);
-  let html = result.stdout.split('\n').find(line => line.startsWith('Report: ')).slice('Report: '.length);
+  for (let text of ['3 tests in 1 file, app at 127.0.0.1:', '\n  Terminal workflow\n', '✓ saves a choice',
+    '− unfinished work  skipped', '✗ explains a failure', 'Failures', '1  Terminal workflow › explains a failure',
+    "Rerun  dyno --test 'Terminal workflow › explains a failure' --file 'tests/browser/workflow.test.js'",
+    '✗ 1 of 3 tests failed in', 'Tests      1 failed, 1 passed, 1 skipped', 'Images     1 screenshot in .dyno/',
+    'Coverage', '50% functions', 'in all included files', 'Total']) assert(result.stdout.includes(text), result.stdout);
+  assert.doesNotMatch(result.stdout, /Runner/);
+  assert.match(result.stdout, /1 {2}Terminal workflow › explains a failure\n {3}The confirmation is missing\n/);
+  assert.match(result.stdout, /\n {3}confirm@\/src\/contact.js:12:3\n/);
+  assert.doesNotMatch(result.stdout, /Slowest/);
+  assert.match(result.stdout, /functions coverage is 50%, below the 100% threshold/);
+  assert.equal(result.stderr.includes('The confirmation is missing'), false, result.stderr);
+  let html = reportPath(result.stdout, fixture.directory);
   let report = JSON.parse(await readFile(join(dirname(html), 'run.json'), 'utf8'));
   assert.deepEqual(report.tests.map(test => test.status), ['passed', 'skipped', 'failed']);
   assert.equal(report.coverage.failed, true);
@@ -90,12 +96,12 @@ test('terminal repeated-run output retains a failed round and prints reproducibl
   });
   let result = await terminalRun(t, fixture, ['--repeat', '2', '--seed', 'terminal-rounds']);
   assert.equal(result.code, 1, result.stdout + result.stderr);
-  for (let text of ['Repeating 2 rounds', 'Root seed: terminal-rounds', 'Round 1/2', 'Round 2/2',
-    'Repeated runs: failed · 2/2 rounds completed · 1 with failures',
-    'Confirmation › appears: 1 passed, 1 failed', 'First failure: round 1',
-    'Replay this round:', 'Rerun through failure:', '--repeat 1', '--seed', 'Repeated-run report:'])
+  for (let text of ['Root seed  terminal-rounds', 'Round 1/2', 'Round 2/2',
+    'Repeat     2 rounds', '✗ Repeated runs failed', '2 of 2 completed, 1 round with failures',
+    'Confirmation › appears  1 failed, 1 passed', 'failed in round 1: Confirmation was missing in round one',
+    'Replay ', 'Reproduce', '--repeat 1', '--seed', 'Report'])
     assert(result.stdout.includes(text), result.stdout);
-  assert.match(result.stderr, /Confirmation was missing in round one/);
+  assert.match(result.stdout, /1 {2}Confirmation › appears/);
 });
 
 test('a failure with an intentionally empty stack still prints its reason', { timeout: 90000 }, async t => {
@@ -107,8 +113,7 @@ test('a failure with an intentionally empty stack still prints its reason', { ti
   let result = await terminalRun(t, fixture);
   assert.equal(result.code, 1, result.stdout + result.stderr);
   assert.match(result.stdout, /1 failed/);
-  assert.match(result.stderr, /\[test\] The save was rejected/);
-  assert.equal(result.stderr.split('The save was rejected').length - 1, 1);
+  assert.match(result.stdout, /1 {2}Failure diagnostics › keeps the reason\n {3}The save was rejected/);
 });
 
 test('a shell app command can report readiness with a regular expression', {
@@ -132,7 +137,7 @@ test('parallel execution explains its project isolation requirement before runni
   let result = await terminalRun(t, fixture);
   assert.equal(result.code, 1, result.stdout + result.stderr);
   assert.match(result.stderr, /Concurrent runs need setup.createWorker.*isolated project resources/);
-  assert.doesNotMatch(result.stdout, /Running \d+ browser tests/);
+  assert.doesNotMatch(result.stdout, /Running \d+ tests?/);
 });
 
 test('the manual terminal session prints its reporter and explains skipped optional images', { timeout: 90000 }, async t => {
@@ -146,18 +151,18 @@ test('the manual terminal session prints its reporter and explains skipped optio
   let session = launch(process.execPath, [join(repository, 'bin/dyno.js'), '--manual'], fixture.directory, t.signal);
   t.after(() => session.stop());
   let text = terminalText(session);
-  let [, url] = await text(/Dyno: (http:\/\/[^\s]+)/);
+  let [, url] = await text(/Open +(http:\/\/[^\s]+)/);
   let page = await openURL(t, url + '#start=managed');
   await page.getByRole('button', { name: 'Start tests', exact: true }).click();
-  let [, reporter] = await text(/Reporter: (http:\/\/[^\s]+)/);
-  await text(/1 passed, 0 failed, 0 skipped/);
+  let [, reporter] = await text(/Reporter +(http:\/\/[^\s]+)/);
+  await text(/✓ 1 test passed/);
   assert.equal(new URL(reporter).origin, new URL(url).origin);
   let response = await fetch(reporter);
   assert.equal(response.status, 200);
   let result = await session.stop();
   assert.equal(result.code, 143, result.stdout + result.stderr);
-  assert.match(result.stdout, /Image skipped: Optional review image \(.*no capture provider/);
-  assert.match(result.stdout, /Report: .*index.html/);
+  assert.match(result.stdout, /Screenshot "Optional review image" skipped \(.*no capture provider/);
+  assert.match(result.stdout, /Report +.*index.html/);
 });
 
 test('watch terminal output explains a broken edit and recovers after the test is fixed', { timeout: 90000 }, async t => {
@@ -167,15 +172,15 @@ test('watch terminal output explains a broken edit and recovers after the test i
   let session = launch(process.execPath, [join(repository, 'bin/dyno.js'), '--watch'], fixture.directory, t.signal);
   t.after(() => session.stop());
   let text = terminalText(session);
-  await text(/1 passed, 0 failed, 0 skipped/);
+  await text(/✓ 1 test passed/);
   await writeFile(path, 'describe( invalid syntax');
   await text(/Watch: [\s\S]*(?:Expected|expected)/);
   await writeFile(path, source);
-  await text(/1 passed, 0 failed, 0 skipped[\s\S]*1 passed, 0 failed, 0 skipped/);
+  await text(/✓ 1 test passed[\s\S]*✓ 1 test passed/);
   let result = await session.stop();
   assert.equal(result.code, 143, result.stdout + result.stderr);
   assert.match(result.stderr, /Watch: /);
-  assert.equal((result.stdout.match(/✓ Workflow › opens the app/g) ?? []).length, 2);
+  assert.equal((result.stdout.match(/✓ opens the app/g) ?? []).length, 2);
 });
 
 test('the terminal explains parallel queue replay and which tests an interrupted schedule omits', { timeout: 90000 }, async t => {
@@ -191,14 +196,14 @@ test('the terminal explains parallel queue replay and which tests an interrupted
   });
   let original = await terminalRun(t, fixture, ['--seed', 'terminal-queues']);
   assert.equal(original.code, 0, original.stdout + original.stderr);
-  assert.match(original.stdout, /2 isolated browser workers/);
-  assert.match(original.stdout, /2 workers · .* wall · .* summed test work/);
-  let html = original.stdout.split('\n').find(line => line.startsWith('Report: ')).slice('Report: '.length);
+  assert.match(original.stdout, /4 tests in 1 file, 2 workers, app at/);
+  assert.match(original.stdout, /Workers +2 workers, .* wall time, .* of test work/);
+  let html = reportPath(original.stdout, fixture.directory);
   let schedule = join(dirname(html), 'schedule.json');
   let replayed = await terminalRun(t, fixture, ['--replay', schedule]);
   assert.equal(replayed.code, 0, replayed.stdout + replayed.stderr);
-  assert.match(replayed.stdout, /Replay: 4 assigned tests\n/);
-  assert.match(replayed.stdout, /4 passed, 0 failed, 0 skipped/);
+  assert.match(replayed.stdout, /Replay +4 assigned tests\n/);
+  assert.match(replayed.stdout, /✓ All 4 tests passed in/);
   let manifest = JSON.parse(await readFile(schedule, 'utf8'));
   let assignments = manifest.assignments.slice(0, 2);
   let interrupted = join(fixture.directory, 'interrupted.json');
@@ -206,6 +211,28 @@ test('the terminal explains parallel queue replay and which tests an interrupted
     completion: manifest.completion.filter(id => assignments.some(assignment => assignment.testId === id)) }));
   let prefix = await terminalRun(t, fixture, ['--replay', interrupted]);
   assert.equal(prefix.code, 0, prefix.stdout + prefix.stderr);
-  assert.match(prefix.stdout, /Replay: 2 assigned tests; 2 unassigned tests omitted/);
-  assert.match(prefix.stdout, /2 passed, 0 failed, 0 skipped/);
+  assert.match(prefix.stdout, /Replay +2 assigned tests, 2 unassigned tests left out/);
+  assert.match(prefix.stdout, /✓ All 2 tests passed in/);
+});
+
+test('LLM output gives each failure its location, code, console output, and rerun command', { timeout: 90000 }, async t => {
+  let fixture = await project(t, {
+    source: `describe('Agent review', () => {
+      test('passes quietly', async ({app, I}) => { await app.goto('/'); await I.find('Fixture app').visible(); });
+      test.skip('waits for later');
+      test('explains a failure', () => {
+        console.warn('Draft was not saved');
+        throw new Error('The confirmation is missing');
+      });
+    });`,
+  });
+  let result = await terminalRun(t, fixture, ['--llm']);
+  assert.equal(result.code, 1, result.stdout + result.stderr);
+  for (let text of ['# Dyno: 1 of 3 tests failed', '1 failed, 1 passed, 1 skipped in',
+    '## 1. Agent review › explains a failure', 'Error: The confirmation is missing\nAt: tests/browser/workflow.test.js:', ', in the test body', '```js', "throw new Error('The confirmation is missing')",
+    '[warn] Draft was not saved', "Rerun: `dyno --test 'Agent review › explains a failure' --file 'tests/browser/workflow.test.js'`",
+    '## Skipped (1)', '- Agent review › waits for later', 'Full results with console output and timings: .dyno/reports/'])
+    assert(result.stdout.includes(text), result.stdout);
+  assert.doesNotMatch(result.stdout, /passes quietly|\u001b\[/);
+  assert.doesNotMatch(result.stdout, /src\/browser\/runtime\.js/);
 });
