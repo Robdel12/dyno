@@ -408,13 +408,15 @@ Dyno starts the app and stops the processes it owns when you finish. `--ui` keep
 
 ### Open the reporter
 
-Press **Ctrl+Shift+D** in the app. Dyno finishes the current test, then opens the reporter over it. The app keeps its full viewport underneath.
+`dyno --ui` and `dyno --watch` open the reporter in your default browser when the first run starts. It follows reruns, so keep that tab open to watch results, run a test, suite or file, and stop the run. Pass `--no-open` to skip it; the CLI and Dyno's control room window both show its URL.
+
+You can also press **Ctrl+Shift+D** in the app. Dyno finishes the current test, then opens the reporter over it. The app keeps its full viewport underneath.
 
 Start with the file/suite overview, then open a test's **Output**, **Timings** or **Application** view. You can rerun a test, suite, file or failed selection. Search and filters stay in the URL.
 
 Turn on **Pause on failure** in Run options to inspect a failing app. Continue hides the reporter before the next test. Stop cancels the run and starts cleanup. Pausing leaves app timers and requests running.
 
-The CLI also prints a separate reporter URL. Open it in another tab if you'd rather keep the app uncovered. A completed interactive run keeps each worker's last app available; rerun an earlier test to inspect it again.
+A completed interactive run keeps each worker's last app available; rerun an earlier test to inspect it again.
 
 ### Repeat while developing
 
