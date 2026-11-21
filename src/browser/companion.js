@@ -23,46 +23,40 @@ export function readAppBinding(value) {
 // App documents and their controller find each other over a BroadcastChannel.
 // Looking the controller up with window.open('', name) would also focus it,
 // which makes the browser take focus from whatever the person is doing.
-export let controllerChannel = (name) => `dyno-controller:${name}`;
+let channelFor = (name) => new BroadcastChannel(`dyno-controller:${name}`);
 
-function ownedController(appWindow, binding, controller) {
+function ownsApp(appWindow, binding, controller) {
   try {
-    return controller &&
+    return Boolean(controller) &&
       !controller.closed &&
       controller.location.origin === appWindow.location.origin &&
       controller.opener === appWindow &&
-      controller.__dynoController?.runId === binding.runId
-      ? controller
-      : null;
+      controller.__dynoController?.runId === binding.runId;
   } catch {
-    return null;
+    return false;
   }
 }
 
-// Resolves with the controller once it answers. The controller already holds
-// this window, so it hands its own window back through __dynoConnect.
+// Resolves with this run's controller once it answers. The controller already
+// holds this window, so it hands its own window back through __dynoConnect.
 export function connectController(appWindow, binding) {
-  if (!binding) return Promise.resolve(null);
   return new Promise((resolve) => {
-    let channel = new BroadcastChannel(controllerChannel(binding.controller));
+    let channel = channelFor(binding.controller);
     appWindow.__dynoConnect = (controller) => {
-      let owned = ownedController(appWindow, binding, controller);
-      if (!owned) return;
+      if (!ownsApp(appWindow, binding, controller)) return;
       delete appWindow.__dynoConnect;
       channel.close();
-      resolve(owned);
+      resolve(controller);
     };
-    channel.postMessage({ kind: 'connect', runId: binding.runId });
+    channel.postMessage('connect');
   });
 }
 
 // The controller side: answer every app document that asks for this controller.
 export function acceptAppConnections(name, appWindow) {
-  let channel = new BroadcastChannel(controllerChannel(name));
-  channel.onmessage = () => {
+  channelFor(name).onmessage = () => {
     try { appWindow.__dynoConnect?.(window); } catch { /* The app document already changed. */ }
   };
-  return channel;
 }
 
 export function appRuntime(controller, binding) {

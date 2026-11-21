@@ -13,15 +13,17 @@ import { createAppCoverage } from './coverage.js';
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', resolve, { once: true });
     else resolve();
   });
-  // App output and errors can happen before the controller answers; they wait here.
+  // App output and errors can happen before the controller answers; they wait
+  // here. A page left over from an earlier run never connects, so the wait is capped.
   let controller;
   let queued = [];
+  let queueLimit = 100;
   let deliver = (message) => appRuntime(controller, binding)?.postMessage(message, location.origin);
   let send = (kind, extra = {}) => {
     let message = { channel: 'dyno', kind, id, name: binding.appName, runId: binding.runId,
       executionId: binding.executionId, ...extra };
     if (controller) deliver(message);
-    else queued.push(message);
+    else if (queued.length < queueLimit) queued.push(message);
   };
   let relay = (message) => controller?.postMessage(message, location.origin);
   let inspect = () => {

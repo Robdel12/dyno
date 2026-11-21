@@ -1,41 +1,58 @@
-import { browserChannel } from '../browsers.js';
+import { browserChannel, chromiumFamily } from '../browsers.js';
 import { nativeCapabilities } from '../native.js';
 import { createNative } from './native.js';
 import { createChromiumCapture } from './chromium-capture.js';
 
-let chromiumFamily = name => ['chromium', 'chrome', 'edge'].includes(name);
-
-// Visible Chromium windows take focus from whatever the person is doing when
-// Playwright opens them. A window created over CDP with `background: true`
-// doesn't, so headed Chromium workers open that way. The new context is found
-// by diffing the browser's context IDs, so these openings run one at a time.
-let opening = Promise.resolve();
-function backgroundWindow(browser, options) {
-  let work = opening.then(async () => {
-    let cdp = await browser.newBrowserCDPSession();
-    let ids = async () => (await cdp.send('Target.getBrowserContexts')).browserContextIds;
-    try {
-      let known = new Set(await ids());
-      let context = await browser.newContext(options);
-      try {
-        let id = (await ids()).find(value => !known.has(value));
-        if (!id) throw new Error('Could not find the new browser context.');
-        let [page] = await Promise.all([
-          context.waitForEvent('page'),
-          cdp.send('Target.createTarget', { url: 'about:blank', browserContextId: id, newWindow: true, background: true }),
-        ]);
-        return { context, page };
-      } catch (error) {
-        await context.close();
-        throw error;
-      }
-    } finally { await cdp.detach(); }
+// Only finding a new context's CDP ID runs one at a time: it diffs the
+// browser's context IDs. Windows then open for each worker in parallel.
+let identifying = Promise.resolve();
+function identifiedContext(browser, cdp, options) {
+  let ids = async () => (await cdp.send('Target.getBrowserContexts')).browserContextIds;
+  let work = identifying.then(async () => {
+    let known = new Set(await ids());
+    let context = await browser.newContext(options);
+    try { return { context, id: (await ids()).find(value => !known.has(value)) }; }
+    catch (error) {
+      await context.close();
+      throw error;
+    }
   });
-  opening = work.catch(() => {});
+  identifying = work.catch(() => {});
   return work;
 }
 
+// Visible Chromium windows take focus from whatever the person is doing when
+// Playwright opens them. A window created over CDP with `background: true`
+// doesn't, so headed Chromium workers open that way.
+async function backgroundWindow(browser, options) {
+  let cdp = await browser.newBrowserCDPSession();
+  try {
+    let { context, id } = await identifiedContext(browser, cdp, options);
+    try {
+      if (!id) throw new Error('Could not find the new browser context.');
+      let [page] = await Promise.all([
+        context.waitForEvent('page'),
+        cdp.send('Target.createTarget', { url: 'about:blank', browserContextId: id, newWindow: true, background: true }),
+      ]);
+      return { context, page };
+    } catch (error) {
+      await context.close();
+      throw error;
+    }
+  } finally { await cdp.detach(); }
+}
+
+async function plainWindow(browser, options) {
+  let context = await browser.newContext(options);
+  try { return { context, page: context.pages()[0] ?? await context.newPage() }; }
+  catch (error) {
+    await context.close();
+    throw error;
+  }
+}
+
 export async function open(browser, plan, viewport, onExit, onDiagnostic = () => {}) {
+  let chromium = chromiumFamily(plan.name);
   let options = {
     viewport,
     deviceScaleFactor: plan.deviceScaleFactor ?? 1,
@@ -45,14 +62,13 @@ export async function open(browser, plan, viewport, onExit, onDiagnostic = () =>
     ...(plan.hasTouch !== undefined ? { hasTouch: plan.hasTouch } : {}),
     ...(plan.userAgent !== undefined ? { userAgent: plan.userAgent } : {}),
   };
-  let background = !plan.headless && chromiumFamily(plan.name) ? await backgroundWindow(browser, options) : null;
-  let context = background?.context ?? await browser.newContext(options);
+  let { context, page } = chromium && !plan.headless
+    ? await backgroundWindow(browser, options) : await plainWindow(browser, options);
   try {
     context.on('requestfailed', (request) => {
       if (new URL(request.url()).pathname === '/__dyno__/stream')
         onDiagnostic(`Controller event stream: ${request.failure()?.errorText ?? 'request failed'}`);
     });
-    let page = background?.page ?? context.pages()[0] ?? (await context.newPage());
     let closing = false;
     let disconnected = () => {
       if (!closing) onExit?.();
@@ -63,17 +79,18 @@ export async function open(browser, plan, viewport, onExit, onDiagnostic = () =>
       closing = true;
       await context.close();
     };
+    // Chromium renders, captures, and takes input in a background tab, so it
+    // never needs to raise the window. Other engines still bring the app forward.
+    let raise = chromium ? async () => {} : () => page.bringToFront();
     let native = createNative({
       context,
       page,
       capabilities: nativeCapabilities(plan.name),
       close: stop,
+      raise,
     });
-    let chromiumCapture = chromiumFamily(plan.name)
+    let chromiumCapture = chromium
       ? createChromiumCapture({ context, page, plan, close: stop }) : undefined;
-    // Chromium renders and captures a background tab correctly, so it never
-    // needs to raise the window. Other engines still bring the app forward.
-    let raise = () => chromiumFamily(plan.name) ? undefined : page.bringToFront();
     // The companion window runs each run's controller. It's opened once and
     // reused: opening a window takes focus, navigating an existing one doesn't.
     let companion;
@@ -94,9 +111,8 @@ export async function open(browser, plan, viewport, onExit, onDiagnostic = () =>
         }
         if (starter && companion && !companion.isClosed()) {
           // The controller keeps its window name and its opener, the app window.
-          let controller = new URL('controller', url);
-          controller.search = url.search;
-          controller.hash = url.hash;
+          let controller = new URL(url);
+          controller.pathname = '/__dyno__/controller';
           await companion.goto(controller.href, { waitUntil: 'domcontentloaded', timeout: 30000 });
           return;
         }
@@ -120,14 +136,12 @@ export async function open(browser, plan, viewport, onExit, onDiagnostic = () =>
         if (url !== new URL('/__dyno__/blank', page.url()).href)
           throw new Error('Retire requires the owned app gateway blank URL.');
         let others = context.pages().filter((candidate) => candidate !== page && candidate !== companion);
-        let results = await Promise.allSettled(others.map((candidate) => candidate.close()));
+        let reused = companion && !companion.isClosed() ? [companion] : [];
+        let results = await Promise.allSettled([
+          ...others.map((candidate) => candidate.close()),
+          ...[...reused, page].map((candidate) => candidate.goto(url, { waitUntil: 'load', timeout: 15000 })),
+        ]);
         let failures = results.filter((result) => result.status === 'rejected').map((result) => result.reason);
-        if (companion && !companion.isClosed()) {
-          try { await companion.goto(url, { waitUntil: 'load', timeout: 15000 }); }
-          catch (error) { failures.push(error); }
-        }
-        try { await page.goto(url, { waitUntil: 'load', timeout: 15000 }); }
-        catch (error) { failures.push(error); }
         if (failures.length) throw new AggregateError(failures, 'Could not retire browser documents.');
       },
       resize: async (size) => {
