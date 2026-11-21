@@ -19,13 +19,15 @@
  *
  * ## Open the reporter
  *
- * Press **Ctrl+Shift+D** in the app. Dyno finishes the current test, then opens the reporter over it. The app keeps its full viewport underneath.
+ * `dyno --ui` and `dyno --watch` open the reporter in your default browser when the first run starts. It follows reruns, so keep that tab open to watch results, run a test, suite or file, and stop the run. Pass `--no-open` to skip it; the CLI and Dyno's control room window both show its URL.
+ *
+ * You can also press **Ctrl+Shift+D** in the app. Dyno finishes the current test, then opens the reporter over it. The app keeps its full viewport underneath.
  *
  * Start with the file/suite overview, then open a test's **Output**, **Timings** or **Application** view. You can rerun a test, suite, file or failed selection. Search and filters stay in the URL.
  *
  * Turn on **Pause on failure** in Run options to inspect a failing app. Continue hides the reporter before the next test. Stop cancels the run and starts cleanup. Pausing leaves app timers and requests running.
  *
- * The CLI also prints a separate reporter URL. Open it in another tab if you'd rather keep the app uncovered. A completed interactive run keeps each worker's last app available; rerun an earlier test to inspect it again.
+ * A completed interactive run keeps each worker's last app available; rerun an earlier test to inspect it again.
  *
  * ## Repeat while developing
  *
@@ -142,6 +144,7 @@ Tests, actions, and assertions execute in the browser. Use --manual for Safari a
     .addOption(valueOption('--seed <value>', 'Run in a repeatable randomized order'))
     .addOption(new Option('--random', 'Generate and print a seed for this run').conflicts('seed'))
     .option('--watch', 'Rerun when tests or imported helpers change')
+    .option('--no-open', "Don't open the reporter in your browser (--ui and --watch)")
     .option('--coverage', 'Collect Istanbul coverage from the instrumented app')
     .option('--no-coverage', 'Disable application coverage for this run')
     .addOption(valueOption('--test <name>', 'Exact test name or suite-qualified title'))

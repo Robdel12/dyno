@@ -181,7 +181,7 @@ export function terminalStep(state, event, context) {
         ? { state, writes: out(headerLines(event, null, state.repeat, context)) }
         : { state: { ...state, pendingHeader: event }, writes: [] };
     case 'capture':
-      return { state, writes: persistent ? out([label(paint, 'Reporter', event.reporterURL)]) : [] };
+      return { state, writes: persistent ? out([label(paint, 'Reporter', `${event.reporterURL}${event.opened ? paint('dim', ' (opened in your browser)') : ''}`)]) : [] };
     case 'start': {
       let next = { ...withRun(state, event.runId, emptyRun, () => emptyRun), pendingHeader: null };
       if (state.pendingHeader) return { state: next, writes: out(headerLines(state.pendingHeader, event.tests, state.repeat, context)) };

@@ -1,8 +1,9 @@
 @font-face { font-family: 'Archivo Dyno'; font-weight: 100 900; font-stretch: 62% 125%; font-display: swap; src: url('/__dyno__/archivo.woff2') format('woff2'); }
 :root { color-scheme: dark; font: 16px/1.55 var(--sans); color: var(--ink); background: var(--bg); }
 *, *::before, *::after { box-sizing: border-box; }
-body { margin: 0; min-height: 100dvh; display: grid; place-items: center; background: radial-gradient(circle at 50% 120%, #1d3042, var(--bg) 60%); }
-.control-room { width: min(34rem, 100%); padding: 32px 24px; }
+body { margin: 0; min-height: 100dvh; background: radial-gradient(circle at 0 0, #1d3042, var(--bg) 60%); }
+/* Top left: an app viewport larger than the screen can't push it out of view. */
+.control-room { width: min(34rem, 100%); padding: 40px 32px; }
 .wordmark { font-size: 44px; }
 .roller-knurl { animation: spin 1.4s linear infinite; }
 h1 { margin: 28px 0 6px; font-size: 22px; font-weight: 720; font-stretch: 112%; }
@@ -12,4 +13,6 @@ button:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
 #execution > iframe { display: none; }
 [hidden] { display: none !important; }
 #host-error { margin-top: 18px; color: var(--fail); }
+#reporter { margin-top: 14px; }
+#reporter-link { display: block; margin-top: 6px; font: 13px/1.5 var(--mono); color: var(--trace); overflow-wrap: anywhere; }
 @media (prefers-reduced-motion: reduce) { .roller-knurl { animation: none; } }
