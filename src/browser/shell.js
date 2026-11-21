@@ -3,6 +3,7 @@ import { normalizeViewport } from './viewport.js';
 import { selectTests } from './suite-model.js';
 import { liveChange } from './reporting.js';
 import { createBrowserCoverage } from './coverage.js';
+import { acceptAppConnections } from './companion.js';
 
 let root = '/__dyno__/';
 let id = () => [...crypto.getRandomValues(new Uint32Array(4))].join('-');
@@ -19,6 +20,7 @@ let operationQueue = Promise.resolve();
 let appWindow = window.opener;
 if (!appWindow || appWindow.closed || appWindow.location.origin !== location.origin)
   throw new Error('Open the Dyno start URL to connect an application tab.');
+acceptAppConnections(window.name, appWindow);
 let overlay = (kind, extra = {}) => {
   if (!appWindow.closed)
     appWindow.postMessage({ channel: 'dyno-overlay', kind, runId, ...extra }, location.origin);

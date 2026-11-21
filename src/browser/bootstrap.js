@@ -17,7 +17,6 @@ let launch = () => {
   }
   notice.textContent = 'Connecting tests…';
   start.hidden = true;
-  window.focus();
 };
 start.addEventListener('click', launch);
 if (new URLSearchParams(location.hash.slice(1)).get('start') === 'managed') start.hidden = false;
