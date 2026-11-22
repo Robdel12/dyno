@@ -23,7 +23,7 @@ export function readAppBinding(value) {
 // App documents and their controller find each other over a BroadcastChannel.
 // Looking the controller up with window.open('', name) would also focus it,
 // which makes the browser take focus from whatever the person is doing.
-let channelFor = (name) => new BroadcastChannel(`dyno-controller:${name}`);
+export let channelFor = (name) => new BroadcastChannel(`dyno-controller:${name}`);
 
 function ownsApp(appWindow, binding, controller) {
   try {
@@ -48,15 +48,24 @@ export function connectController(appWindow, binding) {
       channel.close();
       resolve(controller);
     };
-    channel.postMessage('connect');
+    channel.postMessage({ kind: 'connect' });
   });
 }
 
 // The controller side: answer every app document that asks for this controller.
 export function acceptAppConnections(name, appWindow) {
-  channelFor(name).onmessage = () => {
+  channelFor(name).onmessage = (event) => {
+    if (event.data?.kind !== 'connect') return;
     try { appWindow.__dynoConnect?.(window); } catch { /* The app document already changed. */ }
   };
+}
+
+// A park page only reports that the app document has stopped. It needs no
+// window from the controller, so it announces itself on the channel directly.
+export function announceParked(binding, requestId) {
+  let channel = channelFor(binding.controller);
+  channel.postMessage({ kind: 'parked', runId: binding.runId, executionId: binding.executionId, requestId });
+  channel.close();
 }
 
 export function appRuntime(controller, binding) {
