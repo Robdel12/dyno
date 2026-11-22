@@ -133,6 +133,9 @@ export async function open(browser, plan, viewport, onExit, onDiagnostic = () =>
         }
       },
       activate: raise,
+      // Show app: the person asked to see this worker's app, so bring its tab
+      // and window forward in every engine.
+      reveal: () => page.bringToFront(),
       retire: async (url) => {
         // Keep the app's browsing context (including sessionStorage), but end
         // its old document and every companion/test document before handoff.
