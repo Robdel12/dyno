@@ -39,7 +39,8 @@ let worker = (run, id) => {
 };
 let text = (value) => typeof value === 'string' && value.trim() && value.length <= 256;
 
-export function createRun(runId, { workers = ['0'], seed = null, replay = null } = {}) {
+// A waiting run has registered its tests but holds them until someone starts it.
+export function createRun(runId, { workers = ['0'], seed = null, replay = null, waiting = false } = {}) {
   if (!Array.isArray(workers) || !workers.length || workers.length > 32 ||
     workers.some((id) => !text(id)) || new Set(workers).size !== workers.length)
     throw new Error('A run needs between 1 and 32 unique worker IDs.');
@@ -53,7 +54,7 @@ export function createRun(runId, { workers = ['0'], seed = null, replay = null }
   }
   return freeze({ runId, status: 'captured', tests: list([]), outcomes: list([]),
     workers: list(workers.map((id) => freeze({ id, status: 'pending' }))),
-    seed, replay, priority: list([]), assignments: list([]), paused: false });
+    seed, replay, priority: list([]), assignments: list([]), paused: waiting, waiting });
 }
 
 export function joinWorker(run, workerId) {
@@ -127,7 +128,7 @@ export function retainExecution(run, { workerId = '0', executionId }) {
 
 export function pauseRun(run, paused) {
   if (finished(run) || typeof paused !== 'boolean') throw new Error('Cannot change run admission.');
-  return freeze({ ...run, paused });
+  return freeze({ ...run, paused, waiting: paused && run.waiting });
 }
 
 export function acceptEvent(run, input, { receivedAt } = {}) {

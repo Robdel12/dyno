@@ -119,6 +119,8 @@ export async function runTests(options, { signal, output }) {
     return result;
   };
   let persistent = options.ui || options.manual || options.watch;
+  // Live sessions can wait for the reporter instead of running on launch.
+  let idle = Boolean(persistent) && (options.autoRun ?? config.autoRun) === false;
   // Live sessions open the reporter in the person's own browser, once. It follows
   // reruns by itself. Manual runs already happen in that browser.
   let openReporter = options.open !== false && (options.ui || options.watch) && !options.manual && !process.env.CI;
@@ -198,6 +200,7 @@ export async function runTests(options, { signal, output }) {
     let workerIds = Array.from({ length: config.workers }, (_, index) => String(index));
     coordinator = createCoordinator(config, bundle, {
       automatic: options.repeat !== undefined,
+      idle,
       workerIds, onEvent: report, onRun: saveRun,
       onError: error => {
         output.event({ type: 'error', phase: error.phase ?? 'report', message: error.message });
@@ -291,7 +294,7 @@ export async function runTests(options, { signal, output }) {
         resources: batch.resources, command: batch.command, browser: browserInfo });
     }
     output.event({
-      type: 'ready', url: captureURL(first).href, appURL: first.config.webServer.url,
+      type: 'ready', url: captureURL(first).href, appURL: first.config.webServer.url, idle,
       workers: instances.map(instance => ({ id: instance.id, url: captureURL(instance).href, appURL: instance.config.webServer.url })),
       files: bundle.files, browser: browserInfo, seed: config.seed, devices: deviceURLs(config.host, gateway.url),
       ...(replay ? { replay: { selected: replay.selected.length, omitted: replay.omitted } } : {}),

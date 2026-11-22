@@ -504,10 +504,13 @@ export function createReporter(actions) {
       stopped: 'Run stopped',
       error: 'The run could not finish'
     };
-    document.title = `${test?.name ?? (view === 'missing' ? 'Test not found' : titles[state.phase])} — Dyno`;
+    // A waiting run has found its tests and holds them until you start one.
+    let waiting = Boolean(state.waiting);
+    let heading = waiting ? 'Ready to run' : titles[state.phase];
+    document.title = `${test?.name ?? (view === 'missing' ? 'Test not found' : heading)} — Dyno`;
     write(
       get('status'),
-      state.phase === 'paused'
+      waiting ? heading : state.phase === 'paused'
         ? failed
           ? `${failed} ${failed === 1 ? 'test' : 'tests'} failed`
           : 'Test results'
@@ -519,8 +522,9 @@ export function createReporter(actions) {
     tach.style.setProperty('--progress', curve.total ? (curve.done / curve.total).toFixed(3) : '0');
     write(
       get('run-meta'),
-      state.error ??
-        `${state.files.length} test ${state.files.length === 1 ? 'file' : 'files'}${workers.length > 1 ? `, ${workers.length} workers` : ''}, app at ${state.appHost || location.host}`
+      state.error ?? (waiting
+        ? `${total} ${total === 1 ? 'test is' : 'tests are'} ready. Run all of them, or a file, suite or single test from the list.`
+        : `${state.files.length} test ${state.files.length === 1 ? 'file' : 'files'}${workers.length > 1 ? `, ${workers.length} workers` : ''}, app at ${state.appHost || location.host}`)
     );
     write(get('passed-count'), String(passed));
     write(get('failed-count'), String(failed));
@@ -560,14 +564,14 @@ export function createReporter(actions) {
     get('rerun').disabled = detail ? !test : !total && state.phase !== 'error';
     write(get('rerun'), detail ? 'Run test' : 'Run all');
     get('run-failed').hidden = !failed;
-    get('stop').hidden = !['discovering', 'running', 'pausing', 'paused', 'resuming', 'debugging'].includes(
+    get('stop').hidden = waiting || !['discovering', 'running', 'pausing', 'paused', 'resuming', 'debugging'].includes(
       state.phase
     );
     get('run-options').hidden = !state.interactive;
     get('pause').disabled = !['running', 'pausing'].includes(state.phase);
     write(get('pause'), state.phase === 'pausing' ? 'Keep running' : 'Pause after this test');
     get('pause-on-failure').checked = state.pauseOnFailure;
-    get('pause-banner').hidden = !['paused', 'debugging'].includes(state.phase);
+    get('pause-banner').hidden = waiting || !['paused', 'debugging'].includes(state.phase);
     write(get('pause-message'), state.phase === 'debugging' ? state.debugMessage : 'Run paused.');
     get('inspect-paused').href = href({
       page: 'test',
@@ -591,6 +595,7 @@ export function createReporter(actions) {
       button.setAttribute('aria-pressed', String(button.dataset.filter === state.route.filter));
       let count = button.dataset.filter === 'all' ? total : state.tests.filter((item) => item.status === button.dataset.filter).length;
       write(button.querySelector('.filter-count'), total ? String(count) : '');
+      button.dataset.count = String(count);
     }
     for (let group of reporterGroups(state.tests)) {
       let fileGroup = groups.get(group.file);
