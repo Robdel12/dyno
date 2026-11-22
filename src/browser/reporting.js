@@ -114,7 +114,10 @@ export function workerView(run, progress, selected = run.workers[0].id, previous
     Object.keys(worker).every(key => worker[key] === previous.workers[index][key]))) workers = previous.workers;
   let phase = base.phase;
   if (run.paused) phase = workers.some(worker => ['running', 'pausing', 'resuming'].includes(worker.phase)) ? 'pausing' : 'paused';
-  return runView(freeze({ ...base, phase, hasApp: !selectedRetired && ownsApp(selected) && Boolean(base.hasApp), identity: owner?.identity ?? null,
+  // The app window stays open between tests; only its document changes. Show app
+  // depends on the window, so it doesn't blink while each test starts fresh.
+  return runView(freeze({ ...base, phase, hasApp: !selectedRetired && ownsApp(selected) && Boolean(base.hasApp),
+    appOpen: !selectedRetired && Boolean(owner), identity: owner?.identity ?? null,
     capabilities: owner?.capabilities, selectedWorker: selected, workers: freeze(workers), tests: freeze(tests) }), run);
 }
 

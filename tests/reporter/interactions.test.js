@@ -218,7 +218,7 @@ test('manual reporter resize failures can be retried and controller loss disable
   let controller = app.context().pages().find(page => new URL(page.url()).pathname === '/__dyno__/controller');
   assert.ok(controller);
   await controller.close();
-  await reporter.getByText('Test browser disconnected. Reopen its execution URL.', { exact: true }).waitFor();
+  await reporter.getByText('The test browser disconnected. Restart Dyno or reopen its URL to reconnect.', { exact: true }).waitFor();
   assert.equal(await reporter.getByRole('button', { name: 'Run test', exact: true }).isDisabled(), true);
   assert.equal(await reporter.getByRole('button', { name: 'Try again', exact: true }).isDisabled(), true);
   await reporter.goto(new URL('/__dyno__/reporter', url).href);
