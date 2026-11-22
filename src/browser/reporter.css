@@ -119,6 +119,9 @@ select { padding-right: 8px; }
 .filters button { min-height: 28px; padding: 3px 13px; background: transparent; border: 0; border-radius: 5px; color: var(--muted); font-size: 13px; font-weight: 600; }
 .filters button:hover:not(:disabled) { color: var(--ink); }
 .filters button[aria-pressed=true] { background: var(--raised); color: var(--ink); box-shadow: inset 0 -2px 0 var(--accent); }
+.filter-count { margin-left: 6px; color: var(--faint); font-weight: 550; font-variant-numeric: tabular-nums; }
+.filter-count:empty { display: none; }
+[data-filter=failed] .filter-count:not(:empty) { color: var(--fail); }
 #run-failed { margin-left: auto; color: var(--fail); }
 .list-heading { display: flex; justify-content: space-between; padding: 0 6px 10px 0; color: var(--faint); font-size: 12px; }
 #test-count { margin-left: 4px; font-variant-numeric: tabular-nums; }
@@ -127,6 +130,15 @@ select { padding-right: 8px; }
 .group-heading { display: flex; align-items: center; gap: 14px; padding: 12px 0 6px; min-width: 0; }
 .group-heading h2 { font: 500 13px/1.6 var(--mono); overflow-wrap: anywhere; }
 .group-heading button { margin-left: auto; min-height: 30px; font-size: 12px; }
+/* Run actions appear where you're pointing, instead of repeating down the page. */
+.suite-tests > li { position: relative; }
+.row-run { position: absolute; top: 50%; right: 82px; translate: 0 -50%; min-height: 30px; font-size: 12px; }
+@media (hover: hover) {
+  .group-heading button, .row-run { opacity: 0; }
+  .file-group > .group-heading:hover button, .suite-group > .group-heading:hover button,
+  .suite-tests > li:hover .row-run, .group-heading button:focus-visible, .row-run:focus-visible { opacity: 1; }
+  .suite-tests > li:hover .test-load { opacity: 0; }
+}
 .group-count { color: var(--muted); font-size: 12px; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .suite-heading { padding: 10px 0 2px 34px; }
 .suite-heading h3 { color: var(--muted); font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
@@ -283,6 +295,7 @@ select { padding-right: 8px; }
   .search { width: 100%; }
   .test-select { grid-template-columns: 20px minmax(0,1fr) auto; column-gap: 10px; padding-inline: 0; }
   .test-load { display: none; }
+  .row-run { display: none; }
   .test-name { font-size: 13px; }
   .test-time { font-size: 11px; }
   .test-error { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }

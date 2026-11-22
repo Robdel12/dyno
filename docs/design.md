@@ -133,7 +133,9 @@ Use sentence case everywhere. Use tabular numerals for every count and duration.
 - Show app reveals the actual tested app. Don't replace it with a scaled preview, and don't move it while the reporter navigates.
 - Open inspection at a test boundary. Keep pause, continue, stop, and rerun clear about what happens next.
 - Routes use stable test IDs. Search and filters live in the URL and survive back and forward navigation.
-- Show connection state and screenshot availability. A command stays pending until the test browser replies; if it fails, show a retry action.
+- Keep the status row quiet when things are healthy. Say when the test browser is connecting or disconnected, and when it can't take screenshots, in terms of what that means for the tests. A command stays pending until the test browser replies; if it fails, show a retry action.
+- Every test row can run its own test. Run, Run suite, and Run file appear on hover and keyboard focus (always on touch screens), so the page doesn't repeat them down every row.
+- Enable Show app whenever the inspected worker's app window exists. Don't tie it to the current document, which changes between every test.
 - When a toggle or filter reveals content below the fold, scroll it into view with `block: 'nearest'`.
 - Saved reports are the printed sheet: the same chart, tach, readouts, and tokens, read top to bottom without live controls.
 
