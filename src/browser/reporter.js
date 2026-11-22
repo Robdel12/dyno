@@ -459,19 +459,18 @@ export function createReporter(actions) {
     );
     get('retry-command').hidden = state.command?.status !== 'failed';
     get('retry-command').disabled = state.connection !== 'connected';
+    // The status row speaks only when something needs attention.
     write(
       get('connection-state'),
-      state.connection === 'connected'
-        ? 'Connected to test browser'
-        : state.connection === 'closed'
-          ? 'Test browser disconnected. Reopen its execution URL.'
-          : 'Connecting to test browser…'
+      state.connection === 'closed'
+        ? 'The test browser disconnected. Restart Dyno or reopen its URL to reconnect.'
+        : state.connection === 'connected' ? '' : 'Connecting to the test browser…'
     );
     get('connection-state').dataset.connection = state.connection;
-    write(
-      get('capabilities'),
-      state.capabilities?.screenshot ? 'Screenshots available' : 'Screenshots unavailable in URL-only browsers'
-    );
+    get('connection-state').hidden = state.connection === 'connected';
+    write(get('capabilities'), state.capabilities && !state.capabilities.screenshot
+      ? 'This browser can’t take screenshots, so app.screenshot() fails unless it’s optional.' : '');
+    get('capabilities').hidden = !state.capabilities || Boolean(state.capabilities.screenshot);
     for (let link of document.querySelectorAll('.back-link,.brand')) link.href = href({ page: 'overview' });
     if (get('test-search').value !== state.route.query) get('test-search').value = state.route.query;
     let skipped = state.tests.filter((test) => test.status === 'skipped').length;
@@ -588,8 +587,11 @@ export function createReporter(actions) {
       get('viewport').append(custom);
     }
     get('viewport').value = size;
-    for (let button of document.querySelectorAll('[data-filter]'))
+    for (let button of document.querySelectorAll('[data-filter]')) {
       button.setAttribute('aria-pressed', String(button.dataset.filter === state.route.filter));
+      let count = button.dataset.filter === 'all' ? total : state.tests.filter((item) => item.status === button.dataset.filter).length;
+      write(button.querySelector('.filter-count'), total ? String(count) : '');
+    }
     for (let group of reporterGroups(state.tests)) {
       let fileGroup = groups.get(group.file);
       if (!fileGroup) {
@@ -665,12 +667,17 @@ export function createReporter(actions) {
         load.setAttribute('aria-hidden', 'true');
         let time = element('span', 'test-time');
         select.append(symbol, label, load, time);
-        node.append(select);
+        // Every row can run its own test. The button sits beside the row link.
+        let run = element('button', 'text-button row-run', 'Run');
+        run.setAttribute('aria-label', `Run test ${item.name}`);
+        run.addEventListener('click', () => actions.rerun([item.id]));
+        node.append(select, run);
         suites.get(JSON.stringify([item.file, ...item.suites])).list.append(node);
-        row = { node, select, symbol, error, time, load };
+        row = { node, select, symbol, error, time, load, run };
         rows.set(item.id, row);
       }
       row.select.href = href({ page: 'test', id: item.id, tab: 'output' });
+      row.run.disabled = active || state.phase === 'debugging' || unavailable;
       row.select.title = [item.file, ...item.suites, item.name].join(' › ');
       row.node.dataset.status = item.status;
       row.select.setAttribute('aria-label', `${names[item.status]}: ${item.name}`);
@@ -728,7 +735,7 @@ export function createReporter(actions) {
     if (detail && !appView && !timingView) renderOutput(test, state.error);
     let hasApp = state.hasApp && test?.index === state.current;
     get('show-app').hidden = !hasApp;
-    get('close-reporter').disabled = !state.hasApp;
+    get('close-reporter').disabled = state.appOpen === false;
     let appTitle = test?.status === 'pending' ? 'This test hasn’t run yet' : 'Run this test to inspect its app';
     let appDescription = 'Each test starts with a fresh context. Previous output is always available.';
     if (hasApp && actions.embedded) {
