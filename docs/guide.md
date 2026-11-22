@@ -280,6 +280,7 @@ Dyno gives each test 10 seconds, including hooks and document startup. Interacto
 | `seed`, `random` | None, `false` | Repeatable randomized priority or a generated seed |
 | `workers` | `1` | Managed worker count, from 1 to 32; concurrent runs need project worker setup |
 | `forbidOnly` | Whether `CI` is set | Reject focused test/suite definitions |
+| `autoRun` | `true` | Start tests as soon as a live session's browser is ready. Set `false` to have the first run of a `--ui`, `--watch`, or `--manual` session wait until you start it from the reporter; saved changes in `--watch` still rerun |
 
 </details>
 
@@ -407,7 +408,9 @@ Dyno starts the app and stops the processes it owns when you finish. `--ui` keep
 
 ### Open the reporter
 
-`dyno --ui` and `dyno --watch` open the reporter in your default browser when the first run starts. It follows reruns, so keep that tab open to watch results, run a test, suite or file, and stop the run. Pass `--no-open` to skip it; the CLI and Dyno's control room window both show its URL.
+`dyno --ui` and `dyno --watch` open the reporter in your default browser when the first run starts. To pick what runs first, set `autoRun: false` or pass `--no-auto-run`: the tests load and wait until you run all of them, a file, a suite or a single test from the reporter.
+
+The reporter follows reruns, so keep that tab open to watch results, run a test, suite or file, and stop the run. Pass `--no-open` to skip it; the CLI and Dyno's control room window both show its URL.
 
 You can also press **Ctrl+Shift+D** in the app. Dyno finishes the current test, then opens the reporter over it. The app keeps its full viewport underneath.
 

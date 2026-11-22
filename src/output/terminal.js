@@ -18,7 +18,7 @@ let pad = text => text ? '   ' + text : '';
 let label = (paint, name, value) => `  ${paint('dim', name.padEnd(10))} ${value}`;
 let reportLine = (paint, cwd, report) => report?.html ? [label(paint, 'Report', displayPath(report.html, cwd))] : [];
 
-export let initialTerminal = Object.freeze({ pendingHeader: null, repeat: null, round: null, runs: {}, seen: {} });
+export let initialTerminal = Object.freeze({ pendingHeader: null, idle: false, repeat: null, round: null, runs: {}, seen: {} });
 
 let emptyRun = Object.freeze({ file: null, path: [], failures: [], screenshots: 0, screenshotDir: null });
 
@@ -45,6 +45,7 @@ function headerLines(ready, tests, repeat, context) {
   if (!ready.browser) lines.push(label(paint, 'Open', `${ready.url} ${paint('dim', 'in any browser to start')}`));
   else if (persistent) lines.push(label(paint, 'Runner', ready.url));
   for (let [index, url] of (ready.devices ?? []).entries()) lines.push(label(paint, index ? '' : 'Devices', url));
+  if (ready.idle) lines.push(label(paint, 'Waiting', 'Start tests from the reporter. Nothing runs until you do.'));
   if (ready.seed !== null && ready.seed !== undefined) lines.push(label(paint, 'Seed', ready.seed));
   if (ready.replay) lines.push(label(paint, 'Replay', `${plural(ready.replay.selected, 'assigned test')}${ready.replay.omitted ? `, ${plural(ready.replay.omitted, 'unassigned test')} left out` : ''}`));
   return [...lines, ...repeatLines(repeat, context)];
@@ -178,12 +179,13 @@ export function terminalStep(state, event, context) {
     // Repeated runs print it now, ahead of the first round.
     case 'ready':
       return persistent || !event.browser || state.repeat
-        ? { state, writes: out(headerLines(event, null, state.repeat, context)) }
+        ? { state: { ...state, idle: Boolean(event.idle) }, writes: out(headerLines(event, null, state.repeat, context)) }
         : { state: { ...state, pendingHeader: event }, writes: [] };
     case 'capture':
       return { state, writes: persistent ? out([label(paint, 'Reporter', `${event.reporterURL}${event.opened ? paint('dim', ' (opened in your browser)') : ''}`)]) : [] };
     case 'start': {
-      let next = { ...withRun(state, event.runId, emptyRun, () => emptyRun), pendingHeader: null };
+      let next = { ...withRun(state, event.runId, emptyRun, () => emptyRun), pendingHeader: null, idle: false };
+      if (state.idle) return { state: next, writes: out(['', paint('dim', `Found ${plural(event.tests.length, 'test')}. Waiting for you to start them from the reporter.`)]) };
       if (state.pendingHeader) return { state: next, writes: out(headerLines(state.pendingHeader, event.tests, state.repeat, context)) };
       return { state: next, writes: state.repeat ? [] : out(['', '', paint('dim', `Running ${plural(event.tests.length, 'test')}`)]) };
     }
