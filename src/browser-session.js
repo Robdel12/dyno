@@ -205,6 +205,7 @@ export async function createBrowserPool(plan, { size = 1, signal, onExit = () =>
             }),
             open: (url) => call('open', { url }),
             activate: () => call('activate'),
+            reveal: () => call('reveal'),
             retire: (url) => call('retire', { url }),
             resize: (size, operationSignal) => call('resize', size, operationSignal),
             capture: async (options, operationSignal) => {

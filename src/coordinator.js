@@ -452,6 +452,10 @@ export function createCoordinator(config, bundle, {
       };
       commands.set(requestId, { runId: run.runId, ids, replies: new Map(), ...completion, detach: () => deadline.removeEventListener('abort', expired) });
       deadline.addEventListener('abort', expired, { once: true });
+      // Dyno's own browser brings the inspected worker's app forward. A person's
+      // own browser focuses the app tab from the controller instead.
+      if (input.command === 'show-app')
+        for (let id of ids) workers.get(id).lifecycle?.reveal().catch(() => {});
       for (let control of targets) control.sendCommand({ ...input, requestId });
       return completion.promise;
     },
