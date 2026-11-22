@@ -15,7 +15,10 @@ let problem = (status, message) => Object.assign(new Error(message), { status })
 // catalog, assignment, resource and outcome state.
 export function createCoordinator(config, bundle, {
   workerIds = ['0'], onEvent = () => {}, onRun = async () => {}, onError = () => {}, rebuild, automatic = false,
+  idle = false,
 } = {}) {
+  // With autoRun off, the session's first run waits for the reporter to start it.
+  let holdFirstRun = idle;
   let runs = new Map(), bundles = new Map(), workers = new Map();
   let queues = new Map(), receipts = new Map(), drains = new Map(), preparations = new Map();
   let failedWorkers = new Set();
@@ -269,7 +272,9 @@ export function createCoordinator(config, bundle, {
       for (let map of [runs, bundles, receipts, drains, preparations, progress, views, versions, retirements, coverage]) map.delete(finished.runId);
     }
     if (config.replay) selected = selection({ ids: config.replay.selected });
-    let run = Object.freeze({ ...createRun(runId, { seed, workers: ids, replay: config.replay }),
+    let waiting = holdFirstRun;
+    holdFirstRun = false;
+    let run = Object.freeze({ ...createRun(runId, { seed, workers: ids, replay: config.replay, waiting }),
       managed, selection: selected, source: snapshot.fingerprint, startedAt: new Date().toISOString() });
     bundles.set(runId, snapshot);
     if (config.coverage?.enabled) coverage.set(runId, createCoverageState());

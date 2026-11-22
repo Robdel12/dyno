@@ -19,7 +19,9 @@
  *
  * ## Open the reporter
  *
- * `dyno --ui` and `dyno --watch` open the reporter in your default browser when the first run starts. It follows reruns, so keep that tab open to watch results, run a test, suite or file, and stop the run. Pass `--no-open` to skip it; the CLI and Dyno's control room window both show its URL.
+ * `dyno --ui` and `dyno --watch` open the reporter in your default browser when the first run starts. To pick what runs first, set `autoRun: false` or pass `--no-auto-run`: the tests load and wait until you run all of them, a file, a suite or a single test from the reporter.
+ *
+ * The reporter follows reruns, so keep that tab open to watch results, run a test, suite or file, and stop the run. Pass `--no-open` to skip it; the CLI and Dyno's control room window both show its URL.
  *
  * You can also press **Ctrl+Shift+D** in the app. Dyno finishes the current test, then opens the reporter over it. The app keeps its full viewport underneath.
  *
@@ -145,6 +147,8 @@ Tests, actions, and assertions execute in the browser. Use --manual for Safari a
     .addOption(new Option('--random', 'Generate and print a seed for this run').conflicts('seed'))
     .option('--watch', 'Rerun when tests or imported helpers change')
     .option('--no-open', "Don't open the reporter in your browser (--ui and --watch)")
+    .option('--auto-run', 'Start tests as soon as the browser is ready (the default)')
+    .option('--no-auto-run', 'Wait for you to start tests from the reporter (--ui, --watch, and --manual)')
     .option('--coverage', 'Collect Istanbul coverage from the instrumented app')
     .option('--no-coverage', 'Disable application coverage for this run')
     .addOption(valueOption('--test <name>', 'Exact test name or suite-qualified title'))
