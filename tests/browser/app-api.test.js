@@ -133,7 +133,8 @@ test('screenshot authoring errors are saved clearly and do not poison the next c
   assert.equal(tests.at(-1).status, 'passed');
   let {report} = await savedReport(result);
   assert.equal(report.summary.failed, 8);
-  assert.equal(report.tests.at(-1).attachments[0].status, 'captured');
+  assert.equal(report.tests.at(-1).attachments[0].status, 'omitted');
+  assert.equal(tests.at(-1).attachments[0].status, 'captured');
   assert.ok(report.tests.slice(0,-1).every(test => !test.attachments.length));
 });
 
@@ -149,7 +150,7 @@ test('caret suppression respects shadow-root nonces and explains an app policy t
     test('explains blocked capture styling', async ({app}) => {
       await app.goto('/strict');await app.screenshot('blocked styling',{caret:'hide'});
     });
-  });`);
+  });`, { config: { reportImages: true } });
   let result = await fixture.run().completion;
   outcomes(result, {'explains blocked capture styling':/Content Security Policy blocked screenshot styling/});
   let {saved,report} = await savedReport(result);

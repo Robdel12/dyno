@@ -91,6 +91,7 @@ export async function runTests(options, { signal, output }) {
   let launchKeys = [];
   let writer = createReportWriter(config.reportDir, {
     coverage: { ...config.coverage, root: config.root },
+    reportImages: config.reportImages,
     redact: value => launchKeys.reduce((text, key) => text.replaceAll(key, '[private launch]'), value)
   });
   let saveRun = async (run) => {
@@ -99,8 +100,8 @@ export async function runTests(options, { signal, output }) {
       if (next === batch) return;
       batch = next;
       let result = await batchWriter.save(batch, run);
-      // Portable failure/final reports own retained images. Successful
-      // intermediate captures must not accumulate outside the evidence budget.
+      // Repeated rounds keep any retained copies in the batch report so source
+      // captures don't accumulate outside the evidence budget.
       for (let image of run.outcomes.flatMap(outcome => outcome.attachments ?? []))
         if (image.status === 'captured') await rm(image.path, { force: true });
       if (result.saved) output.event({ type: 'report-saved', ...result.saved });
@@ -290,6 +291,7 @@ export async function runTests(options, { signal, output }) {
       batchWriter = await createRepeatWriter(join(config.reportDir, 'repeat-' + sessionId), {
         options,
         coverage: { ...config.coverage, root: config.root },
+        reportImages: config.reportImages,
         redact: value => launchKeys.reduce((text, key) => text.replaceAll(key, '[private launch]'), value)
       });
       output.event({ type: 'repeat-start', batchId: batch.id, requested: batch.requested, seed: batch.seed,

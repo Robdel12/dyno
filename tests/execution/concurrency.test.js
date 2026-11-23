@@ -12,7 +12,7 @@ let setup = await readFile(new URL('../fixtures/concurrent-setup.js', import.met
 
 test('native workers overlap real saves with private apps and one canonical report', { timeout: 90000 }, async t => {
   let fixture = await project(t, {
-    config: { setup: './setup.js', workers: 2, runTimeout: 15000, browser: visible },
+    config: { setup: './setup.js', workers: 2, runTimeout: 15000, browser: visible, reportImages: true },
     files: { 'setup.js': setup },
     source: `await fetch('/registration');
     describe('Concurrent contacts',()=>{
@@ -25,24 +25,25 @@ test('native workers overlap real saves with private apps and one canonical repo
         if(test.name==='First contact'){
           let paused=app.pause('Inspect the worker');
           let reporter;
-          await I.assert(()=>!!(reporter=app.document.querySelector('#__dynoReporter'))?.contentDocument?.querySelector('#worker')&&!reporter.hidden);
+          await I.assert(()=>!!(reporter=app.document.querySelector('#__dynoReporter'))?.contentDocument?.querySelector('.bay-select[data-worker]')&&!reporter.hidden);
           await new Promise(resolve=>{
             if(reporter.contentDocument.readyState==='complete')resolve();
             else reporter.addEventListener('load',resolve,{once:true});
           });
           let UI=I.scope(()=>reporter.contentDocument.body);
           let reporterDocument=reporter.contentDocument;
-          await UI.find('$(#worker)').value(fixtures.worker);
+          let inspecting=id=>UI.assert(()=>reporterDocument.querySelector('.bay-select[data-worker="'+id+'"]')?.getAttribute('aria-pressed')==='true','Expected worker '+id+' to be the inspected bay');
+          await inspecting(fixtures.worker);
           await UI.find('$(a[aria-label="Passed: Second contact"])').visible();
           let other=fixtures.worker==='0'?'1':'0';
-          await UI.click('$(#worker option[value="'+other+'"])');
+          await UI.click('$(.bay-select[data-worker="'+other+'"])');
           await I.assert(()=>new URL(reporter.contentDocument?.querySelector('#standalone-reporter')?.href??reporter.src).searchParams.get('worker')===other);
-          await UI.find('$(#worker)').value(other);
+          await inspecting(other);
           await UI.find('$(a[aria-label="Running: First contact"])').visible();
           await UI.find('$(a[aria-label="Passed: Second contact"])').visible();
-          await UI.click('$(#worker option[value="'+fixtures.worker+'"])');
+          await UI.click('$(.bay-select[data-worker="'+fixtures.worker+'"])');
           await I.assert(()=>new URL(reporter.contentDocument?.querySelector('#standalone-reporter')?.href??reporter.src).searchParams.get('worker')===fixtures.worker);
-          await UI.find('$(#worker)').value(fixtures.worker);
+          await inspecting(fixtures.worker);
           await UI.assert(()=>reporter.contentDocument===reporterDocument,'Switching workers should preserve the reporter document');
           await UI.click('$(#continue)');
           await paused;
@@ -135,7 +136,7 @@ test('resource reservations survive draining and global Pause across native work
 
 test('a lost controller fails a persistent native run and preserves peer outcomes, images and partial output', { timeout: 90000 }, async t => {
   let fixture = await project(t, {
-    config: { setup: './setup.js', workers: 2, browser: visible, cleanupTimeout: 500, webServer: { env: { GATE: 'false' } } },
+    config: { setup: './setup.js', workers: 2, browser: visible, cleanupTimeout: 500, reportImages: true, webServer: { env: { GATE: 'false' } } },
     files: { 'setup.js': setup },
     source: `describe('Controller loss',()=>{
       for(let name of ['Loses its controller','Independent peer'])test(name,async({app,I,test})=>{

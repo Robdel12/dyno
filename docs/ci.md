@@ -37,7 +37,7 @@ Shared actions in `.github/actions` install Node/dependencies and run/report a s
 
 Linux browser and package jobs use the official Playwright Noble image, which includes browsers and system dependencies. Keep its version aligned with `playwright-core` in `package.json`; those jobs don't download browser builds. macOS jobs install the matching engine because Linux containers cannot verify macOS behavior. The image runs as `pwuser`, matching the hosted workspace owner so Firefox can start without a home-directory ownership conflict. Linux tests supply a D-Bus session and a virtual display for headed interactive workflows. WebKit CI coverage does not establish Safari behavior. See [browser setup](browsers.md) for known limits.
 
-Product runs also write `.dyno/reports/<run-id>/`. Upload the whole folder for portable HTML/images, or give `junit.xml` to a test-results consumer. `run.json` uses an explicit schema version and marks interrupted runs and tests without results. These are separate from the Node test runner's own CI output.
+Product runs also write `.dyno/reports/<run-id>/`. Upload the whole folder for portable HTML, or give `junit.xml` to a test-results consumer. Set `reportImages: true` to include PNGs in the portable folder. `run.json` uses an explicit schema version and marks interrupted runs and tests without results. These are separate from the Node test runner's own CI output.
 
 ## Local framework coverage
 

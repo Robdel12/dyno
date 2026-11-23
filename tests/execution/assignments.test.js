@@ -135,7 +135,7 @@ test('real project cleanup joins background writes after document retirement and
 
 test('failed project cleanup preserves accepted user results and attachments without assigning another test', { timeout: 90000 }, async t => {
   let fixture = await project(t, {
-    config: { setup: './setup.js' },
+    config: { setup: './setup.js', reportImages: true },
     files: { 'setup.js': `import {readFile} from 'node:fs/promises';
       export default function setup({config}) {
         return { drain: () => readFile(config.root + '/missing-cleanup-marker') };

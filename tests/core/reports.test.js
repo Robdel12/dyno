@@ -40,7 +40,7 @@ test('portable report snapshots whitelist results, preserve stable IDs, and neve
       }
     ]
   }).run;
-  let report = createReport({ ...run, connectionKey: 'never save', fixtures: { secret: 'never save' } });
+  let report = createReport({ ...run, connectionKey: 'never save', fixtures: { secret: 'never save' } }, { reportImages: true });
   assert.equal(report.tests[0].id, descriptor.id);
   assert.equal(report.tests[0].attachments[0].path, 'images/image.png');
   assert.equal(report.status, 'interrupted');

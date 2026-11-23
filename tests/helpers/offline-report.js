@@ -7,7 +7,7 @@ import { build } from 'esbuild';
 import { createBrowserPool, resolveSession } from '../../src/browser-session.js';
 import { repository } from './project.js';
 
-export async function inspectOfflineReport(t, path, browser, { images = 0, timings = false, interruptedOutput, seed } = {}) {
+export async function inspectOfflineReport(t, path, browser, { images = 0, omittedImage, timings = false, interruptedOutput, seed } = {}) {
   let result = Promise.withResolvers();
   let server = createServer(async (request, response) => {
     let chunks = [];
@@ -38,6 +38,12 @@ export async function inspectOfflineReport(t, path, browser, { images = 0, timin
       let xml = new DOMParser().parseFromString(${JSON.stringify(await readFile(join(dirname(path), 'junit.xml'), 'utf8'))},'application/xml');
       await UI.assert(()=>!xml.querySelector('parsererror') && !!xml.querySelector('testsuites'),'JUnit is not valid XML');
       await UI.assert(()=>document.querySelectorAll('.screenshot img').length===${images},'Wrong screenshot count');
+      ${omittedImage ? `step='omitted screenshot';
+      await UI.click('$(.saved-test summary)');
+      let notice = UI.find(${JSON.stringify(`Screenshot omitted: ${omittedImage}. Saved report images are disabled.`)});
+      await notice.then.act(({ $ }) => $.scrollIntoView({block:'center'}));
+      await notice.visible();
+      await UI.assert(()=>!document.querySelector('a[href^="images/"]'),'Omitted PNG still has a link');` : ''}
       for (let image of document.images) {
         let detail=image.closest('details.saved-test');
         if(!detail.open)await UI.click(detail.querySelector('summary'));

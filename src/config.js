@@ -43,7 +43,8 @@
  * | `browser.isMobile`, `browser.hasTouch` | `false` | Emulate mobile viewport behavior and touch input |
  * | `browser.userAgent` | Browser default | Override the managed browser user agent |
  * | `viewport` | Browser size; managed: 1280 × 800 | Required app viewport dimensions. A visible Chromium window scales a viewport larger than your screen down to fit; the app and its screenshots stay full size. |
- * | `reportDir` | `.dyno/reports` | Saved JSON, JUnit, HTML, and copied images per browser run |
+ * | `reportDir` | `.dyno/reports` | Saved JSON, JUnit, and HTML per browser run |
+ * | `reportImages` | `false` | Copy captured PNGs into [saved reports](guide.md#saved-reports) |
  * | `coverage` | Disabled | App coverage filters, build baseline, reporters, and thresholds; activate with `--coverage` or `coverage.enabled` |
  * | `artifactsDir` | `.dyno/artifacts` | PNG output directory |
  * | `webServer.url` | Required | HTTP(S) origin without a path |
@@ -127,6 +128,7 @@ export function normalizeConfig(input, file, overrides = {}) {
       'autoRun',
       'cleanupTimeout',
       'reportDir',
+      'reportImages',
       'seed',
       'random',
       'workers',
@@ -258,6 +260,8 @@ export function normalizeConfig(input, file, overrides = {}) {
   }
   if (input.reportDir !== undefined && !text(input.reportDir))
     throw new Error('reportDir must be a non-empty path.');
+  if (input.reportImages !== undefined && typeof input.reportImages !== 'boolean')
+    throw new Error('reportImages must be a boolean.');
   if (input.artifactsDir !== undefined && !text(input.artifactsDir))
     throw new Error('artifactsDir must be a non-empty path.');
   let path = overrides.browserPath ?? browser.path;
@@ -308,6 +312,7 @@ export function normalizeConfig(input, file, overrides = {}) {
     }),
     viewport,
     reportDir: resolve(root, overrides.reportDir ?? input.reportDir ?? '.dyno/reports'),
+    reportImages: overrides.reportImages ?? input.reportImages ?? false,
     artifactsDir: resolve(root, input.artifactsDir ?? '.dyno/artifacts'),
     webServer: Object.freeze({
       ...webServer,

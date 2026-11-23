@@ -13,6 +13,8 @@ let consoleText = (test) =>
   test.output
     .map((entry) => `[${Math.round(entry.elapsed)} ms] ${entry.source} ${entry.level}: ${entry.text}`)
     .join('\n');
+let imageLabels = { missing: 'Screenshot unavailable', omitted: 'Screenshot omitted', skipped: 'Image skipped' };
+let imageLabel = (image) => `${imageLabels[image.status]}: ${image.name}`;
 export function junitReport(report) {
   let x = escapeMarkup;
   let cases = report.tests
@@ -24,7 +26,7 @@ export function junitReport(report) {
             : ['skipped', 'not-run'].includes(test.status)
               ? `<skipped message="${x(test.skipReason ?? 'Run ended before this test reported.')}"/>`
               : ''
-        }<system-out>${x([consoleText(test), ...test.attachments.map((image) => (image.status === 'captured' ? `Screenshot: ${image.path}` : `${image.status === 'missing' ? 'Screenshot unavailable' : 'Image skipped'}: ${image.name} (${image.reason})`))].filter(Boolean).join('\n'))}</system-out></testcase>`
+        }<system-out>${x([consoleText(test), ...test.attachments.map((image) => (image.status === 'captured' ? `Screenshot: ${image.path}` : `${imageLabel(image)} (${image.reason})`))].filter(Boolean).join('\n'))}</system-out></testcase>`
     )
     .join('\n');
   let interrupted = report.status === 'interrupted';
@@ -61,7 +63,7 @@ function errorMarkup(error) {
 function imageMarkup(image) {
   let x = escapeMarkup;
   if (image.status !== 'captured')
-    return `<p class="output-notice">${image.status === 'missing' ? 'Screenshot unavailable' : 'Image skipped'}: ${x(image.name)}. ${x(image.reason)}</p>`;
+    return `<p class="output-notice">${x(imageLabel(image))}. ${x(image.reason)}</p>`;
   return `<figure class="screenshot">
     <a href="${x(image.path)}"><img src="${x(image.path)}" alt="${x(image.name)}" loading="lazy"></a>
     <figcaption>${x(image.name)}, ${image.width} × ${image.height} in ${x(image.browser.name)}</figcaption>

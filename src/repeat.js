@@ -58,6 +58,7 @@ let quote = value => `'${String(value).replaceAll("'", "'\\''")}'`;
 function runArguments(options) {
   let args = ['dyno'];
   if (options.coverage !== undefined) args.push(options.coverage ? '--coverage' : '--no-coverage');
+  if (options.reportImages !== undefined) args.push(options.reportImages ? '--report-images' : '--no-report-images');
   for (let key of ['config', 'browser', 'browserPath', 'test', 'replay', 'host', 'port', 'reportDir'])
     if (options[key] !== undefined) args.push('--' + key.replace(/[A-Z]/g, value => '-' + value.toLowerCase()), quote(options[key]));
   for (let key of ['id', 'file', 'suite'])

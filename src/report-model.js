@@ -22,7 +22,7 @@ let errorSnapshot = (error) =>
         }
       : {})
   });
-export function createReport(run) {
+export function createReport(run, { reportImages = false } = {}) {
   let tests = run.tests.map((test) => {
     let outcome = run.outcomes.find((outcome) => outcome.testId === test.id);
     let assignment = run.assignments?.find(assignment => assignment.testId === test.id);
@@ -49,9 +49,9 @@ export function createReport(run) {
               ? {
                   id: attachment.id,
                   name: attachment.name,
-                  status: 'captured',
-                  path: `images/${attachment.id}.png`,
-                  url: `images/${attachment.id}.png`,
+                  ...(reportImages
+                    ? { status: 'captured', path: `images/${attachment.id}.png`, url: `images/${attachment.id}.png` }
+                    : { status: 'omitted', reason: 'Saved report images are disabled.' }),
                   width: attachment.width,
                   height: attachment.height,
                   pixelRatio: attachment.pixelRatio,
