@@ -168,7 +168,9 @@ select { padding-right: 8px; }
 .bay-test:not(:empty) + .bay-tally, .bay-test:empty { display: none; }
 .bay-tally { color: var(--muted); font-variant-numeric: tabular-nums; }
 .bay[data-failed=true] .bay-tally { color: var(--fail); }
-.bay-app { position: absolute; top: 6px; right: 6px; min-height: 26px; font-size: 12px; }
+.bay-controls { position: absolute; top: 6px; right: 6px; display: flex; gap: 2px; }
+.bay-controls button { min-height: 26px; font-size: 12px; }
+.bay:has(.bay-hold:not([hidden])) .bay-select { padding-right: 140px; }
 @media (prefers-reduced-motion: reduce) { .bay-name::before { animation: none !important; } }
 .row-run { position: absolute; top: 50%; right: 82px; translate: 0 -50%; min-height: 30px; font-size: 12px; }
 @media (hover: hover) {
