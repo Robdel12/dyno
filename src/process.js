@@ -27,9 +27,11 @@ export async function signalProcessGroup(group, signal) {
   }
 }
 
-export function startProcess(command, { cwd, env, output = () => {}, shell = true, args = [], signal, ipc = false } = {}) {
+export function startProcess(command, { cwd, env, output = () => {}, shell = true, args = [], signal, ipc = false, onStart = () => {} } = {}) {
   let events = new EventEmitter();
   let child = spawn(command, args, { cwd, env: { ...process.env, ...env }, shell, detached: process.platform !== 'win32', stdio: ['ignore', 'pipe', 'pipe', ...(ipc ? ['ipc'] : [])] });
+  // Owners can record the process group so an interrupted session can end it later.
+  child.once('spawn', () => onStart(child.pid));
   let logs = '';
   let failed;
   let ready = new Promise((resolve, reject) => {
@@ -88,7 +90,7 @@ async function reachable(url, signal) {
   } catch { return false; }
 }
 
-export async function startWebServer(config, { output = () => {}, onReady = () => {}, signal } = {}) {
+export async function startWebServer(config, { output = () => {}, onReady = () => {}, signal, onStart } = {}) {
   signal?.throwIfAborted();
   let existing = await reachable(config.url, signal);
   if (existing) {
@@ -102,7 +104,7 @@ export async function startWebServer(config, { output = () => {}, onReady = () =
   if (!config.command) throw new Error(`No app server at ${config.url}; set webServer.command to start it.`);
   let command = Array.isArray(config.command) ? config.command[0] : config.command;
   let args = Array.isArray(config.command) ? config.command.slice(1) : [];
-  let owned = startProcess(command, { cwd: config.cwd, env: config.env, output, signal, shell: !Array.isArray(config.command), args });
+  let owned = startProcess(command, { cwd: config.cwd, env: config.env, output, signal, shell: !Array.isArray(config.command), args, onStart });
   let deadline = AbortSignal.any([AbortSignal.timeout(config.timeout), ...(signal ? [signal] : [])]);
   try {
     // Server output is the readiness wakeup. No fixed startup sleep or polling loop.
