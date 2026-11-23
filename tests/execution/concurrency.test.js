@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { PNG } from 'pngjs';
 import { project } from '../helpers/project.js';
 import { observeRun } from '../helpers/observer.js';
+import { openURL } from '../helpers/manual.js';
 
 let browser = process.env.DYNO_TEST_BROWSER ?? 'chromium';
 let visible = { name: browser, args: [['firefox', 'webkit'].includes(browser) ? '--headless' : '--headless=new'] };
@@ -329,4 +330,29 @@ test('large selections rerun and replay without placing their catalog in launch 
   for (let worker of original.workers)
     assert.deepEqual(restored.assignments.filter(item => item.workerId === worker).map(item => item.testId),
       original.assignments.filter(item => item.workerId === worker).map(item => item.testId));
+});
+
+test('the reporter can run the next pull on fewer workers than were launched', { timeout: 90000 }, async t => {
+  let fixture = await project(t, {
+    config: { setup: './setup.js', workers: 2, browser: visible, autoRun: false, webServer: { env: { GATE: 'false', OVERLAP: 'false' } } },
+    files: { 'setup.js': setup },
+    source: `describe('Fewer workers', () => {
+      for (let name of ['Ada', 'Grace', 'Margaret']) test(name, async ({app, I, fixtures}) => {
+        await app.goto('/'); await I.find('Worker ' + fixtures.worker).visible();
+      });
+    });`,
+  });
+  let session = fixture.run(['--ui']);
+  let ready = await session.waitForEvent('ready');
+  let start = await session.waitForEvent('start');
+  let page = await openURL(t, new URL('/__dyno__/reporter?run=' + encodeURIComponent(start.runId), ready.url).href);
+  await page.getByRole('heading', { name: 'Ready to run' }).waitFor();
+  await page.locator('#run-options summary').click();
+  await page.getByRole('combobox', { name: 'Workers per run' }).selectOption('1');
+  await page.getByRole('button', { name: 'Run all' }).click();
+  let complete = await session.waitForEvent('complete');
+  assert.equal(complete.passed, 3);
+  let tests = session.events.filter(event => event.type === 'test');
+  assert.deepEqual([...new Set(tests.map(event => event.workerId))], ['0']);
+  await page.getByRole('heading', { name: 'All tests passed' }).waitFor();
 });
