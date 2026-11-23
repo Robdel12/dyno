@@ -1,3 +1,4 @@
+import { balancedOrder } from './balance.js';
 import { createHash } from 'node:crypto';
 import { validFailure, snapshotFailure } from './failures.js';
 import { testId, testDescriptor } from './suite.js';
@@ -205,6 +206,8 @@ export function acceptEvent(run, input, { receivedAt } = {}) {
         return a < b ? -1 : a > b ? 1 : left < right ? -1 : left > right ? 1 : 0;
       });
       if (run.replay) priority = run.replay.priority;
+      // Unseeded reruns start their longest tests first, from this session's timings.
+      else if (run.seed === null && run.durations) priority = balancedOrder(priority, run.durations);
     }
     return {
       run: Object.freeze({
