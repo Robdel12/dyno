@@ -183,7 +183,11 @@ export function acceptEvent(run, input, { receivedAt } = {}) {
             test.resources.some((name) => !text(name) || name.length > 128) || new Set(test.resources).size !== test.resources.length))
       ) ||
       new Set(input.tests.map((test) => test.id)).size !== input.tests.length ||
-      new Set(input.tests.map((test) => test.index)).size !== input.tests.length
+      new Set(input.tests.map((test) => test.index)).size !== input.tests.length ||
+      (input.catalog !== undefined && (!Array.isArray(input.catalog) || input.catalog.length > 10000 ||
+        input.catalog.some((test) => !test || typeof test.file !== 'string' || !Array.isArray(test.suites) ||
+          test.suites.some((name) => typeof name !== 'string') || typeof test.name !== 'string' ||
+          test.id !== testId(test.file, test.suites, test.name) || !Number.isInteger(test.index) || test.index < 0)))
     )
       throw new Error('Invalid run start.');
     let event = snapshotEvent(input);
@@ -207,6 +211,8 @@ export function acceptEvent(run, input, { receivedAt } = {}) {
         ...run,
         status: 'running',
         tests: run.tests.length ? run.tests : event.tests,
+        ...(run.catalog || !input.catalog ? {} : { catalog: list(input.catalog.map((test) =>
+          freeze({ id: test.id, file: test.file, suites: list([...test.suites]), name: test.name, index: test.index }))) }),
         priority: list(priority),
         workers: list(run.workers.map((item) => item === owner ? freeze({ ...item, status: 'ready' }) : item)),
         ...(typeof input.userAgent === 'string' ? { userAgent: input.userAgent } : {})

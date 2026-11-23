@@ -130,6 +130,8 @@ Use sentence case everywhere. Use tabular numerals for every count and duration.
 - Keep one combined result list across workers. With more than one worker, a row of bays shows each worker's state, current test, and results; pressing a bay inspects that worker, and its Show app raises that worker's app. Keep bays to two short lines so the first result rows stay above the fold.
 - A bay's **Pause** holds just that worker: it finishes its current test ("Pausing after this test"), then waits ("Paused") while the others keep running. **Continue** releases it. Pause all and the pause banner still act on the whole run.
 - Run options holds **Workers per run**: the next run uses the first workers you choose, and the rest stay parked. The meta line says how many of the launched workers ran.
+- Pressing a bay also filters the list, sheet, and readouts to that worker's tests, with a note that offers every worker again. The run title stays about the whole run, and a filtered sheet keeps no ghost.
+- A run of picked tests still lists the rest of the suite, muted and marked "Not in this run", so you can pick or run them next. Readouts and the sheet count only the tests that ran.
 - Checkboxes in a shared gutter pick tests, suites, and files. A selection bar at the bottom of the list says how many are picked and offers Run selected.
 - Each test gets its own Output, Timings, and Application routes. Put details on those routes, not in new panels on the overview.
 - On Output, the failure message comes first, then where it happened ("In the test body at file:line:col"), then the source excerpt, then the stack. Console output and screenshots stay together.

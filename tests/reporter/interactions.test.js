@@ -266,4 +266,12 @@ test('picking tests with checkboxes runs exactly that selection', { timeout: 900
   let complete = await session.waitForEvent('complete');
   assert.equal(complete.passed, 2);
   assert.deepEqual(session.events.filter(event => event.type === 'test').map(event => event.name).sort(), ['alpha', 'gamma']);
+  // The rest of the suite stays listed, quietly, and can still run.
+  let ran = page;
+  await ran.locator('a[aria-label="Not in this run: beta"]').waitFor();
+  await ran.getByText('2 of 3', { exact: true }).waitFor();
+  let before = session.events.length;
+  await ran.getByRole('button', { name: 'Run test beta' }).click();
+  await session.waitForEvent('complete', event => session.events.indexOf(event) >= before);
+  assert.equal(session.events.slice(before).filter(event => event.type === 'test').map(event => event.name).join(), 'beta');
 });
