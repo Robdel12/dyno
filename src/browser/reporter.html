@@ -5,7 +5,7 @@
     <button id="close-reporter" class="quiet">Show application</button>
     <button id="stop" class="quiet stop" hidden>Stop run</button>
     <button id="rerun" class="primary" disabled>Run all</button>
-    <details id="run-options" class="run-options"><summary aria-label="Run options"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="4" cy="10" r="1.6"/><circle cx="10" cy="10" r="1.6"/><circle cx="16" cy="10" r="1.6"/></svg></summary><div class="options-menu"><label id="workers-setting" class="workers-setting" hidden>Workers per run <select id="run-workers"></select></label><label id="pause-setting"><input id="pause-on-failure" type="checkbox"> Pause on failure</label><p class="option-help">Stops on the rollers at the first failure so you can inspect the app.</p><button id="pause" class="text-button" disabled>Pause after this test</button></div></details>
+    <details id="run-options" class="run-options"><summary aria-label="Run options"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="4" cy="10" r="1.6"/><circle cx="10" cy="10" r="1.6"/><circle cx="16" cy="10" r="1.6"/></svg></summary><div class="options-menu"><label id="workers-setting" class="workers-setting" hidden>Workers per run <select id="run-workers"></select></label><p class="option-help">Auto uses only the workers a run can keep busy, based on its tests and their last timings.</p><label id="pause-setting"><input id="pause-on-failure" type="checkbox"> Pause on failure</label><p class="option-help">Stops on the rollers at the first failure so you can inspect the app.</p><button id="pause" class="text-button" disabled>Pause after this test</button></div></details>
   </div>
 </header>
 <main id="main" class="reporter" tabindex="-1">
