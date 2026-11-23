@@ -128,6 +128,7 @@ Use sentence case everywhere. Use tabular numerals for every count and duration.
 - The control desk is a sticky, 60px bar (54px on mobile) that holds the wordmark and run actions. Keep `scroll-padding-top` in sync with its height so scrolled-to targets stay clear.
 - The overview reads top to bottom: the run title with the tach, a plain meta line, the sheet with readouts, then search, filters, and results grouped by file and suite. Slowest tests and run info stay in collapsed sections at the end.
 - Keep one combined result list across workers. With more than one worker, a row of bays shows each worker's state, current test, and results; pressing a bay inspects that worker, and its Show app raises that worker's app. Keep bays to two short lines so the first result rows stay above the fold.
+- Run options holds **Workers per run**: the next run uses the first workers you choose, and the rest stay parked. The meta line says how many of the launched workers ran.
 - Checkboxes in a shared gutter pick tests, suites, and files. A selection bar at the bottom of the list says how many are picked and offers Run selected.
 - Each test gets its own Output, Timings, and Application routes. Put details on those routes, not in new panels on the overview.
 - On Output, the failure message comes first, then where it happened ("In the test body at file:line:col"), then the source excerpt, then the stack. Console output and screenshots stay together.

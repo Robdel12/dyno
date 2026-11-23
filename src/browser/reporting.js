@@ -117,7 +117,7 @@ export function workerView(run, progress, selected = run.workers[0].id, previous
   // The app window stays open between tests; only its document changes. Show app
   // depends on the window, so it doesn't blink while each test starts fresh.
   return runView(freeze({ ...base, phase, hasApp: !selectedRetired && ownsApp(selected) && Boolean(base.hasApp),
-    appOpen: !selectedRetired && Boolean(owner), identity: owner?.identity ?? null,
+    appOpen: !selectedRetired && Boolean(owner), workerSlots: run.launched?.length ?? run.workers.length, identity: owner?.identity ?? null,
     capabilities: owner?.capabilities, selectedWorker: selected, workers: freeze(workers), tests: freeze(tests) }), run);
 }
 

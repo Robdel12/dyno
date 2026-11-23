@@ -86,25 +86,33 @@ let selectWorker = (id) => {
   update({ connection: 'connecting' });
   connect();
 };
+// How many workers the next run uses. Unset means all of them.
+let runWorkers;
+try { runWorkers = Number(localStorage.getItem('dyno:run-workers')) || undefined; } catch {}
+let rerun = (ids) => command('rerun', { ids, ...(runWorkers ? { workers: Math.min(runWorkers, state.workerSlots ?? runWorkers) } : {}) });
 let render = createReporter({
   embedded, selectWorker,
-  rerun: (ids) => command('rerun', { ids }),
+  rerun,
+  runWorkers: () => runWorkers,
+  setRunWorkers: (count) => {
+    runWorkers = count;
+    try { localStorage.setItem('dyno:run-workers', String(count)); } catch {}
+    render(state);
+  },
   runFailed: () =>
-    command('rerun', { ids: state.tests.filter((test) => test.status === 'failed').map((test) => test.id) }),
+    rerun(state.tests.filter((test) => test.status === 'failed').map((test) => test.id)),
   runSelected: () => {
     let test = selectedTest(state);
-    if (test) command('rerun', { ids: [test.id] });
+    if (test) rerun([test.id]);
   },
   runScope: (scope) =>
-    command('rerun', {
-      ids: state.tests
+    rerun(state.tests
         .filter(
           (test) =>
             test.file === scope.file &&
             (!scope.suites || scope.suites.every((name, index) => test.suites[index] === name))
         )
-        .map((test) => test.id)
-    }),
+        .map((test) => test.id)),
   search: (query) => navigate({ query }, true),
   filter: (filter) => navigate({ filter }),
   retry: () => {
