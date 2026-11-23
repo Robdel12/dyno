@@ -128,12 +128,16 @@ export function createReporter(actions) {
         let tally = element('span', 'bay-tally');
         select.append(name, phase, current, tally);
         select.addEventListener('click', () => { if (lastState?.selectedWorker !== worker.id) actions.selectWorker(worker.id); });
+        let controls = element('span', 'bay-controls');
+        let hold = element('button', 'text-button bay-hold');
+        hold.addEventListener('click', () => (bays.get(worker.id).held ? actions.continueWorker : actions.pauseWorker)(worker.id));
         let app = element('button', 'text-button bay-app', 'Show app');
         app.setAttribute('aria-label', `Show worker ${worker.id}'s app`);
         app.addEventListener('click', () => actions.showApp(worker.id));
-        node.append(select, app);
+        controls.append(hold, app);
+        node.append(select, controls);
         get('bay-list').append(node);
-        bay = { node, select, phase, current, tally, app };
+        bay = { node, select, phase, current, tally, app, hold, held: false };
         bays.set(worker.id, bay);
       }
       let mine = state.tests.filter((test) => test.workerId === worker.id);
@@ -141,7 +145,16 @@ export function createReporter(actions) {
       let failed = mine.filter((test) => test.status === 'failed').length;
       let running = mine.find((test) => test.status === 'running') ??
         (worker.current === null ? undefined : state.tests.find((test) => test.index === worker.current && test.workerId === worker.id));
-      let phase = state.waiting ? 'waiting' : worker.phase;
+      // A held worker is pausing while its current test runs, then paused.
+      let phase = state.waiting ? 'waiting' : worker.held && worker.phase === 'running'
+        ? (mine.some((test) => test.status === 'running') ? 'pausing' : 'paused') : worker.phase;
+      // Pause or continue just this worker while the run is going.
+      bay.held = worker.held;
+      let live = !state.waiting && ['running', 'pausing', 'paused', 'resuming'].includes(worker.phase) && !['completed', 'stopped', 'error'].includes(state.phase);
+      bay.hold.hidden = !live;
+      write(bay.hold, worker.held ? 'Continue' : 'Pause');
+      bay.hold.setAttribute('aria-label', `${worker.held ? 'Continue' : 'Pause'} worker ${worker.id}`);
+      bay.hold.disabled = state.connection !== 'connected' || state.command?.status === 'pending';
       bay.node.dataset.phase = phase;
       bay.node.dataset.failed = String(failed > 0);
       bay.select.setAttribute('aria-pressed', String(worker.id === state.selectedWorker));

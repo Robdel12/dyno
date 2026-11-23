@@ -13,6 +13,8 @@ let sameContext = (left, right) =>
 let commands = [
   'pause',
   'continue',
+  'pause-worker',
+  'continue-worker',
   'inspect',
   'show-app',
   'stop',
