@@ -275,7 +275,7 @@ export function createCoordinator(config, bundle, {
     let waiting = holdFirstRun;
     holdFirstRun = false;
     let run = Object.freeze({ ...createRun(runId, { seed, workers: ids, replay: config.replay, waiting }),
-      managed, selection: selected, source: snapshot.fingerprint, startedAt: new Date().toISOString() });
+      managed, selection: selected, source: snapshot.fingerprint, startedAt: new Date().toISOString(), launched: Object.freeze([...workerIds]) });
     bundles.set(runId, snapshot);
     if (config.coverage?.enabled) coverage.set(runId, createCoverageState());
     if (managed) {
@@ -291,7 +291,8 @@ export function createCoordinator(config, bundle, {
     publish(run);
     return run;
   };
-  let restart = (runId, selected, seed = config.seed) => {
+  // `count` runs the next pull on the first workers only; the rest stay parked.
+  let restart = (runId, selected, seed = config.seed, count = workerIds.length) => {
     requireOpen();
     if (restarting) throw problem(409, 'This browser run is already restarting.');
     if (runId !== managedRun) throw problem(409, 'This browser run was replaced.');
@@ -306,7 +307,7 @@ export function createCoordinator(config, bundle, {
       requireOpen();
       let snapshot = rebuild ? await rebuild() : bundle;
       requireOpen();
-      let run = create(snapshot, workerIds, true, selected, randomUUID(), seed);
+      let run = create(snapshot, workerIds.slice(0, count), true, selected, randomUUID(), seed);
       primaryRun = run.runId;
       await Promise.all(run.workers.map(worker => workers.get(worker.id).lifecycle.open()));
       return run.runId;
@@ -432,8 +433,10 @@ export function createCoordinator(config, bundle, {
           throw problem(400, 'Queue replay uses its recorded selection. Start a regular run to select different tests.');
         input = { ...input, ids: run.replay.selected };
       }
+      if (input.workers !== undefined && (!Number.isSafeInteger(input.workers) || input.workers < 1 || input.workers > workerIds.length))
+        throw problem(400, `A run can use between 1 and ${workerIds.length} workers.`);
       if (input.command === 'rerun' && run.managed) {
-        restart(run.runId, selection({ ids: input.ids }));
+        restart(run.runId, selection({ ids: input.ids }), undefined, input.workers);
         return Promise.resolve({ requestId: input.requestId });
       }
       let global = ['pause', 'stop', 'rerun', 'pause-on-failure', 'reload'].includes(input.command) ||

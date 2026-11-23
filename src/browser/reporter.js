@@ -104,6 +104,7 @@ export function createReporter(actions) {
   let groups = new Map();
   let suites = new Map();
   let bays = new Map();
+  let workerCount = (used, slots) => slots > used ? `, ${used} of ${slots} workers` : used > 1 ? `, ${used} workers` : '';
   let lastState;
   // Tests picked with checkboxes. Kept across reruns so a set can run again.
   let picked = new Set();
@@ -214,6 +215,7 @@ export function createReporter(actions) {
   });
   get('show-app').addEventListener('click', () => actions.showApp());
   get('run-selected').addEventListener('click', () => actions.rerun([...picked]));
+  get('run-workers').addEventListener('change', (event) => actions.setRunWorkers(Number(event.target.value)));
   get('clear-selection').addEventListener('click', () => pick([...picked], false));
   get('close-reporter').addEventListener('click', actions.close);
   get('copy-output').addEventListener('click', async () => {
@@ -508,6 +510,16 @@ export function createReporter(actions) {
     let workers = state.workers ?? [];
     lastState = state;
     renderBays(state);
+    // Workers per run: from one up to every launched worker. The next run uses it.
+    let slots = state.workerSlots ?? workers.length;
+    get('workers-setting').hidden = slots < 2;
+    if (get('run-workers').options.length !== slots)
+      get('run-workers').replaceChildren(...Array.from({ length: slots }, (_, index) => {
+        let option = element('option', '', `${index + 1} of ${slots}`);
+        option.value = String(index + 1);
+        return option;
+      }));
+    get('run-workers').value = String(Math.min(actions.runWorkers?.() ?? slots, slots));
     let href = (patch) => reporterHref({ ...state.route, ...patch });
     for (let id of [
       'rerun',
@@ -594,7 +606,7 @@ export function createReporter(actions) {
       get('run-meta'),
       state.error ?? (waiting
         ? `${total} ${total === 1 ? 'test is' : 'tests are'} ready. Run all of them, or a file, suite or single test from the list.`
-        : `${state.files.length} test ${state.files.length === 1 ? 'file' : 'files'}${workers.length > 1 ? `, ${workers.length} workers` : ''}, app at ${state.appHost || location.host}`)
+        : `${state.files.length} test ${state.files.length === 1 ? 'file' : 'files'}${workerCount(workers.length, state.workerSlots ?? workers.length)}, app at ${state.appHost || location.host}`)
     );
     write(get('passed-count'), String(passed));
     write(get('failed-count'), String(failed));
