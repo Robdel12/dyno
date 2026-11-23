@@ -64,7 +64,7 @@
  *
  * ## Use the output in CI
  *
- * `dyno --json` writes one JSON event per stdout line. Config, setup, teardown and app logs go to stderr. Use the process exit code as the outcome: `0` passes, `1` fails, `130` means SIGINT, and `143` means SIGTERM. Cleanup failure exits `1`, including after interruption.
+ * `dyno --json` writes one JSON event per stdout line. Config, setup, teardown and app logs go to stderr. Use the process exit code as the outcome: `0` passes, `1` fails, `129` means SIGHUP (a closed terminal), `130` means SIGINT, and `143` means SIGTERM. Cleanup failure exits `1`, including after interruption.
  *
  * The default output groups results by file and suite, then lists each failure with its code, project stack frames, console output and a command that reruns just that test. Colors turn off when stdout isn't a terminal or `NO_COLOR` is set.
  *

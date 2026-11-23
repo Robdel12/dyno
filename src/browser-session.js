@@ -48,7 +48,7 @@ async function closeBrowser(server) {
   } finally { deadline.removeEventListener('abort', abort); }
 }
 
-export async function createBrowserPool(plan, { size = 1, signal, onExit = () => {}, onDiagnostic = () => {} } = {}) {
+export async function createBrowserPool(plan, { size = 1, signal, onExit = () => {}, onDiagnostic = () => {}, onStart = () => {} } = {}) {
   if (!Number.isSafeInteger(size) || size < 1 || size > 32)
     throw new Error('Browser pool size must be between 1 and 32.');
   signal?.throwIfAborted();
@@ -80,8 +80,10 @@ export async function createBrowserPool(plan, { size = 1, signal, onExit = () =>
     await closeBrowser(server);
     signal.throwIfAborted();
   }
+  let browserPid = server.process()?.pid;
+  if (browserPid) onStart(browserPid);
   let owned = startProcess(process.execPath, {
-    shell: false, ipc: true,
+    shell: false, ipc: true, onStart,
     args: [fileURLToPath(new URL('./providers/worker.js', import.meta.url))],
   });
   let requests = new Map();

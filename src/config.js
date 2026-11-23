@@ -79,6 +79,26 @@
  *
  * Use [named app fixtures](guide.md#named-app-fixtures) to call your real factories through `app.fixture`. Keep that test control outside production entrypoints. Operations receive explicit app dependencies; Dyno handles execution ownership and transport, while your app owns factories, auth, queues and visual comparison.
  *
+ * ## Clean up after interrupted runs
+ *
+ * Teardown and `onCleanup` callbacks run when Dyno stops normally, on Ctrl-C, and when you close its terminal. A crash, `kill -9`, or a machine that loses power can't run them, and the resources setup started (containers, databases) keep running.
+ *
+ * Dyno remembers each session that has project setup until its cleanup finishes. The next time it starts, it passes any session that ended early to an optional `reclaim` export from your setup module:
+ *
+ * ```js
+ * export default async function setup({ session }) {
+ *   // Name what you start after the session, so reclaim can find it later.
+ *   let project = `myapp-tests-${session.id}`;
+ *   …
+ * }
+ *
+ * export async function reclaim({ session }) {
+ *   await exec('docker', ['compose', '-p', `myapp-tests-${session.id}`, 'down', '--volumes']);
+ * }
+ * ```
+ *
+ * Reclaim runs before setup, once per interrupted session. If it fails, Dyno reports why and tries again on the next run. Without a `reclaim` export, Dyno tells you a session ended early so you can clean up by hand.
+ *
  * ## Finish work before reusing resources
  *
  * A fresh page doesn't stop server writes, background jobs, or service workers. Return `drain` to finish that work between tests. Stop new work from the old scenario, release held requests, and wait for its work to finish before reusing resources.
