@@ -349,7 +349,7 @@ export function createBrowserControl({ artifactsDir, workerId = '0', onReplaced 
         // A reporter follows reruns, and a rerun can use fewer workers. A launched
         // worker that sits this run out falls back to the run's first worker.
         let requestedWorker = url.searchParams.get('worker') ?? workerId;
-        let { workers: runWorkers, launched = [] } = getRun(runId);
+        let { workers: runWorkers, launched } = getRun(runId);
         let selectedWorker = runWorkers.some(worker => worker.id === requestedWorker) ? requestedWorker
           : launched.includes(requestedWorker) ? runWorkers[0].id : null;
         if (!selectedWorker) throw problem(400, 'Unknown reporter worker.');

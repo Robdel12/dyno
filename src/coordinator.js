@@ -263,7 +263,7 @@ export function createCoordinator(config, bundle, {
     });
     return Object.freeze(Object.fromEntries(entries));
   };
-  let create = (snapshot, ids, managed, selected, runId = randomUUID(), seed = config.seed, durations) => {
+  let create = (snapshot, ids, managed, selected, { runId = randomUUID(), seed = config.seed, durations } = {}) => {
     if (config.replay && JSON.stringify(snapshot.fingerprint) !== JSON.stringify(config.replay.source))
       throw new Error('The replay source fingerprint changed. Record a new schedule for these tests.');
     while (runs.size >= 20) {
@@ -294,7 +294,7 @@ export function createCoordinator(config, bundle, {
     return run;
   };
   // `count` runs the next pull on the first workers only; the rest stay parked.
-  let restart = (runId, selected, seed = config.seed, count = workerIds.length, durations) => {
+  let restart = (runId, selected, { seed = config.seed, count = workerIds.length, durations } = {}) => {
     requireOpen();
     if (restarting) throw problem(409, 'This browser run is already restarting.');
     if (runId !== managedRun) throw problem(409, 'This browser run was replaced.');
@@ -309,7 +309,7 @@ export function createCoordinator(config, bundle, {
       requireOpen();
       let snapshot = rebuild ? await rebuild() : bundle;
       requireOpen();
-      let run = create(snapshot, workerIds.slice(0, count), true, selected, randomUUID(), seed, durations);
+      let run = create(snapshot, workerIds.slice(0, count), true, selected, { seed, durations });
       primaryRun = run.runId;
       await Promise.all(run.workers.map(worker => workers.get(worker.id).lifecycle.open()));
       return run.runId;
@@ -330,7 +330,7 @@ export function createCoordinator(config, bundle, {
       await serialize(runId, () => {
         if (runs.get(runId)?.status !== 'completed') throw problem(409, 'Only a completed run can advance.');
       });
-      return restart(runId, runs.get(runId).selection, seed);
+      return restart(runId, runs.get(runId).selection, { seed });
     },
     lifecycle(workerId, lifecycle) {
       workers.set(workerId, { ...workers.get(workerId), lifecycle });
@@ -409,7 +409,7 @@ export function createCoordinator(config, bundle, {
         onEvent({ type: 'joining', runId, workerId, previousRunId: previousRunId ?? null });
         let joined = await control.join(runId, input.launchKey, input.previous);
         requireOpen();
-        if (!reuse) current = create(snapshot, managed ? workerIds : [workerId], managed, selection(input.selection), runId);
+        if (!reuse) current = create(snapshot, managed ? workerIds : [workerId], managed, selection(input.selection), { runId });
         current = joinWorker(current, workerId);
         publish(current);
         let primary = runs.get(primaryRun);
@@ -452,8 +452,8 @@ export function createCoordinator(config, bundle, {
         let durations = measuredDurations(runs.values());
         let ids = input.ids.length ? input.ids : (run.catalog ?? run.tests).map(test => test.id);
         let count = input.workers === undefined ? fittedWorkers(ids, durations, workerIds.length)
-          : Math.max(1, Math.min(input.workers, ids.length || input.workers));
-        restart(run.runId, selection({ ids: input.ids }), undefined, count, durations);
+          : Math.min(input.workers, ids.length || input.workers);
+        restart(run.runId, selection({ ids: input.ids }), { count, durations });
         return Promise.resolve({ requestId: input.requestId });
       }
       let global = ['pause', 'stop', 'rerun', 'pause-on-failure', 'reload'].includes(input.command) ||

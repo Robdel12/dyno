@@ -308,7 +308,7 @@ export function normalizeConfig(input, file, overrides = {}) {
     seed: overrides.random ? null : overrides.seed ?? input.seed ?? null,
     random: overrides.random ?? input.random ?? false,
     forbidOnly: input.forbidOnly ?? Boolean(process.env.CI),
-    autoRun: input.autoRun ?? true,
+    autoRun: overrides.autoRun ?? input.autoRun ?? true,
     testDir: resolve(root, input.testDir ?? 'tests/browser'),
     testMatch: input.testMatch ?? '**/*.test.{js,jsx,ts,tsx}',
     timeout: input.timeout ?? 10000,
