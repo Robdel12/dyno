@@ -103,6 +103,81 @@ export function createReporter(actions) {
   let rows = new Map();
   let groups = new Map();
   let suites = new Map();
+  let bays = new Map();
+  let lastState;
+  // Tests picked with checkboxes. Kept across reruns so a set can run again.
+  let picked = new Set();
+
+  let bayPhases = { connecting: 'Starting', discovering: 'Loading tests', running: 'Running', pausing: 'Pausing after this test',
+    paused: 'Paused', resuming: 'Resuming', debugging: 'Debugging', completed: 'Done', stopped: 'Stopped', error: 'Stopped',
+    retired: 'Closed' };
+  // One bay per worker: what it's doing, its current test, and its own results.
+  let renderBays = (state) => {
+    let workers = state.workers ?? [];
+    get('bays').hidden = workers.length < 2;
+    for (let worker of workers) {
+      let bay = bays.get(worker.id);
+      if (!bay) {
+        let node = element('li', 'bay');
+        let select = element('button', 'bay-select');
+        select.dataset.worker = worker.id;
+        let name = element('span', 'bay-name', `Worker ${worker.id}`);
+        let phase = element('span', 'bay-phase');
+        let current = element('span', 'bay-test');
+        let tally = element('span', 'bay-tally');
+        select.append(name, phase, current, tally);
+        select.addEventListener('click', () => { if (lastState?.selectedWorker !== worker.id) actions.selectWorker(worker.id); });
+        let app = element('button', 'text-button bay-app', 'Show app');
+        app.setAttribute('aria-label', `Show worker ${worker.id}'s app`);
+        app.addEventListener('click', () => actions.showApp(worker.id));
+        node.append(select, app);
+        get('bay-list').append(node);
+        bay = { node, select, phase, current, tally, app };
+        bays.set(worker.id, bay);
+      }
+      let mine = state.tests.filter((test) => test.workerId === worker.id);
+      let passed = mine.filter((test) => test.status === 'passed').length;
+      let failed = mine.filter((test) => test.status === 'failed').length;
+      let running = mine.find((test) => test.status === 'running') ??
+        (worker.current === null ? undefined : state.tests.find((test) => test.index === worker.current && test.workerId === worker.id));
+      let phase = state.waiting ? 'waiting' : worker.phase;
+      bay.node.dataset.phase = phase;
+      bay.node.dataset.failed = String(failed > 0);
+      bay.select.setAttribute('aria-pressed', String(worker.id === state.selectedWorker));
+      write(bay.phase, phase === 'waiting' ? 'Waiting' : bayPhases[phase] ?? phase);
+      write(bay.current, running && ['running', 'pausing', 'paused', 'debugging'].includes(worker.phase) ? running.name : '');
+      write(bay.tally, mine.length ? `${passed} passed${failed ? `, ${failed} failed` : ''}` : state.waiting ? 'Ready' : 'No tests yet');
+      bay.app.disabled = worker.phase === 'retired' || state.connection !== 'connected';
+    }
+  };
+
+  let testsIn = (file, path = []) => (lastState?.tests ?? []).filter((test) =>
+    test.file === file && path.every((name, index) => test.suites[index] === name)).map((test) => test.id);
+  let syncPicks = () => {
+    let total = picked.size;
+    get('results').classList.toggle('picking', total > 0);
+    for (let [id, row] of rows) row.pick.checked = picked.has(id);
+    let mark = (input, ids) => {
+      let chosen = ids.filter((id) => picked.has(id)).length;
+      input.checked = ids.length > 0 && chosen === ids.length;
+      input.indeterminate = chosen > 0 && chosen < ids.length;
+    };
+    for (let [file, group] of groups) mark(group.pick, testsIn(file));
+    for (let suite of suites.values()) if (suite.pick) mark(suite.pick, testsIn(suite.file, suite.path));
+    get('selection-bar').hidden = total === 0;
+    write(get('selection-count'), `${total} ${total === 1 ? 'test' : 'tests'} selected`);
+  };
+  let pick = (ids, on) => {
+    for (let id of ids) on ? picked.add(id) : picked.delete(id);
+    syncPicks();
+  };
+  let checkbox = (label, ids) => {
+    let input = element('input', 'pick');
+    input.type = 'checkbox';
+    input.setAttribute('aria-label', label);
+    input.addEventListener('change', () => pick(ids(), input.checked));
+    return input;
+  };
   let outputKey;
   let outputTest;
   let outputStatus;
@@ -137,8 +212,9 @@ export function createReporter(actions) {
     let [width, height] = get('viewport').value.split('x').map(Number);
     actions.viewport({ width, height });
   });
-  get('worker').addEventListener('change', event => actions.selectWorker(event.target.value));
-  get('show-app').addEventListener('click', actions.showApp);
+  get('show-app').addEventListener('click', () => actions.showApp());
+  get('run-selected').addEventListener('click', () => actions.rerun([...picked]));
+  get('clear-selection').addEventListener('click', () => pick([...picked], false));
   get('close-reporter').addEventListener('click', actions.close);
   get('copy-output').addEventListener('click', async () => {
     try {
@@ -430,14 +506,8 @@ export function createReporter(actions) {
     let failed = state.tests.filter((test) => test.status === 'failed').length;
     let total = state.tests.length;
     let workers = state.workers ?? [];
-    get('worker-setting').hidden = workers.length < 2;
-    let workerOptions = workers.map(worker => ({ value: worker.id, label: `Worker ${worker.id} (${worker.phase})` }));
-    if (JSON.stringify([...get('worker').options].map(option => ({ value: option.value, label: option.textContent }))) !== JSON.stringify(workerOptions))
-      get('worker').replaceChildren(...workerOptions.map(worker => {
-        let option = element('option', '', worker.label); option.value = worker.value; return option;
-      }));
-    get('worker').value = state.selectedWorker ?? '';
-    get('worker').disabled = state.command?.status === 'pending';
+    lastState = state;
+    renderBays(state);
     let href = (patch) => reporterHref({ ...state.route, ...patch });
     for (let id of [
       'rerun',
@@ -607,10 +677,11 @@ export function createReporter(actions) {
         let run = element('button', 'text-button', 'Run file');
         run.setAttribute('aria-label', `Run file ${group.file}`);
         run.addEventListener('click', () => actions.runScope({ file: group.file }));
-        heading.append(title, count, run);
+        let filePick = checkbox(`Select every test in ${group.file}`, () => testsIn(group.file));
+        heading.append(filePick, title, count, run);
         node.append(heading);
         get('results').append(node);
-        fileGroup = { node, count, run };
+        fileGroup = { node, count, run, pick: filePick };
         groups.set(group.file, fileGroup);
       }
       let failedCount = group.tests.filter((test) => test.status === 'failed').length;
@@ -625,8 +696,13 @@ export function createReporter(actions) {
         let suiteGroup = suites.get(key);
         if (!suiteGroup) {
           let node = element('section', 'suite-group');
+          let suitePick;
           if (suite.path.length || group.suites.length > 1) {
             let heading = element('header', 'group-heading suite-heading');
+            if (suite.path.length) {
+              suitePick = checkbox(`Select every test in ${suite.path.join(' › ')}`, () => testsIn(group.file, suite.path));
+              heading.append(suitePick);
+            }
             heading.append(element('h3', '', suite.path.join(' › ') || 'File tests'));
             let run = element('button', 'text-button', 'Run suite');
             run.hidden = !suite.path.length;
@@ -638,10 +714,10 @@ export function createReporter(actions) {
           let list = element('ol', 'suite-tests');
           node.append(list);
           fileGroup.node.append(node);
-          suiteGroup = { node, list };
+          suiteGroup = { node, list, pick: suitePick, file: group.file, path: suite.path };
           suites.set(key, suiteGroup);
         }
-        for (let run of suiteGroup.node.querySelectorAll('button'))
+        for (let run of suiteGroup.node.querySelectorAll(':scope > .group-heading button'))
           run.disabled = active || state.phase === 'debugging' || unavailable;
         let matches = suite.tests.some(
           (test) =>
@@ -676,9 +752,10 @@ export function createReporter(actions) {
         let run = element('button', 'text-button row-run', 'Run');
         run.setAttribute('aria-label', `Run test ${item.name}`);
         run.addEventListener('click', () => actions.rerun([item.id]));
-        node.append(select, run);
+        let rowPick = checkbox(`Select ${item.name}`, () => [item.id]);
+        node.append(rowPick, select, run);
         suites.get(JSON.stringify([item.file, ...item.suites])).list.append(node);
-        row = { node, select, symbol, error, time, load, run };
+        row = { node, select, symbol, error, time, load, run, pick: rowPick };
         rows.set(item.id, row);
       }
       row.select.href = href({ page: 'test', id: item.id, tab: 'output' });
@@ -770,6 +847,8 @@ export function createReporter(actions) {
     ])
       get(id).disabled ||= unavailable;
     get('rerun').disabled ||= active || state.phase === 'debugging';
+    get('run-selected').disabled = active || state.phase === 'debugging' || unavailable;
+    syncPicks();
     get('run-failed').disabled = active || state.phase === 'debugging' || unavailable;
   };
 }

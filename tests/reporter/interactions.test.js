@@ -246,3 +246,24 @@ test('a session with autoRun off waits until a test is started from its reporter
   assert.deepEqual([complete.passed, complete.failed, complete.skipped], [1, 0, 0]);
   assert.deepEqual(session.events.filter(event => event.type === 'test').map(event => event.name), ['second']);
 });
+
+test('picking tests with checkboxes runs exactly that selection', { timeout: 90000 }, async t => {
+  let fixture = await project(t, { config: { ...interactive, autoRun: false }, source: `describe('Picking', () => {
+    test('alpha', () => {});
+    test('beta', () => {});
+    test('gamma', () => {});
+  });` });
+  let session = fixture.run(['--ui']);
+  let ready = await session.waitForEvent('ready');
+  let start = await session.waitForEvent('start');
+  let page = await openURL(t, new URL('/__dyno__/reporter?run=' + encodeURIComponent(start.runId), ready.url).href);
+  await page.getByRole('heading', { name: 'Ready to run' }).waitFor();
+  await page.getByRole('checkbox', { name: 'Select alpha' }).check();
+  await page.getByRole('checkbox', { name: 'Select gamma' }).check();
+  assert.equal(await page.getByRole('checkbox', { name: 'Select every test in Picking' }).evaluate(input => input.indeterminate), true);
+  await page.getByText('2 tests selected', { exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Run selected' }).click();
+  let complete = await session.waitForEvent('complete');
+  assert.equal(complete.passed, 2);
+  assert.deepEqual(session.events.filter(event => event.type === 'test').map(event => event.name).sort(), ['alpha', 'gamma']);
+});
