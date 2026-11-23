@@ -83,7 +83,9 @@ let selectWorker = (id) => {
   parameters.set('worker', id);
   connection?.close();
   connection = undefined;
-  update({ connection: 'connecting' });
+  // Switching workers isn't a lost connection: keep the current state, show the
+  // picked bay right away, and only speak up if the new stream fails.
+  update({ selectedWorker: id });
   connect();
 };
 // How many workers the next run uses. Unset means all of them.
