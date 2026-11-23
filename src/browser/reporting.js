@@ -108,7 +108,8 @@ export function workerView(run, progress, selected = run.workers[0].id, previous
   let workers = run.workers.map(worker => {
     let view = progress.find(item => item.id === worker.id)?.view;
     return freeze({ id: worker.id, phase: worker.status === 'retired' ? 'retired' : worker.status === 'finished' ? 'completed' : view?.phase ?? 'connecting',
-      current: view?.current ?? null, hasApp: worker.status !== 'retired' && ownsApp(worker.id) && (view?.hasApp ?? false) });
+      current: view?.current ?? null, held: Boolean(worker.held),
+      hasApp: worker.status !== 'retired' && ownsApp(worker.id) && (view?.hasApp ?? false) });
   });
   if (previous?.workers?.length === workers.length && workers.every((worker, index) =>
     Object.keys(worker).every(key => worker[key] === previous.workers[index][key]))) workers = previous.workers;
