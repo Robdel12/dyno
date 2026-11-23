@@ -40,6 +40,9 @@ test('native workers overlap real saves with private apps and one canonical repo
           await UI.click('$(.bay-select[data-worker="'+other+'"])');
           await I.assert(()=>new URL(reporter.contentDocument?.querySelector('#standalone-reporter')?.href??reporter.src).searchParams.get('worker')===other);
           await inspecting(other);
+          // Pressing a bay also filters to that worker; show every worker's rows again.
+          await UI.find('$(#worker-scope)').visible();
+          await UI.click('Show every worker');
           await UI.find('$(a[aria-label="Running: First contact"])').visible();
           await UI.find('$(a[aria-label="Passed: Second contact"])').visible();
           await UI.click('$(.bay-select[data-worker="'+fixtures.worker+'"])');

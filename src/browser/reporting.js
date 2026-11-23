@@ -80,7 +80,10 @@ export function runView(view = createExecution({ width: 1280, height: 800 }), ru
   let terminal = run.status === 'completed'
     ? { phase: 'completed', duration: run.summary.duration }
     : run.status === 'failed' ? { phase: run.stopped ? 'stopped' : 'error', error: run.error.message } : {};
-  return freeze({ ...view, runId: run.runId, seed: run.seed ?? null, waiting: Boolean(run.waiting), ...terminal,
+  // Tests the run left out, for the reporter to list and run. Not part of results.
+  let inRun = new Set(run.tests.map((test) => test.id));
+  let outside = freeze((run.catalog ?? []).filter((test) => !inRun.has(test.id)));
+  return freeze({ ...view, runId: run.runId, seed: run.seed ?? null, waiting: Boolean(run.waiting), outside, ...terminal,
     ...(run.coordination ? { coordination: run.coordination } : {}),
     ...(['completed', 'failed'].includes(run.status) ? { presentation: view.interactive ? 'reporter' : 'app' } : {}), tests: freeze(tests) });
 }
