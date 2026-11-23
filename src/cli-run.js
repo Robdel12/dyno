@@ -21,6 +21,7 @@ import { createRepeat, repeatSeed, acceptRepeatRound, finishRepeat, repeatComman
 import { createRepeatWriter } from './repeat-reports.js';
 import { publicCoverage } from './coverage-reports.js';
 import { openInBrowser } from './open-browser.js';
+import { recordSession, reclaimSessions } from './sessions.js';
 
 // A gateway bound to every interface is reachable from other devices on the network.
 function deviceURLs(host, url) {
@@ -84,6 +85,7 @@ export async function runTests(options, { signal, output }) {
     controller.abort(error);
   };
   let endingError;
+  let sessionRecord;
   let finalizationErrors = [];
   let batch, batchWriter, batchReason;
   let watcher, coordinator;
@@ -153,9 +155,17 @@ export async function runTests(options, { signal, output }) {
     if (replay && JSON.stringify(bundle.fingerprint) !== JSON.stringify(replay.source))
       throw new Error('The replay source fingerprint changed. Record a new schedule for these tests.');
     runSignal.throwIfAborted();
+    // Clean up after sessions that died before their cleanup ran, then record
+    // this one, and every process it starts, until its own cleanup finishes.
+    let setupModule = config.setup ? await measure('Load setup', () => import(pathToFileURL(config.setup).href)) : {};
+    await measure('Reclaim interrupted sessions', () => reclaimSessions(config.root, setupModule.reclaim, {
+      config, report: message => output.diagnostic(message + '\n'),
+    }));
+    sessionRecord = await recordSession(config.root, { id: sessionId, startedAt: sessionStartedAt });
+    let track = pid => { void sessionRecord.track(pid); };
     let pool = browserPlan
       ? await measure('Prepare browser', () => createBrowserPool(browserPlan, {
-          size: config.workers, signal: runSignal,
+          size: config.workers, signal: runSignal, onStart: track,
           onExit: failed,
           onDiagnostic: (event) => { if (!runSignal.aborted) output.event({ type: 'browser-diagnostic', ...event }); }
         }))
@@ -244,7 +254,7 @@ export async function runTests(options, { signal, output }) {
         let appServer = await measure(`Worker ${id} app server ready`, () => duringStartup(startupSignal, startupSignal => startWebServer(
           { ...project.config.webServer, env: { ...project.config.webServer.env, DYNO_URL: gateway.origin,
             DYNO_COVERAGE: config.coverage.enabled ? '1' : '0' } },
-          { signal: startupSignal, onReady: headers => gateway.setDocumentPolicy(headers),
+          { signal: startupSignal, onStart: track, onReady: headers => gateway.setDocumentPolicy(headers),
             output: message => output.diagnostic(`[app] ${message}`) }
         )));
         appCleanups.add(appServer.stop);
@@ -343,6 +353,8 @@ export async function runTests(options, { signal, output }) {
       finalizationErrors.push(error.message);
       exitCode = 1;
     }
+    // A session whose cleanup failed stays recorded, so the next run reclaims it.
+    if (sessionRecord && !finalizationErrors.length) await sessionRecord.forget().catch(() => {});
     let session = sessionSnapshot(exitCode ? 'failed' : signal.aborted ? 'interrupted' : endingError ? 'failed' : 'completed', sessionTimings.end());
     try { await writer.finishSession(session); }
     catch (error) {

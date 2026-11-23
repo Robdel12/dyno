@@ -15,6 +15,9 @@ let stop = (name, code) => {
 };
 let interrupt = () => stop('SIGINT', 130);
 let terminate = () => stop('SIGTERM', 143);
+// Closing the terminal sends SIGHUP. Without a handler Node exits at once and
+// skips cleanup, which strands project resources such as test databases.
+let hangup = () => stop('SIGHUP', 129);
 let streamError = (stream) => (error) => {
   output.close(stream);
   if (error.code === 'EPIPE') stop('SIGTERM', 143);
@@ -24,6 +27,7 @@ let stdoutError = streamError(process.stdout);
 let stderrError = streamError(process.stderr);
 process.once('SIGINT', interrupt);
 process.once('SIGTERM', terminate);
+process.once('SIGHUP', hangup);
 process.stdout.on('error', stdoutError);
 process.stderr.on('error', stderrError);
 // Project config, setup, and teardown console messages are diagnostics too.
@@ -38,6 +42,7 @@ try {
   if (interruption) output.event({ type: 'stopped', signal: interruption.name });
   process.removeListener('SIGINT', interrupt);
   process.removeListener('SIGTERM', terminate);
+  process.removeListener('SIGHUP', hangup);
   // Stream writes can finish after command cleanup. Keep their error handlers
   // through process exit so a late broken pipe cannot become uncaught.
 }
