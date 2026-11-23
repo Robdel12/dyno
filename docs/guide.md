@@ -267,7 +267,8 @@ Dyno gives each test 10 seconds, including hooks and document startup. Interacto
 | `browser.isMobile`, `browser.hasTouch` | `false` | Emulate mobile viewport behavior and touch input |
 | `browser.userAgent` | Browser default | Override the managed browser user agent |
 | `viewport` | Browser size; managed: 1280 × 800 | Required app viewport dimensions |
-| `reportDir` | `.dyno/reports` | Saved JSON, JUnit, HTML, and copied images per browser run |
+| `reportDir` | `.dyno/reports` | Saved JSON, JUnit, and HTML per browser run |
+| `reportImages` | `false` | Copy captured PNGs into [saved reports](guide.md#saved-reports) |
 | `coverage` | Disabled | App coverage filters, build baseline, reporters, and thresholds; activate with `--coverage` or `coverage.enabled` |
 | `artifactsDir` | `.dyno/artifacts` | PNG output directory |
 | `webServer.url` | Required | HTTP(S) origin without a path |
@@ -456,7 +457,7 @@ The default output groups results by file and suite, then lists each failure wit
 
 `dyno --llm` prints a compact Markdown summary instead. It skips passing tests and progress lines. Each failure gets its file and line, the error, a code excerpt, project stack frames, recent console output and a rerun command. It ends with the path to `run.json`, which has everything it leaves out. It can't be combined with `--json`.
 
-[Saved reports](guide.md#saved-reports) give you portable HTML, JSON, JUnit and images after the session stops.
+[Saved reports](guide.md#saved-reports) give you portable HTML, JSON, and JUnit after the session stops. Add `--report-images` to include captured PNGs.
 
 ## Editing and debugging
 
@@ -502,17 +503,23 @@ Config types work independently of the browser declarations.
 
 ## Saved reports
 
-The CLI prints an HTML report path after each browser run. Open `index.html` directly after Dyno stops to search tests, read failures and source excerpts, inspect console output and timings, and view screenshots.
+The CLI prints an HTML report path after each browser run. Open `index.html` directly after Dyno stops to search tests, read failures and source excerpts, and inspect console output and timings.
 
-Reports live in `.dyno/reports/<run-id>/`. Change that with `reportDir` or `--report-dir path`. Copy the whole folder to share a report; its images live in `images/`. Old reports stay until you remove them.
+Reports live in `.dyno/reports/<run-id>/`. Change that with `reportDir` or `--report-dir path`. Copy the whole folder to share a report. Old reports stay until you remove them.
+
+### Include screenshots
+
+Saved reports leave out PNGs by default. Set `reportImages: true` in `dyno.config.js` or pass `--report-images` to copy captures into the report's `images/` folder. Use `--no-report-images` to turn off copying for a run, even when the config enables it.
+
+This setting only controls the saved report copy. `app.screenshot()` still saves a PNG to `artifactsDir` (default `.dyno/artifacts`), and the live reporter and visual integrations can use it during the run. Ordinary runs leave reported source captures in `artifactsDir` after shutdown. Repeated runs remove source captures after each round is saved. For a CI upload that follows `reportImages`, upload `reportDir`.
 
 ### Use reports in CI
 
-Each folder includes `run.json`, `junit.xml`, `schedule.json`, and `session.json`. JSON output emits a `report-saved` event. `run.json` uses `schemaVersion: 1`, stable test descriptors, outcomes, summary counts, and relative image paths.
+Each standalone run folder includes `run.json`, `junit.xml`, `schedule.json`, and `session.json`. JSON output emits a `report-saved` event. `run.json` uses `schemaVersion: 1`, stable test descriptors, outcomes, and summary counts. A screenshot copied into the report has status `captured` and relative `path` and `url` fields. When copying is disabled, the attachment has status `omitted`, a reason, and capture metadata.
 
 Runs are `completed` or `interrupted`; tests without accepted results are `not-run`. Failures retain their phase and source context. JUnit adds an error case for interruption, so an unfinished run can't look green.
 
-Dyno saves results before reporting completion, including accepted outcomes on signals, browser loss, and app failure. A force kill or machine failure can't flush results. Storage errors fail the CLI, and partially written run folders aren't published as reports. A source image removed before saving appears as **Screenshot unavailable**.
+Dyno saves results before reporting completion, including accepted outcomes on signals, browser loss, and app failure. A force kill or machine failure can't flush results. Storage errors fail the CLI, and partially written run folders aren't published as reports. With copying enabled, a source image removed before saving appears as **Screenshot unavailable**.
 
 Reports contain test output and source excerpts. Dyno doesn't save config, fixtures, connection keys, or launch tokens in them.
 
@@ -520,7 +527,7 @@ Reports contain test output and source excerpts. Dyno doesn't save config, fixtu
 
 `--repeat` writes `.dyno/reports/repeat-<session-id>/`. Open its `index.html` for aggregate counts and the first failure. `batch.json` records the root seed, test-bundle fingerprint, browser identity, original selection, and observed outcomes. Skipped and unfinished tests stay separate from passes. The batch's `junit.xml` gives each test execution its round number, so a later pass cannot replace an earlier failure.
 
-`rounds.jsonl` records completed and interrupted rounds, per-test outcomes, and paths to their worker schedules under `schedules/`. Full portable reports and images are retained under `runs/` for failed or interrupted rounds and the final round. Successful intermediate rounds keep compact evidence; their screenshots are discarded. Session timing lives once in the batch folder.
+`rounds.jsonl` records completed and interrupted rounds, per-test outcomes, and paths to their worker schedules under `schedules/`. Full portable reports are retained under `runs/` for failed or interrupted rounds and the final round. Those reports include PNGs when `reportImages` is enabled. Successful intermediate rounds keep compact evidence. Session timing lives once in the batch folder.
 
 Round evidence and retained reports share a 256 MiB budget. Reaching it stops repetition, marks unavailable evidence explicitly, and preserves accepted counts in `batch.json`. The aggregate summary, final compact outcome record, and session timing are saved outside that budget so a limit cannot hide a failure or stop reason. Batch metadata updates after each saved round; HTML and JUnit are finalized on shutdown. Storage failures also fail the command. Copy the whole batch folder to keep its relative report and image links; printed commands refer to the original local paths.
 
@@ -635,7 +642,7 @@ await I.find('Dashboard').visible();
 let image = await app.screenshot('dashboard', { fullPage: true });
 ```
 
-Managed browsers capture the original app page with the reporter hidden. The default is a viewport image; `fullPage: true` captures the whole page without changing its configured viewport. Chromium briefly pauses app JavaScript during full-page and element captures so its temporary resize cannot reach app handlers. Queued callbacks resume afterward; CSS animation and backend work continue. The result includes `path`, `url`, dimensions, and pixel ratio. Images appear in live and [saved reports](guide.md#saved-reports).
+Managed browsers capture the original app page with the reporter hidden. The default is a viewport image; `fullPage: true` captures the whole page without changing its configured viewport. Chromium briefly pauses app JavaScript during full-page and element captures so its temporary resize cannot reach app handlers. Queued callbacks resume afterward; CSS animation and backend work continue. The result includes `path`, `url`, dimensions, and pixel ratio. Images appear in the live reporter. Enable `reportImages` to include them in [saved reports](guide.md#saved-reports).
 
 ### Choose what to capture
 
@@ -662,7 +669,7 @@ Always await captures and viewport changes. They run in order; navigation, Stop,
 
 URL-only runs can't take screenshots. Required captures fail. Use `{ optional: true }` only when the functional test is useful without an image; Dyno returns and reports a skipped image. Provider and storage errors still fail.
 
-Reported PNGs stay on disk after cleanup; interrupted runs discard unreported images. Capture metadata includes the browser/provider/version, viewport, and pixel ratio. Dyno saves attachments; your visual-comparison service owns baselines and diffs.
+Ordinary runs keep reported source PNGs after cleanup. Interrupted runs discard unreported images, and `--repeat` removes source PNGs after each saved round. Capture metadata includes the browser/provider/version, viewport, and pixel ratio. Dyno saves attachments; your visual-comparison service owns baselines and diffs.
 
 ## Viewport sizing
 

@@ -39,6 +39,7 @@ function terminalRun(t, fixture, args = []) {
 test('terminal output explains functional outcomes, saved screenshots, and independent coverage failures', { timeout: 90000 }, async t => {
   let fixture = await project(t, {
     config: {
+      reportImages: true,
       coverage: { enabled: true, baseline: '.dyno/coverage-baseline.json', include: ['src/**'],
         reporters: ['text', 'json'], thresholds: { functions: 100 } },
       webServer: { command: [process.execPath, join(repository, 'tests/fixtures/coverage-app-server.js')], ready: 'COVERAGE_READY' },

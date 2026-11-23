@@ -27,6 +27,7 @@ export interface Config {
   readonly viewport?: Viewport;
   readonly artifactsDir?: string;
   readonly reportDir?: string;
+  readonly reportImages?: boolean;
   readonly setup?: string;
   readonly browser?: {
     readonly name?: 'chrome' | 'chromium' | 'edge' | 'firefox' | 'webkit';

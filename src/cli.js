@@ -68,7 +68,7 @@
  *
  * `dyno --llm` prints a compact Markdown summary instead. It skips passing tests and progress lines. Each failure gets its file and line, the error, a code excerpt, project stack frames, recent console output and a rerun command. It ends with the path to `run.json`, which has everything it leaves out. It can't be combined with `--json`.
  *
- * [Saved reports](guide.md#saved-reports) give you portable HTML, JSON, JUnit and images after the session stops.
+ * [Saved reports](guide.md#saved-reports) give you portable HTML, JSON, and JUnit after the session stops. Add `--report-images` to include captured PNGs.
  */
 
 import { Command, CommanderError, InvalidArgumentError, Option } from 'commander';
@@ -151,6 +151,8 @@ Tests, actions, and assertions execute in the browser. Use --manual for Safari a
     .addOption(valueOption('--host <address>', 'Gateway address (127.0.0.1); use 0.0.0.0 for other devices'))
     .addOption(new Option('--port <number>', 'Gateway port (7357); 0 chooses an available port').argParser(port))
     .addOption(valueOption('--report-dir <path>', 'Saved JSON, JUnit, and HTML reports (.dyno/reports)'))
+    .option('--report-images', 'Copy captured PNGs into saved reports')
+    .option('--no-report-images', 'Omit PNGs from saved reports for this run')
     .addHelpText('after', `
 Examples:
   dyno --test 'saves a contact'
@@ -182,6 +184,6 @@ export function configOverrides(options) {
   return {
     workers: options.workers, port: options.port, host: options.host, browser: options.browser,
     browserPath: options.browserPath, reportDir: options.reportDir, seed: options.seed, random: options.random,
-    coverage: options.coverage,
+    reportImages: options.reportImages, coverage: options.coverage,
   };
 }
