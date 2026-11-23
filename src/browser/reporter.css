@@ -139,6 +139,9 @@ select { padding-right: 8px; }
   .suite-tests > li:hover .pick, .group-heading:hover .pick, .pick:focus-visible, .picking .pick, .pick:checked, .pick:indeterminate { opacity: 1; }
 }
 .workers-setting { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.worker-scope { margin: 0 0 8px; color: var(--muted); font-size: 13px; }
+.worker-scope button { margin-left: 6px; }
+.worker-scope strong { color: var(--ink); font-weight: 650; }
 .selection-bar { position: sticky; bottom: 16px; z-index: 2; display: flex; align-items: center; gap: 10px; margin-top: 16px;
   padding: 10px 12px 10px 16px; background: var(--raised); border: 1px solid var(--line); border-radius: 8px; }
 /* Nothing can start mid-run, so row and group run actions step out of the way. */
@@ -200,6 +203,12 @@ select { padding-right: 8px; }
 .test-load::after { content: ''; position: absolute; inset: 0 auto 0 0; width: calc(var(--load, 0) * 100%); min-width: 2px; border-radius: 2px; background: var(--trace); }
 [data-status=failed] .test-load::after { background: var(--fail); }
 [data-status=pending] .test-load::after, [data-status=skipped] .test-load::after { display: none; }
+/* Tests the current run left out: listed so you can pick or run them, but quiet. */
+[data-status=outside] .test-name { color: var(--muted); }
+[data-status=outside] .test-symbol { color: var(--faint); }
+[data-status=outside] .test-load { display: none; }
+[data-status=outside] .test-time { grid-column: 3 / -1; color: var(--faint); white-space: nowrap; }
+[data-status=outside] .test-select { cursor: default; }
 [data-status=running] .test-load::after { width: 30%; background: var(--accent); animation: sweep 1.1s ease-in-out infinite alternate; }
 @keyframes sweep { from { left: 0; } to { left: 70%; } }
 .test-time { color: var(--muted); font-size: 12px; text-align: right; font-variant-numeric: tabular-nums; }
