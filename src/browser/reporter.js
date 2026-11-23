@@ -85,6 +85,13 @@ let element = (tag, className, text) => {
   if (text !== undefined) node.textContent = text;
   return node;
 };
+// How many tests have each status, in one pass.
+let tally = (tests) => {
+  let counts = {};
+  for (let test of tests) counts[test.status] = (counts[test.status] ?? 0) + 1;
+  return counts;
+};
+
 let symbols = { pending: '○', running: '◌', passed: '✓', failed: '×', stopped: '■', skipped: '−', outside: '·' };
 let names = {
   pending: 'Pending',
@@ -108,17 +115,20 @@ export function createReporter(actions) {
   let suites = new Map();
   let bays = new Map();
   let workerCount = (used, slots) => slots > used ? `, ${used} of ${slots} workers` : used > 1 ? `, ${used} workers` : '';
-  let lastState;
+  // The listed tests from the latest render, for checkboxes and scoped runs.
+  let lastListed = [];
   // Tests picked with checkboxes. Kept across reruns so a set can run again.
   let picked = new Set();
 
   let bayPhases = { connecting: 'Starting', discovering: 'Loading tests', running: 'Running', pausing: 'Pausing after this test',
     paused: 'Paused', resuming: 'Resuming', debugging: 'Debugging', completed: 'Done', stopped: 'Stopped', error: 'Stopped',
-    retired: 'Closed' };
+    retired: 'Closed', waiting: 'Waiting' };
   // One bay per worker: what it's doing, its current test, and its own results.
   let renderBays = (state) => {
     let workers = state.workers ?? [];
     get('bays').hidden = workers.length < 2;
+    let byWorker = new Map();
+    for (let test of state.tests) byWorker.set(test.workerId, [...(byWorker.get(test.workerId) ?? []), test]);
     for (let worker of workers) {
       let bay = bays.get(worker.id);
       if (!bay) {
@@ -143,14 +153,13 @@ export function createReporter(actions) {
         bay = { node, select, phase, current, tally, app, hold, held: false };
         bays.set(worker.id, bay);
       }
-      let mine = state.tests.filter((test) => test.workerId === worker.id);
-      let passed = mine.filter((test) => test.status === 'passed').length;
-      let failed = mine.filter((test) => test.status === 'failed').length;
+      let mine = byWorker.get(worker.id) ?? [];
+      let { passed = 0, failed = 0, running: busy = 0 } = tally(mine);
       let running = mine.find((test) => test.status === 'running') ??
-        (worker.current === null ? undefined : state.tests.find((test) => test.index === worker.current && test.workerId === worker.id));
+        (worker.current === null ? undefined : mine.find((test) => test.index === worker.current));
       // A held worker is pausing while its current test runs, then paused.
       let phase = state.waiting ? 'waiting' : worker.held && worker.phase === 'running'
-        ? (mine.some((test) => test.status === 'running') ? 'pausing' : 'paused') : worker.phase;
+        ? (busy ? 'pausing' : 'paused') : worker.phase;
       // Pause or continue just this worker while the run is going.
       bay.held = worker.held;
       let live = !state.waiting && ['running', 'pausing', 'paused', 'resuming'].includes(worker.phase) && !['completed', 'stopped', 'error'].includes(state.phase);
@@ -161,7 +170,7 @@ export function createReporter(actions) {
       bay.node.dataset.phase = phase;
       bay.node.dataset.failed = String(failed > 0);
       bay.select.setAttribute('aria-pressed', String(worker.id === state.selectedWorker));
-      write(bay.phase, phase === 'waiting' ? 'Waiting' : bayPhases[phase] ?? phase);
+      write(bay.phase, bayPhases[phase] ?? phase);
       write(bay.current, running && ['running', 'pausing', 'paused', 'debugging'].includes(worker.phase) ? running.name : '');
       write(bay.tally, mine.length ? `${passed} passed${failed ? `, ${failed} failed` : ''}` : state.waiting ? 'Ready' : 'No tests yet');
       bay.app.disabled = worker.phase === 'retired' || state.connection !== 'connected';
@@ -173,19 +182,30 @@ export function createReporter(actions) {
     let outside = (state.outside ?? []).map((test) => ({ ...test, status: 'outside', output: [], attachments: [] }));
     return outside.length ? [...state.tests, ...outside].sort((left, right) => left.index - right.index) : state.tests;
   };
-  let testsIn = (file, path = []) => (lastState ? listing(lastState) : []).filter((test) =>
+  let testsIn = (file, path = []) => lastListed.filter((test) =>
     test.file === file && path.every((name, index) => test.suites[index] === name)).map((test) => test.id);
   let syncPicks = () => {
     let total = picked.size;
     get('results').classList.toggle('picking', total > 0);
     for (let [id, row] of rows) row.pick.checked = picked.has(id);
-    let mark = (input, ids) => {
-      let chosen = ids.filter((id) => picked.has(id)).length;
-      input.checked = ids.length > 0 && chosen === ids.length;
-      input.indeterminate = chosen > 0 && chosen < ids.length;
+    // Picked and total tests per file and per suite (nested suites included), in one pass.
+    let counts = new Map();
+    let add = (key, on) => {
+      let entry = counts.get(key) ?? { chosen: 0, total: 0 };
+      counts.set(key, { chosen: entry.chosen + Number(on), total: entry.total + 1 });
     };
-    for (let [file, group] of groups) mark(group.pick, testsIn(file));
-    for (let suite of suites.values()) if (suite.pick) mark(suite.pick, testsIn(suite.file, suite.path));
+    for (let test of lastListed) {
+      let on = picked.has(test.id);
+      add(JSON.stringify([test.file]), on);
+      for (let depth = 1; depth <= test.suites.length; depth++) add(JSON.stringify([test.file, test.suites.slice(0, depth)]), on);
+    }
+    let mark = (input, key) => {
+      let { chosen = 0, total = 0 } = counts.get(key) ?? {};
+      input.checked = total > 0 && chosen === total;
+      input.indeterminate = chosen > 0 && chosen < total;
+    };
+    for (let [file, group] of groups) mark(group.pick, JSON.stringify([file]));
+    for (let suite of suites.values()) if (suite.pick) mark(suite.pick, JSON.stringify([suite.file, suite.path]));
     get('selection-bar').hidden = total === 0;
     write(get('selection-count'), `${total} ${total === 1 ? 'test' : 'tests'} selected`);
   };
@@ -527,8 +547,8 @@ export function createReporter(actions) {
   }
 
   return function render(state) {
-    let passed = state.tests.filter((test) => test.status === 'passed').length;
-    let failed = state.tests.filter((test) => test.status === 'failed').length;
+    let totals = tally(state.tests);
+    let { passed = 0, failed = 0, skipped = 0 } = totals;
     let total = state.tests.length;
     let workers = state.workers ?? [];
     // Pressing a bay filters the list, sheet, and readouts to that worker.
@@ -538,19 +558,18 @@ export function createReporter(actions) {
     let shown = (test) =>
       `${test.file} ${test.suites.join(' ')} ${test.name}`.toLowerCase().includes(state.route.query.toLowerCase()) &&
       (state.route.filter === 'all' || test.status === state.route.filter) && (!scope || test.workerId === scope);
-    lastState = state;
+    lastListed = listed;
     renderBays(state);
     // Workers per run: from one up to every launched worker. The next run uses it.
     let slots = state.workerSlots ?? workers.length;
     get('workers-setting').hidden = slots < 2;
     // Auto fits the workers to each run's tests and timings.
     if (get('run-workers').options.length !== slots + 1)
-      get('run-workers').replaceChildren(element('option', '', 'Auto'), ...Array.from({ length: slots }, (_, index) => {
+      get('run-workers').replaceChildren(Object.assign(element('option', '', 'Auto'), { value: '' }), ...Array.from({ length: slots }, (_, index) => {
         let option = element('option', '', `${index + 1} of ${slots}`);
         option.value = String(index + 1);
         return option;
       }));
-    get('run-workers').options[0].value = '';
     let chosen = actions.runWorkers?.();
     get('run-workers').value = chosen ? String(Math.min(chosen, slots)) : '';
     let href = (patch) => reporterHref({ ...state.route, ...patch });
@@ -567,6 +586,9 @@ export function createReporter(actions) {
     ])
       get(id).disabled = false;
     let unavailable = state.connection !== 'connected' || state.command?.status === 'pending';
+    let active = ['running', 'pausing', 'resuming'].includes(state.phase);
+    // Starting a run needs a connected, idle runner.
+    let blocked = active || state.phase === 'debugging' || unavailable;
     get('command-notice').hidden = !state.command || state.command.status === 'idle';
     write(
       get('command-status'),
@@ -588,8 +610,6 @@ export function createReporter(actions) {
     get('capabilities').hidden = !state.capabilities || Boolean(state.capabilities.screenshot);
     for (let link of document.querySelectorAll('.back-link,.brand')) link.href = href({ page: 'overview' });
     if (get('test-search').value !== state.route.query) get('test-search').value = state.route.query;
-    let skipped = state.tests.filter((test) => test.status === 'skipped').length;
-    let active = ['running', 'pausing', 'resuming'].includes(state.phase);
     let test = selectedTest(state);
     view = !total || state.route.page === 'overview' ? 'overview' : test ? 'test' : 'missing';
     let overview = view === 'overview';
@@ -642,13 +662,14 @@ export function createReporter(actions) {
         : `${state.files.length} test ${state.files.length === 1 ? 'file' : 'files'}${workerCount(workers.length, state.workerSlots ?? workers.length)}, app at ${state.appHost || location.host}`)
     );
     // Readouts follow the worker filter; the title stays about the whole run.
-    let count = (status) => scoped.filter((test) => test.status === status).length;
-    write(get('passed-count'), String(count('passed')));
-    write(get('failed-count'), String(count('failed')));
-    write(get('pending-count'), String(scoped.length - count('passed') - count('failed') - count('skipped')));
-    write(get('skipped-count'), String(count('skipped')));
-    get('skipped-summary').hidden = count('skipped') === 0;
-    get('failed-summary').dataset.failed = String(count('failed') > 0);
+    let readout = scope ? tally(scoped) : totals;
+    let [scopedPassed, scopedFailed, scopedSkipped] = ['passed', 'failed', 'skipped'].map((status) => readout[status] ?? 0);
+    write(get('passed-count'), String(scopedPassed));
+    write(get('failed-count'), String(scopedFailed));
+    write(get('pending-count'), String(scoped.length - scopedPassed - scopedFailed - scopedSkipped));
+    write(get('skipped-count'), String(scopedSkipped));
+    get('skipped-summary').hidden = scopedSkipped === 0;
+    get('failed-summary').dataset.failed = String(scopedFailed > 0);
     get('worker-scope').hidden = !scope;
     write(get('worker-scope-name'), scope ? `Worker ${scope}` : '');
     write(get('test-count'), listed.length > total ? `${total} of ${listed.length}` : String(total));
@@ -712,7 +733,7 @@ export function createReporter(actions) {
     get('viewport').value = size;
     for (let button of document.querySelectorAll('[data-filter]')) {
       button.setAttribute('aria-pressed', String(button.dataset.filter === state.route.filter));
-      let count = button.dataset.filter === 'all' ? total : state.tests.filter((item) => item.status === button.dataset.filter).length;
+      let count = button.dataset.filter === 'all' ? total : totals[button.dataset.filter] ?? 0;
       write(button.querySelector('.filter-count'), total ? String(count) : '');
       button.dataset.count = String(count);
     }
@@ -725,7 +746,7 @@ export function createReporter(actions) {
         let count = element('span', 'group-count');
         let run = element('button', 'text-button', 'Run file');
         run.setAttribute('aria-label', `Run file ${group.file}`);
-        run.addEventListener('click', () => actions.runScope({ file: group.file }));
+        run.addEventListener('click', () => actions.rerun(testsIn(group.file)));
         let filePick = checkbox(`Select every test in ${group.file}`, () => testsIn(group.file));
         heading.append(filePick, title, count, run);
         node.append(heading);
@@ -733,15 +754,11 @@ export function createReporter(actions) {
         fileGroup = { node, count, run, pick: filePick };
         groups.set(group.file, fileGroup);
       }
-      let failedCount = group.tests.filter((test) => test.status === 'failed').length;
-      let ran = group.tests.filter((test) => test.status !== 'outside').length;
-      write(
-        fileGroup.count,
-        ran === group.tests.length
-          ? `${ran} ${ran === 1 ? 'test' : 'tests'}${failedCount ? `, ${failedCount} failed` : ''}`
-          : `${ran} of ${group.tests.length} tests in this run${failedCount ? `, ${failedCount} failed` : ''}`
-      );
-      fileGroup.run.disabled = active || state.phase === 'debugging' || unavailable;
+      let { failed: failedCount = 0, outside = 0 } = tally(group.tests);
+      let ran = group.tests.length - outside;
+      let head = outside ? `${ran} of ${group.tests.length} tests in this run` : `${ran} ${ran === 1 ? 'test' : 'tests'}`;
+      write(fileGroup.count, `${head}${failedCount ? `, ${failedCount} failed` : ''}`);
+      fileGroup.run.disabled = blocked;
       let fileVisible = false;
       for (let suite of group.suites) {
         let key = JSON.stringify([group.file, ...suite.path]);
@@ -759,7 +776,7 @@ export function createReporter(actions) {
             let run = element('button', 'text-button', 'Run suite');
             run.hidden = !suite.path.length;
             run.setAttribute('aria-label', `Run suite ${suite.path.join(' › ')} in ${group.file}`);
-            run.addEventListener('click', () => actions.runScope({ file: group.file, suites: suite.path }));
+            run.addEventListener('click', () => actions.rerun(testsIn(group.file, suite.path)));
             heading.append(run);
             node.append(heading);
           }
@@ -770,7 +787,7 @@ export function createReporter(actions) {
           suites.set(key, suiteGroup);
         }
         for (let run of suiteGroup.node.querySelectorAll(':scope > .group-heading button'))
-          run.disabled = active || state.phase === 'debugging' || unavailable;
+          run.disabled = blocked;
         let matches = suite.tests.some((test) => shown(test));
         suiteGroup.node.hidden = !matches;
         fileVisible ||= matches;
@@ -807,14 +824,14 @@ export function createReporter(actions) {
       // A left-out test has no results to open yet; it can still be picked or run.
       if (item.status === 'outside') row.select.removeAttribute('href');
       else row.select.href = href({ page: 'test', id: item.id, tab: 'output' });
-      row.run.disabled = active || state.phase === 'debugging' || unavailable;
+      row.run.disabled = blocked;
       row.select.title = [item.file, ...item.suites, item.name].join(' › ');
       row.node.dataset.status = item.status;
       row.select.setAttribute('aria-label', `${names[item.status]}: ${item.name}`);
       write(row.symbol, symbols[item.status]);
       write(
         row.time,
-        item.status === 'outside' ? 'Not in this run'
+        item.status === 'outside' ? names.outside
           : ['pending', 'skipped'].includes(item.status) ? '—' : item.status === 'running' ? 'Running' : duration(item.duration)
       );
       let load = slowest ? Math.min((item.duration ?? 0) / slowest, 1).toFixed(3) : '0';
@@ -893,8 +910,8 @@ export function createReporter(actions) {
     ])
       get(id).disabled ||= unavailable;
     get('rerun').disabled ||= active || state.phase === 'debugging';
-    get('run-selected').disabled = active || state.phase === 'debugging' || unavailable;
+    get('run-selected').disabled = blocked;
+    get('run-failed').disabled = blocked;
     syncPicks();
-    get('run-failed').disabled = active || state.phase === 'debugging' || unavailable;
   };
 }

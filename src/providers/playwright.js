@@ -4,6 +4,15 @@ import { createNative } from './native.js';
 import { createChromiumCapture } from './chromium-capture.js';
 import { createEmulation } from './chromium-emulation.js';
 
+// A context that fails to become a worker window is closed, not left open.
+async function closingOnFailure(context, work) {
+  try { return await work(); }
+  catch (error) {
+    await context.close();
+    throw error;
+  }
+}
+
 // Only finding a new context's CDP ID runs one at a time: it diffs the
 // browser's context IDs. Windows then open for each worker in parallel.
 let identifying = Promise.resolve();
@@ -12,11 +21,7 @@ function identifiedContext(browser, cdp, options) {
   let work = identifying.then(async () => {
     let known = new Set(await ids());
     let context = await browser.newContext(options);
-    try { return { context, id: (await ids()).find(value => !known.has(value)) }; }
-    catch (error) {
-      await context.close();
-      throw error;
-    }
+    return closingOnFailure(context, async () => ({ context, id: (await ids()).find(value => !known.has(value)) }));
   });
   identifying = work.catch(() => {});
   return work;
@@ -29,27 +34,20 @@ async function backgroundWindow(browser, options) {
   let cdp = await browser.newBrowserCDPSession();
   try {
     let { context, id } = await identifiedContext(browser, cdp, options);
-    try {
+    return await closingOnFailure(context, async () => {
       if (!id) throw new Error('Could not find the new browser context.');
       let [page] = await Promise.all([
         context.waitForEvent('page'),
         cdp.send('Target.createTarget', { url: 'about:blank', browserContextId: id, newWindow: true, background: true }),
       ]);
       return { context, page };
-    } catch (error) {
-      await context.close();
-      throw error;
-    }
+    });
   } finally { await cdp.detach(); }
 }
 
 async function plainWindow(browser, options) {
   let context = await browser.newContext(options);
-  try { return { context, page: context.pages()[0] ?? await context.newPage() }; }
-  catch (error) {
-    await context.close();
-    throw error;
-  }
+  return closingOnFailure(context, async () => ({ context, page: context.pages()[0] ?? await context.newPage() }));
 }
 
 export async function open(browser, plan, viewport, onExit, onDiagnostic = () => {}) {
@@ -97,6 +95,7 @@ export async function open(browser, plan, viewport, onExit, onDiagnostic = () =>
     // The companion window runs each run's controller. It's opened once and
     // reused: opening a window takes focus, navigating an existing one doesn't.
     let companion;
+    let liveCompanions = () => companion && !companion.isClosed() ? [companion] : [];
     return Object.freeze({
       identity: Object.freeze({
         provider: 'playwright',
@@ -112,7 +111,7 @@ export async function open(browser, plan, viewport, onExit, onDiagnostic = () =>
           fragment.set('start', 'managed');
           url.hash = fragment.toString();
         }
-        if (starter && companion && !companion.isClosed()) {
+        if (starter && liveCompanions().length) {
           // The controller keeps its window name and its opener, the app window.
           let controller = new URL(url);
           controller.pathname = '/__dyno__/controller';
@@ -143,10 +142,9 @@ export async function open(browser, plan, viewport, onExit, onDiagnostic = () =>
         if (url !== new URL('/__dyno__/blank', page.url()).href)
           throw new Error('Retire requires the owned app gateway blank URL.');
         let others = context.pages().filter((candidate) => candidate !== page && candidate !== companion);
-        let reused = companion && !companion.isClosed() ? [companion] : [];
         let results = await Promise.allSettled([
           ...others.map((candidate) => candidate.close()),
-          ...[...reused, page].map((candidate) => candidate.goto(url, { waitUntil: 'load', timeout: 15000 })),
+          ...[...liveCompanions(), page].map((candidate) => candidate.goto(url, { waitUntil: 'load', timeout: 15000 })),
         ]);
         let failures = results.filter((result) => result.status === 'rejected').map((result) => result.reason);
         if (failures.length) throw new AggregateError(failures, 'Could not retire browser documents.');
@@ -155,8 +153,7 @@ export async function open(browser, plan, viewport, onExit, onDiagnostic = () =>
         await raise();
         await page.setViewportSize(size);
         let viewport = { width: size.width, height: size.height };
-        await emulation?.apply(page, viewport);
-        if (companion && !companion.isClosed()) await emulation?.apply(companion, viewport);
+        await Promise.all([page, ...liveCompanions()].map((target) => emulation?.apply(target, viewport)));
       },
       capture: ({ fullPage = false, clip } = {}) => {
         if (chromiumCapture && (fullPage || clip)) return chromiumCapture.capture({ clip });

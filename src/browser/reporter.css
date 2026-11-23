@@ -184,8 +184,7 @@ select { padding-right: 8px; }
 }
 .group-count { color: var(--muted); font-size: 12px; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .suite-heading { padding: 10px 0 2px; }
-.suite-heading h3 { margin-left: 34px; }
-.suite-heading h3 { color: var(--muted); font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
+.suite-heading h3 { margin-left: 34px; color: var(--muted); font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
 .suite-tests { list-style: none; padding: 0; margin: 0; }
 .test-select { display: grid; grid-template-columns: 22px minmax(0,1fr) 120px 64px; align-items: center; column-gap: 12px; min-height: 52px; padding: 9px 6px 9px 4px; border-radius: 6px; text-decoration: none; }
 .test-select:hover { background: var(--hover); }
@@ -352,7 +351,6 @@ select { padding-right: 8px; }
   .list-heading { padding-right: 0; }
   .group-heading { flex-wrap: wrap; gap: 2px 12px; }
   .group-heading h2 { flex-basis: 100%; }
-  .suite-heading { padding-left: 0; }
   .suite-heading h3 { flex: 1; }
   .pause-banner { flex-direction: column; align-items: flex-start; gap: 12px; padding: 16px 14px 12px; font-size: 13px; }
   .pause-banner a { display: block; margin: 4px 0 0; }

@@ -93,7 +93,7 @@ let runWorkers;
 try { runWorkers = Number(localStorage.getItem('dyno:run-workers')) || undefined; } catch {}
 let rerun = (ids) => command('rerun', { ids, ...(runWorkers ? { workers: Math.min(runWorkers, state.workerSlots ?? runWorkers) } : {}) });
 let render = createReporter({
-  embedded, selectWorker,
+  embedded,
   rerun,
   runWorkers: () => runWorkers,
   setRunWorkers: (count) => {
@@ -110,14 +110,6 @@ let render = createReporter({
     let test = selectedTest(state);
     if (test) rerun([test.id]);
   },
-  runScope: (scope) =>
-    rerun(state.tests
-        .filter(
-          (test) =>
-            test.file === scope.file &&
-            (!scope.suites || scope.suites.every((name, index) => test.suites[index] === name))
-        )
-        .map((test) => test.id)),
   search: (query) => navigate({ query }, true),
   filter: (filter) => navigate({ filter }),
   retry: () => {
