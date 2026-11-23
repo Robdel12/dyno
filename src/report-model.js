@@ -22,7 +22,27 @@ let errorSnapshot = (error) =>
         }
       : {})
   });
-export function createReport(run) {
+
+function attachmentSnapshot(attachment, reportImages) {
+  let { id, name } = attachment;
+  if (attachment.status !== 'captured')
+    return freeze({ id, name, status: 'skipped', reason: attachment.reason });
+  let path = `images/${id}.png`;
+  return freeze({
+    id,
+    name,
+    ...(reportImages
+      ? { status: 'captured', path, url: path }
+      : { status: 'omitted', reason: 'Saved report images are disabled.' }),
+    width: attachment.width,
+    height: attachment.height,
+    pixelRatio: attachment.pixelRatio,
+    viewport: freeze({ ...attachment.viewport }),
+    browser: freeze({ ...attachment.browser })
+  });
+}
+
+export function createReport(run, { reportImages = false } = {}) {
   let tests = run.tests.map((test) => {
     let outcome = run.outcomes.find((outcome) => outcome.testId === test.id);
     let assignment = run.assignments?.find(assignment => assignment.testId === test.id);
@@ -42,26 +62,7 @@ export function createReport(run) {
           freeze({ source: entry.source, level: entry.level, text: entry.text, elapsed: entry.elapsed })
         )
       ),
-      attachments: freeze(
-        (outcome?.attachments ?? []).map((attachment) =>
-          freeze(
-            attachment.status === 'captured'
-              ? {
-                  id: attachment.id,
-                  name: attachment.name,
-                  status: 'captured',
-                  path: `images/${attachment.id}.png`,
-                  url: `images/${attachment.id}.png`,
-                  width: attachment.width,
-                  height: attachment.height,
-                  pixelRatio: attachment.pixelRatio,
-                  viewport: freeze({ ...attachment.viewport }),
-                  browser: freeze({ ...attachment.browser })
-                }
-              : { id: attachment.id, name: attachment.name, status: 'skipped', reason: attachment.reason }
-          )
-        )
-      )
+      attachments: freeze((outcome?.attachments ?? []).map(attachment => attachmentSnapshot(attachment, reportImages)))
     });
   });
   return freeze({

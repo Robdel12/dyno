@@ -119,7 +119,7 @@ The real browser workflows in [tests](../tests) cover image pixels, resizing, na
 
 ## Saved results
 
-The gateway owns accepted run snapshots. On completion or interruption, a pure report model selects public result fields; formatters produce versioned JSON, JUnit, and standalone HTML. The writer copies accepted images into a temporary run folder and renames it into place after all files finish. Missing source images become explicit unavailable attachments.
+The gateway owns accepted run snapshots. On completion or interruption, a pure report model selects public result fields; formatters produce versioned JSON, JUnit, and standalone HTML. The writer stages files in a temporary run folder and renames it into place after all files finish. By default, captured attachments are marked omitted in saved reports. With `reportImages` enabled, the writer copies the source PNGs into the staged folder and marks missing source files as unavailable. Live capture and reporting use the original attachments.
 
 Shutdown stops accepting new runs before waiting for pending writes. A join already rebuilding tests checks again before creating a run. The CLI waits for report persistence before releasing the gateway. Saved HTML needs neither a driver nor a running server.
 

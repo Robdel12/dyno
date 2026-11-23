@@ -45,11 +45,11 @@ let cases = entry => entry.tests.map(test => {
   return `<testcase name="${x(test.name)} (round ${entry.round})" classname="${x([test.file, ...test.suites].join(' › '))}">${result}</testcase>\n`;
 }).join('');
 
-export async function createRepeatWriter(directory, { redact = value => value, limit = repeatEvidenceLimit, options = {}, coverage } = {}) {
+export async function createRepeatWriter(directory, { redact = value => value, limit = repeatEvidenceLimit, options = {}, coverage, reportImages } = {}) {
   await mkdir(directory, { recursive: true });
   let ledger = join(directory, 'rounds.jsonl');
   await writeFile(ledger, '');
-  let writer = createReportWriter(join(directory, 'runs'), { redact, coverage });
+  let writer = createReportWriter(join(directory, 'runs'), { redact, coverage, reportImages });
   let used = 0;
   let limited = false;
   let unavailable;

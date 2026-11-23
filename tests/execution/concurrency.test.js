@@ -12,7 +12,7 @@ let setup = await readFile(new URL('../fixtures/concurrent-setup.js', import.met
 
 test('native workers overlap real saves with private apps and one canonical report', { timeout: 90000 }, async t => {
   let fixture = await project(t, {
-    config: { setup: './setup.js', workers: 2, runTimeout: 15000, browser: visible },
+    config: { setup: './setup.js', workers: 2, runTimeout: 15000, browser: visible, reportImages: true },
     files: { 'setup.js': setup },
     source: `await fetch('/registration');
     describe('Concurrent contacts',()=>{
@@ -135,7 +135,7 @@ test('resource reservations survive draining and global Pause across native work
 
 test('a lost controller fails a persistent native run and preserves peer outcomes, images and partial output', { timeout: 90000 }, async t => {
   let fixture = await project(t, {
-    config: { setup: './setup.js', workers: 2, browser: visible, cleanupTimeout: 500, webServer: { env: { GATE: 'false' } } },
+    config: { setup: './setup.js', workers: 2, browser: visible, cleanupTimeout: 500, reportImages: true, webServer: { env: { GATE: 'false' } } },
     files: { 'setup.js': setup },
     source: `describe('Controller loss',()=>{
       for(let name of ['Loses its controller','Independent peer'])test(name,async({app,I,test})=>{

@@ -457,6 +457,7 @@ test('configuration shape errors name the setting before any app resources start
     [{ workers: 0 }, 'workers'],
     [{ host: 'http://localhost' }, 'host'],
     [{ reportDir: '' }, 'reportDir'],
+    [{ reportImages: 'yes' }, 'reportImages'],
     [{ artifactsDir: 42 }, 'artifactsDir'],
     [{ browser: { path: 42 } }, 'browser.path'],
     [{ browser: { args: '--headless' } }, 'browser.args'],

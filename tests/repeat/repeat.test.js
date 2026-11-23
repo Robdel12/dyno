@@ -64,7 +64,7 @@ test('a later passing round preserves the first failure, image and aggregate JUn
       await I.assert(()=>fixtures.execution>1,'Order was not confirmed');
     });});`
   });
-  let result = await fixture.run(['--repeat', '3', '--seed', 'checkout-race']).completion;
+  let result = await fixture.run(['--repeat', '3', '--seed', 'checkout-race', '--report-images']).completion;
   assert.equal(result.code, 1, result.stdout + result.stderr);
   let { event, batch, rounds } = await evidence(result);
   assert.equal(batch.status, 'failed');
@@ -73,6 +73,7 @@ test('a later passing round preserves the first failure, image and aggregate JUn
   assert.equal(batch.tests[0].failed, 1);
   assert.equal(batch.tests[0].passed, 2);
   assert.equal(batch.firstFailure.round, 1);
+  assert.match(event.prefixCommand, /--report-images/);
   assert.match(event.prefixCommand, /--repeat 1 --seed 'checkout-race'/);
   let failed = await json(join(event.directory, 'runs', rounds[0].runId, 'run.json'));
   let image = failed.tests[0].attachments[0];

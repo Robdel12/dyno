@@ -102,7 +102,7 @@ import { fixtureOperationName, snapshotJson, readFixtureResponse, fixtureRequest
  * let image = await app.screenshot('dashboard', { fullPage: true });
  * ```
  *
- * Managed browsers capture the original app page with the reporter hidden. The default is a viewport image; `fullPage: true` captures the whole page without changing its configured viewport. Chromium briefly pauses app JavaScript during full-page and element captures so its temporary resize cannot reach app handlers. Queued callbacks resume afterward; CSS animation and backend work continue. The result includes `path`, `url`, dimensions, and pixel ratio. Images appear in live and [saved reports](guide.md#saved-reports).
+ * Managed browsers capture the original app page with the reporter hidden. The default is a viewport image; `fullPage: true` captures the whole page without changing its configured viewport. Chromium briefly pauses app JavaScript during full-page and element captures so its temporary resize cannot reach app handlers. Queued callbacks resume afterward; CSS animation and backend work continue. The result includes `path`, `url`, dimensions, and pixel ratio. Images appear in the live reporter. Enable `reportImages` to include them in [saved reports](guide.md#saved-reports).
  *
  * ## Choose what to capture
  *
@@ -129,7 +129,7 @@ import { fixtureOperationName, snapshotJson, readFixtureResponse, fixtureRequest
  *
  * URL-only runs can't take screenshots. Required captures fail. Use `{ optional: true }` only when the functional test is useful without an image; Dyno returns and reports a skipped image. Provider and storage errors still fail.
  *
- * Reported PNGs stay on disk after cleanup; interrupted runs discard unreported images. Capture metadata includes the browser/provider/version, viewport, and pixel ratio. Dyno saves attachments; your visual-comparison service owns baselines and diffs.
+ * Ordinary runs keep reported source PNGs after cleanup. Interrupted runs discard unreported images, and `--repeat` removes source PNGs after each saved round. Capture metadata includes the browser/provider/version, viewport, and pixel ratio. Dyno saves attachments; your visual-comparison service owns baselines and diffs.
  */
 
 /**
