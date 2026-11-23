@@ -543,13 +543,16 @@ export function createReporter(actions) {
     // Workers per run: from one up to every launched worker. The next run uses it.
     let slots = state.workerSlots ?? workers.length;
     get('workers-setting').hidden = slots < 2;
-    if (get('run-workers').options.length !== slots)
-      get('run-workers').replaceChildren(...Array.from({ length: slots }, (_, index) => {
+    // Auto fits the workers to each run's tests and timings.
+    if (get('run-workers').options.length !== slots + 1)
+      get('run-workers').replaceChildren(element('option', '', 'Auto'), ...Array.from({ length: slots }, (_, index) => {
         let option = element('option', '', `${index + 1} of ${slots}`);
         option.value = String(index + 1);
         return option;
       }));
-    get('run-workers').value = String(Math.min(actions.runWorkers?.() ?? slots, slots));
+    get('run-workers').options[0].value = '';
+    let chosen = actions.runWorkers?.();
+    get('run-workers').value = chosen ? String(Math.min(chosen, slots)) : '';
     let href = (patch) => reporterHref({ ...state.route, ...patch });
     for (let id of [
       'rerun',

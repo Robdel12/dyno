@@ -97,8 +97,11 @@ let render = createReporter({
   rerun,
   runWorkers: () => runWorkers,
   setRunWorkers: (count) => {
-    runWorkers = count;
-    try { localStorage.setItem('dyno:run-workers', String(count)); } catch {}
+    runWorkers = count || undefined;
+    try {
+      if (runWorkers) localStorage.setItem('dyno:run-workers', String(runWorkers));
+      else localStorage.removeItem('dyno:run-workers');
+    } catch {}
     render(state);
   },
   runFailed: () =>
