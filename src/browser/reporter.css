@@ -90,20 +90,9 @@ select { padding-right: 8px; }
 .sheet { display: grid; grid-template-columns: minmax(0, 1fr) 236px; margin-bottom: 24px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
 .sheet-chart { margin: 0; padding: 20px 22px 12px; min-width: 0; }
 .sheet-frame { height: clamp(140px, 19vh, 236px); margin: 0 0 26px 0; }
-.sheet-plot a:hover .sheet-point { stroke-width: 13; }
 .sheet-head { stroke: var(--accent); stroke-width: 12; stroke-linecap: round; animation: throb 1s ease-in-out infinite alternate; }
 @keyframes throb { from { stroke-width: 8; } to { stroke-width: 14; } }
-.sheet-frame::after { content: '0'; position: absolute; left: -2px; bottom: -22px; color: var(--muted); font-size: 11px; }
 .sheet-chart figcaption { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 20px; color: var(--muted); font-size: 12px; }
-.readouts { margin: 0; display: flex; flex-direction: column; border-left: 1px solid var(--line); }
-.readout { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex: 1; padding: 6px 20px; border-bottom: 1px solid var(--line); }
-.readout:last-child { border-bottom: 0; }
-.readout dt { color: var(--muted); font-size: 12px; font-weight: 550; }
-.readout dd { margin: 0; font-size: 22px; line-height: 1.1; font-weight: 720; font-stretch: 122%; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
-.readout-wide dd { font-size: 17px; }
-.readout[data-kind=passed] dd { color: var(--pass); }
-#failed-summary[data-failed=true] { background: var(--fail-tint); }
-#failed-summary[data-failed=true] dd, #failed-summary[data-failed=true] dt { color: var(--fail); }
 
 /* Result list */
 .list-toolbar { display: flex; align-items: center; gap: 20px; margin-bottom: 18px; }

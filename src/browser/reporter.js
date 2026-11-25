@@ -1,5 +1,5 @@
 import { slowestTests } from './timings.js';
-import { pullCurve, pullSheet, ghostCurve, pace, sheetSummary, sheetHead, tachometer, usable, testCount, sheetNote, sheetSpan } from './dyno-chart.js';
+import { pullCurve, pullSheet, ghostCurve, pace, sheetSummary, sheetHead, tachometer, usable, testCount, sheetNote, sheetSpan, finishedTitle } from './dyno-chart.js';
 import { timingDuration, timingLabels, timingPhases, timingOperations, timingText, failurePlace } from './timing-format.js';
 
 export function duration(value) {
@@ -631,11 +631,7 @@ export function createReporter(actions) {
       paused: 'Paused for inspection',
       resuming: 'Continuing tests…',
       debugging: 'Paused in this test',
-      completed: failed
-        ? `${failed} ${failed === 1 ? 'test' : 'tests'} failed`
-        : skipped
-          ? 'Run complete'
-          : 'All tests passed',
+      completed: finishedTitle({ failed, skipped }),
       stopped: 'Run stopped',
       error: 'The run could not finish'
     };
@@ -647,7 +643,7 @@ export function createReporter(actions) {
       get('status'),
       waiting ? heading : state.phase === 'paused'
         ? failed
-          ? `${failed} ${failed === 1 ? 'test' : 'tests'} failed`
+          ? `${testCount(failed)} failed`
           : 'Test results'
         : titles[state.phase]
     );
