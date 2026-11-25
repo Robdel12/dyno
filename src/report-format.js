@@ -124,7 +124,7 @@ export function htmlReport(report, css, { session = false } = {}) {
     ${report.schedule?.seed != null ? `<p class="saved-meta">Seed: ${x(report.schedule.seed)}</p>` : ''}
     ${curve.total ? `<div class="sheet">
       <figure class="sheet-chart"><div class="sheet-frame"><div class="sheet-canvas">${pullSheet(curve, { href: (point) => `#test-${point.index}` })}</div><span class="sheet-axis sheet-axis-y">${testCount(curve.total)}</span><span class="sheet-axis sheet-axis-x">${x(sheetSpan(curve))}</span></div>
-      <figcaption><span class="sheet-legend"><span class="legend-trace">This pull</span></span><span class="sheet-hint">Steep is fast. Flat stretches are slow tests.</span></figcaption></figure>
+      <figcaption><span class="sheet-legend"><span class="legend-trace">This pull</span></span><span class="sheet-hint">Steep is fast. Flat stretches are slow tests, so click one to open it.</span></figcaption></figure>
       <dl class="readouts">${readout('Passed', report.summary.passed, 'passed')}<div class="readout" id="failed-summary" data-failed="${report.summary.failed > 0}"><dt>Failed</dt><dd>${report.summary.failed}</dd></div>${readout('Skipped', report.summary.skipped)}${readout('Not run', report.summary.notRun)}${readout('Run time', x(timingDuration(report.summary.duration)))}${readout('Per test', average === undefined ? '—' : x(timingDuration(average)))}</dl>
     </div>` : ''}
     ${report.coordination ? `<p class="saved-meta">${report.coordination.workers.length} ${report.coordination.workers.length === 1 ? 'worker' : 'workers'}, ${x(timingDuration(report.coordination.wallDuration))} wall, ${x(timingDuration(report.coordination.testWorkDuration))} summed test work</p>

@@ -64,17 +64,29 @@ export function pullSheet(curve, { ghost, href } = {}) {
   let pairs = curve.points.map((point) => [point.x, point.y]);
   let area = pairs.length ? `<path class="sheet-area" d="${trace(pairs, s)} L${s.x(pairs.at(-1)[0])} ${height}Z"/>` : '';
   let current = pairs.length ? `<path class="sheet-trace" d="${trace(pairs, s)}"/>` : '';
-  let points = curve.points
-    .map((point) => {
-      let dot = `<path class="sheet-point" data-status="${escape(point.status)}" d="M${s.x(point.x)} ${s.y(point.y)}h0"><title>${escape(point.name)}</title></path>`;
-      return href ? `<a href="${escape(href(point))}" tabindex="-1">${dot}</a>` : dot;
-    })
-    .join('');
+  // A test owns the stretch of curve from the previous point to its own, so a slow test's flat
+  // stretch links to it too, not just the dot at its end. Stretches go under every dot, since each
+  // one starts at the previous test's dot.
+  let stretches = '';
+  let points = '';
+  curve.points.forEach((point, index) => {
+    let at = `${s.x(point.x)} ${s.y(point.y)}`;
+    let title = `<title>${escape(point.name)}</title>`;
+    let dot = `<path class="sheet-point" data-status="${escape(point.status)}" d="M${at}h0">${title}</path>`;
+    if (!href) {
+      points += dot;
+      return;
+    }
+    let from = curve.points[index - 1] ?? { x: 0, y: 0 };
+    let open = `<a class="sheet-step" href="${escape(href(point))}" data-test="${escape(point.id)}" tabindex="-1">`;
+    stretches += `${open}<path class="sheet-stretch" d="M${s.x(from.x)} ${s.y(from.y)}L${at}">${title}</path></a>`;
+    points += `${open}${dot}</a>`;
+  });
   let last = curve.points.at(-1);
   let head = curve.running
     ? `<path class="sheet-head" d="M${s.x(last?.x ?? 0)} ${s.y(last?.y ?? 0)}h0"><title>${escape(curve.running.name)}</title></path>`
     : '';
-  return `<svg class="sheet-plot" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" aria-hidden="true" focusable="false">${grid}${area}${ceiling}${ghostTrace}${current}${points}${head}</svg>`;
+  return `<svg class="sheet-plot" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" aria-hidden="true" focusable="false">${grid}${area}${ceiling}${ghostTrace}${current}${stretches}${points}${head}</svg>`;
 }
 
 /**
@@ -89,6 +101,10 @@ export function sheetHead(curve, ghost) {
 }
 
 export let testCount = (count) => `${count} ${count === 1 ? 'test' : 'tests'}`;
+
+// The title for a finished pull, in the reporter and anywhere that shows one.
+export let finishedTitle = ({ failed = 0, skipped = 0 }) =>
+  failed ? `${testCount(failed)} failed` : skipped ? 'Run complete' : 'All tests passed';
 
 // The finished note, printed like a dyno sheet's peak: "13 tests @ 1.90 s".
 export let sheetNote = (curve) => `${testCount(curve.total)} @ ${timingDuration(curve.time)}`;

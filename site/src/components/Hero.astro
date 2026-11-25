@@ -1,8 +1,9 @@
 ---
 import { LinkButton } from '@astrojs/starlight/components';
 import Default from '@astrojs/starlight/components/Hero.astro';
-import { pullCurve, pullSheet, sheetHead, ghostCurve, tachometer, testCount, sheetNote, sheetSpan } from '../../../src/browser/dyno-chart.js';
+import { pullCurve, pullSheet, sheetHead, ghostCurve, tachometer, testCount, sheetNote, sheetSpan, pace, finishedTitle } from '../../../src/browser/dyno-chart.js';
 import { timingDuration } from '../../../src/browser/timing-format.js';
+import { settings } from '../../scripts/settings.js';
 
 // A hero without its own image gets the example pull. Heroes with an image, like the 404's stalled
 // tach, use Starlight's hero.
@@ -18,11 +19,20 @@ let fast = slow.map((duration, index) => (index === 4 ? 180 : duration));
 let pull = (durations, failed) => pullCurve(names.map((name, index) => ({ id: String(index), index, name, duration: durations[index], status: index === failed ? 'failed' : 'passed' })));
 let first = pull(slow, 7);
 let second = pull(fast);
+// What clicking a stretch says about its test, keyed by the test id the sheet puts on each stretch.
+let notes = (durations) => JSON.stringify(Object.fromEntries(names.map((name, index) => [String(index), `“${name}” took ${timingDuration(durations[index])}.`])));
 let ghost = ghostCurve(first, 'first');
 let pulls = [
-  { name: 'first', curve: first, caption: 'Steep is fast. That flat stretch is one slow import test.' },
-  { name: 'second', curve: second, ghost, caption: `The import got faster. This pull beat the last one by ${timingDuration(first.time - second.time)}.` }
-].map((state) => ({ ...state, head: sheetHead(state.curve, state.ghost), failed: state.curve.points.some((point) => point.status === 'failed') }));
+  { name: 'first', curve: first, tests: notes(slow), caption: 'Steep is fast. That flat stretch is one slow import test. Click it.' },
+  { name: 'second', curve: second, tests: notes(fast), ghost, caption: `The import got faster. This pull beat the last one by ${timingDuration(first.time - second.time)}.` }
+].map((state) => {
+  let failed = state.curve.points.filter((point) => point.status === 'failed').length;
+  // The same title and readouts the reporter shows for a finished pull.
+  return { ...state, failed, title: finishedTitle({ failed }), passed: state.curve.done - failed, head: sheetHead(state.curve, state.ghost), pace: timingDuration(pace(state.curve)) };
+});
+// Without the reporter here, each stretch links to the guide that opens it. The click handler
+// below names the test instead.
+let reporterGuide = `${settings().base}guides/running/#open-the-reporter`;
 // Starlight's skip link and table of contents point at the page title by this id.
 let titleId = '_top';
 ---
@@ -36,22 +46,28 @@ let titleId = '_top';
       </div>
     </div>
     <figure class="instrument" data-pull="first">
-      {pulls.map(({ name, curve, ghost, head, failed, caption }) => (
-        <div class="pull" data-state={name}>
+      {pulls.map(({ name, curve, ghost, head, failed, passed, title, pace, caption, tests }) => (
+        <div class="pull" data-state={name} data-tests={tests}>
           <div class="instrument-head">
-            <Fragment set:html={tachometer({ phase: 'completed', failed, progress: 1 })} />
-            <p class="instrument-title">An example pull</p>
+            <Fragment set:html={tachometer({ phase: 'completed', failed: failed > 0, progress: 1 })} />
+            <p class="instrument-title">{title}</p>
           </div>
           <div class="sheet-frame">
-            <div class="sheet-canvas" set:html={pullSheet(curve, { ghost })} />
+            <div class="sheet-canvas" set:html={pullSheet(curve, { ghost, href: () => reporterGuide })} />
             <p class="sheet-flag" data-side={head.side} style={`left:${head.left}%;top:${head.top}%`}><span>{sheetNote(curve)}</span></p>
             <span class="sheet-axis sheet-axis-y">{testCount(curve.total)}</span>
             <span class="sheet-axis sheet-axis-x">{sheetSpan(curve, ghost)}</span>
           </div>
           <figcaption>
             <span class="sheet-legend"><span class="legend-trace">This pull</span>{ghost && <span class="legend-ghost">Last pull, {timingDuration(ghost.time)}</span>}</span>
-            <span class="caption">{caption}</span>
+            <span class="caption" aria-live="polite">{caption}</span>
           </figcaption>
+          <dl class="readouts">
+            <div class="readout" data-kind="passed"><dt>Passed</dt><dd>{passed}</dd></div>
+            <div class="readout" data-kind="failed" data-failed={String(failed > 0)}><dt>Failed</dt><dd>{failed}</dd></div>
+            <div class="readout readout-wide"><dt>Run time</dt><dd>{timingDuration(curve.time)}</dd></div>
+            <div class="readout readout-wide"><dt>Per test</dt><dd>{pace}</dd></div>
+          </dl>
         </div>
       ))}
       <button type="button" class="pull-again">Run it again</button>
@@ -67,6 +83,20 @@ let titleId = '_top';
     button.addEventListener('click', () => {
       let figure = button.closest('.instrument');
       if (figure instanceof HTMLElement) figure.dataset.pull = 'second';
+    });
+
+  // The sheet links each stretch to its test, like the reporter. There's no reporter here, so
+  // clicking one names the test and says what the reporter would open.
+  for (let pull of document.querySelectorAll('.pull'))
+    pull.addEventListener('click', (event) => {
+      let step = event.target instanceof Element ? event.target.closest('.sheet-step') : null;
+      if (!(step instanceof SVGElement) || !(pull instanceof HTMLElement)) return;
+      event.preventDefault();
+      let tests = JSON.parse(pull.dataset.tests ?? '{}');
+      for (let picked of pull.querySelectorAll('.sheet-step[data-picked]')) picked.removeAttribute('data-picked');
+      step.setAttribute('data-picked', '');
+      let caption = pull.querySelector('.caption');
+      if (caption) caption.textContent = `${tests[step.dataset.test ?? '']} In the reporter, this opens its output and screenshots.`;
     });
 </script>
 
@@ -88,6 +118,10 @@ let titleId = '_top';
   .sheet-flag { font-size: .8125rem; }
   figcaption { display: flex; flex-wrap: wrap; justify-content: space-between; gap: .5rem 1.25rem; color: var(--muted); font-size: .8125rem; }
   .caption { color: var(--sl-color-gray-2); }
+  /* The reporter's narrow layout: readouts in a row under the sheet, out to the card's edges. */
+  .readouts { flex-direction: row; margin: 1rem -1.25rem -1rem; border-left: 0; border-top: 1px solid var(--line); }
+  .readout { flex: 1 1 0; flex-direction: column; gap: 2px; padding: 10px 16px; border-bottom: 0; border-right: 1px solid var(--line); }
+  .readout:last-child { border-right: 0; }
 
   /* One orchestrated moment: the pull draws in left to right, the needle sweeps, then the note prints. */
   @media (prefers-reduced-motion: no-preference) {
@@ -101,6 +135,9 @@ let titleId = '_top';
 
   @media (max-width: 40rem) {
     .instrument { padding: 1rem .875rem .875rem; }
+    .readouts { flex-wrap: wrap; margin: 1rem -.875rem -.875rem; }
+    .readout { flex-basis: 50%; padding: 8px 12px; }
+    .readout dd { font-size: 20px; }
     .pull-again { top: 1rem; right: .875rem; }
     .instrument-title { font-size: .9375rem; }
     .sheet-frame { height: 160px; }

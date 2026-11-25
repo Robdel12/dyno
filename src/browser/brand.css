@@ -60,6 +60,13 @@
 .sheet-point { stroke: var(--trace); stroke-width: 6; stroke-linecap: round; }
 .sheet-point[data-status=failed] { stroke: var(--fail); stroke-width: 11; }
 .sheet-point:is([data-status=skipped], [data-status=stopped]) { stroke: var(--faint); }
+/* A wide, invisible stroke over each test's stretch of curve, so the whole stretch is clickable. */
+.sheet-stretch { stroke: var(--trace); stroke-width: 18; stroke-linecap: round; stroke-opacity: 0; pointer-events: stroke; cursor: pointer; }
+.sheet-step { outline: none; }
+/* Hovering a test's stretch or dot lights it up. Pages can mark one [data-picked] to keep it lit. */
+.sheet-step:is(:hover, [data-picked]) .sheet-stretch { stroke-opacity: .22; }
+.sheet-step:is(:hover, [data-picked]) .sheet-point { stroke-width: 13; }
+.sheet-frame::after { content: '0'; position: absolute; left: -2px; bottom: -22px; color: var(--muted); font-size: 11px; }
 .sheet-axis { position: absolute; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .sheet-axis-y { left: 8px; top: -20px; }
 .sheet-axis-x { right: 0; bottom: -22px; }
@@ -68,6 +75,17 @@
 .legend-trace::before, .legend-ghost::before { content: ''; width: 18px; }
 .legend-trace::before { border-top: 2.5px solid var(--trace); }
 .legend-ghost::before { border-top: 2px dotted var(--faint); }
+
+/* Readouts: the peak table beside the sheet. */
+.readouts { margin: 0; display: flex; flex-direction: column; border-left: 1px solid var(--line); }
+.readout { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex: 1; padding: 6px 20px; border-bottom: 1px solid var(--line); }
+.readout:last-child { border-bottom: 0; }
+.readout dt { color: var(--muted); font-size: 12px; font-weight: 550; }
+.readout dd { margin: 0; font-size: 22px; line-height: 1.1; font-weight: 720; font-stretch: 122%; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+.readout-wide dd { font-size: 17px; }
+.readout[data-kind=passed] dd { color: var(--pass); }
+.readout[data-failed=true] { background: var(--fail-tint); }
+.readout[data-failed=true] :is(dt, dd) { color: var(--fail); }
 
 /* Sheet notes ride the curve like the peak note on a printed dyno sheet: a leader line, then plain text. */
 .sheet-flag { --flag-x: 8px; position: absolute; z-index: 1; display: flex; align-items: center; gap: 6px; max-width: min(46%, 320px); margin: 0; translate: var(--flag-x) -130%; color: var(--ink); font-size: 12px; font-weight: 700; font-stretch: 112%; font-variant-numeric: tabular-nums; white-space: nowrap; pointer-events: none; }
