@@ -657,7 +657,9 @@ export function createCoordinator(config, bundle, {
         else publish(run);
         let reply = remember(run.runId, key, digest, JSON.stringify({ error: event?.error, additionalErrors: event?.additionalErrors,
           attachments: event?.attachments, remaining: run.tests.length - run.outcomes.length,
-          workRemaining: run.tests.filter(test => !test.skipReason && !run.outcomes.some(outcome => outcome.testId === test.id)).length }));
+          // Tests no worker has started. Started tests never move to another worker, so with none
+          // left this worker keeps its app open on the test it just finished.
+          queued: run.tests.filter(test => !test.skipReason && !run.assignments.some(assignment => assignment.testId === test.id)).length }));
         if (event) onEvent(event);
         return reply;
       });

@@ -65,6 +65,9 @@ test('native workers overlap real saves with private apps and one canonical repo
   assert.deepEqual(discovering[0].assignments, [], 'Dispatch waits for every worker catalog.');
   await fetch(new URL('/release-registration', ready.workers[1].url), { signal: t.signal });
   await session.waitForEvent('complete');
+  // Each worker keeps its last test's app open for Show app, not just the worker that finished last.
+  let [finished] = await (await fetch(ready.url + 'results', { signal: t.signal })).json();
+  assert.deepEqual(finished.assignments.filter(item => item.status === 'retained').map(item => item.workerId).sort(), ['0', '1']);
   let saved = await session.waitForEvent('report-saved');
   let report = JSON.parse(await readFile(saved.json, 'utf8'));
   assert.equal(report.coordination.workers.length, 2);
