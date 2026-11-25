@@ -1,12 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { request as httpRequest } from 'node:http';
+import { createServer, request as httpRequest } from 'node:http';
 import { readFile, writeFile, appendFile, mkdir } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
 import { project } from '../helpers/project.js';
 import { loadConfig } from '../../src/config.js';
 import { buildSuite } from '../../src/build.js';
 import { createGateway } from '../../src/server.js';
+import { createObserver } from '../../src/observer.js';
 import { createReportWriter } from '../../src/reports.js';
 import { observeRun as observe } from '../helpers/observer.js';
 
@@ -251,4 +252,46 @@ test('lost assignment and release acknowledgements preserve execution identity a
   assert.equal((await app.post('events', {type:'complete'})).status, 200);
   assert.equal((await app.post('events', {type:'complete'})).status, 200);
   assert.equal(await readFile(join(app.config.root, 'drained'),'utf8'), first.id + '\n' + second.id + '\n');
+});
+
+test('command queue overflow aborts the SSE observer synchronously without draining queued messages', { timeout: 15000 }, async t => {
+  let arrived = Promise.withResolvers();
+  let serverResponse;
+  let reserveCalls = 0;
+  let server = createServer((request, response) => {
+    response.writeHead(200, { 'Content-Type': 'text/event-stream', Connection: 'keep-alive' });
+    response.write(': connected\n\n');
+    serverResponse = response;
+    let observer = createObserver(response, () => {
+      reserveCalls++;
+      return () => {};
+    });
+    arrived.resolve(observer);
+  });
+  t.after(() => new Promise(resolve => server.close(resolve)));
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  let { port } = server.address();
+  let clientClosed = Promise.withResolvers();
+  let headers = Promise.withResolvers();
+  let request = httpRequest(`http://127.0.0.1:${port}/stream`, response => {
+    response.pause();
+    response.once('close', clientClosed.resolve);
+    response.once('end', clientClosed.resolve);
+    headers.resolve(response);
+  });
+  request.once('close', clientClosed.resolve);
+  request.on('error', clientClosed.resolve);
+  request.end();
+  let clientResponse = await headers.promise;
+  t.after(() => clientResponse.destroy());
+  let observer = await arrived.promise;
+  let serverClosed = new Promise(resolve => serverResponse.once('close', resolve));
+  observer.send('host-status', { connected: true });
+  let afterFirst = reserveCalls;
+  for (let index = 0; index < 33; index++) observer.send('tick', { index });
+  assert.equal(serverResponse.destroyed, true);
+  observer.send('after', { ignored: true });
+  observer.publish({ tests: [{ id: 'late-view' }] });
+  await Promise.all([serverClosed, clientClosed.promise]);
+  assert.equal(reserveCalls, afterFirst);
 });
