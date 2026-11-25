@@ -169,7 +169,10 @@ export function createReporter(actions) {
       bay.hold.disabled = state.connection !== 'connected' || state.command?.status === 'pending';
       bay.node.dataset.phase = phase;
       bay.node.dataset.failed = String(failed > 0);
-      bay.select.setAttribute('aria-pressed', String(worker.id === state.selectedWorker));
+      // Pressed means the list is filtered to this worker, not just that it's the inspected one.
+      // Tests go to workers when a run starts, so a worker without any has nothing to filter to.
+      bay.select.setAttribute('aria-pressed', String(worker.id === state.route.worker));
+      bay.select.disabled = !mine.length;
       write(bay.phase, bayPhases[phase] ?? phase);
       write(bay.current, running && ['running', 'pausing', 'paused', 'debugging'].includes(worker.phase) ? running.name : '');
       write(bay.tally, mine.length ? `${passed} passed${failed ? `, ${failed} failed` : ''}` : state.waiting ? 'Ready' : 'No tests yet');

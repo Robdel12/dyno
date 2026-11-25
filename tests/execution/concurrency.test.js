@@ -33,21 +33,24 @@ test('native workers overlap real saves with private apps and one canonical repo
           });
           let UI=I.scope(()=>reporter.contentDocument.body);
           let reporterDocument=reporter.contentDocument;
-          let inspecting=id=>UI.assert(()=>reporterDocument.querySelector('.bay-select[data-worker="'+id+'"]')?.getAttribute('aria-pressed')==='true','Expected worker '+id+' to be the inspected bay');
-          await inspecting(fixtures.worker);
+          // A pressed bay means the list is filtered to that worker. Showing every worker presses none.
+          let pressed=()=>[...reporterDocument.querySelectorAll('.bay-select[aria-pressed=true]')].map(bay=>bay.dataset.worker).join();
+          let filtered=id=>UI.assert(()=>pressed()===id,'Expected only worker '+id+' to be pressed');
+          await filtered('');
           await UI.find('$(a[aria-label="Passed: Second contact"])').visible();
           let other=fixtures.worker==='0'?'1':'0';
           await UI.click('$(.bay-select[data-worker="'+other+'"])');
           await I.assert(()=>new URL(reporter.contentDocument?.querySelector('#standalone-reporter')?.href??reporter.src).searchParams.get('worker')===other);
-          await inspecting(other);
-          // Pressing a bay also filters to that worker; show every worker's rows again.
+          // Pressing a bay inspects that worker and filters to it; show every worker's rows again.
+          await filtered(other);
           await UI.find('$(#worker-scope)').visible();
           await UI.click('Show every worker');
+          await filtered('');
           await UI.find('$(a[aria-label="Running: First contact"])').visible();
           await UI.find('$(a[aria-label="Passed: Second contact"])').visible();
           await UI.click('$(.bay-select[data-worker="'+fixtures.worker+'"])');
           await I.assert(()=>new URL(reporter.contentDocument?.querySelector('#standalone-reporter')?.href??reporter.src).searchParams.get('worker')===fixtures.worker);
-          await inspecting(fixtures.worker);
+          await filtered(fixtures.worker);
           await UI.assert(()=>reporter.contentDocument===reporterDocument,'Switching workers should preserve the reporter document');
           await UI.click('$(#continue)');
           await paused;
@@ -400,6 +403,10 @@ test('auto workers run a single picked test on one worker', { timeout: 90000 }, 
   let start = await session.waitForEvent('start');
   let page = await openURL(t, new URL('/__dyno__/reporter?run=' + encodeURIComponent(start.runId), ready.url).href);
   await page.getByRole('heading', { name: 'Ready to run' }).waitFor();
+  // Tests go to workers when a run starts, so there's no worker to filter to yet.
+  let bay = id => page.locator(`.bay-select[data-worker="${id}"]`);
+  assert.equal(await bay('0').isDisabled(), true);
+  assert.equal(await bay('1').isDisabled(), true);
   await page.getByRole('button', { name: 'Run test Grace' }).click();
   let complete = await session.waitForEvent('complete');
   assert.equal(complete.passed, 1);

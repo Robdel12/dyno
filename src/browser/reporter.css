@@ -137,14 +137,15 @@ select { padding-right: 8px; }
 .row-run:disabled, .group-heading button:disabled { visibility: hidden; }
 #selection-count { margin: 0 auto 0 0; font-weight: 600; font-variant-numeric: tabular-nums; }
 
-/* Worker bays: one per worker, like bays in a dyno cell. Press one to inspect it.
+/* Worker bays: one per worker, like bays in a dyno cell. Press one to filter to its tests.
    Two short lines each, so the first result rows stay above the fold. */
 .bays { margin: 4px 0 18px; }
 #bay-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 6px; margin: 0; padding: 0; list-style: none; }
 .bay { position: relative; min-width: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
 .bay-select { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 8px; width: 100%; min-height: 0;
   padding: 8px 84px 8px 12px; color: var(--ink); text-align: left; background: transparent; border: 0; border-radius: 8px; font: inherit; cursor: pointer; }
-.bay-select:hover { background: var(--hover); }
+.bay-select:enabled:hover { background: var(--hover); }
+.bay-select:disabled { cursor: default; }
 .bay-select[aria-pressed=true] { background: var(--raised); box-shadow: inset 0 -2px 0 var(--accent); }
 .bay-name { display: flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 720; font-stretch: 112%; white-space: nowrap; }
 .bay-name::before { content: ''; width: 13px; height: 13px; background: var(--faint); -webkit-mask: var(--roller) center / 13px no-repeat; mask: var(--roller) center / 13px no-repeat; }
