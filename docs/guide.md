@@ -305,7 +305,7 @@ Use [named app fixtures](guide.md#named-app-fixtures) to call your real factorie
 
 ### Clean up after interrupted runs
 
-Teardown and `onCleanup` callbacks run when Dyno stops normally, on Ctrl-C, and when you close its terminal. A crash, `kill -9`, or a machine that loses power can't run them, and the resources setup started (containers, databases) keep running.
+Teardown and `onCleanup` callbacks run when Dyno stops normally, on Ctrl-C, and when you close its terminal. Pressing Ctrl-C again a second or more later quits without waiting for them. That, a crash, `kill -9`, or a machine that loses power leaves the resources setup started (containers, databases) running.
 
 Dyno remembers each session that has project setup until its cleanup finishes. The next time it starts, it passes any session that ended early to an optional `reclaim` export from your setup module:
 
