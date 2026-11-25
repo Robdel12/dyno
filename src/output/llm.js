@@ -1,3 +1,4 @@
+import { stripVTControlCharacters } from 'node:util';
 import { testTitle } from '../suite.js';
 import { testCommand } from '../repeat.js';
 import { timingDuration, failurePhase, sourceLocation } from '../browser/timing-format.js';
@@ -5,7 +6,7 @@ import {
   plural, displayPath, tally, errorsOf, extraFrames, codeFrame, codeLanguage, browserName, coverageText, coverageScope,
   attachmentText,
 } from './format.js';
-import { out, err, withRun, withoutRun } from './state.js';
+import { out as rawOut, err as rawErr, withRun, withoutRun } from './state.js';
 
 // The agent reporter. Plain Markdown with no color, no progress, and no
 // passing-test noise. Each failure stands alone: what, where, the code, and the
@@ -16,9 +17,17 @@ export let initialLLM = Object.freeze({ ready: null, repeat: null, runs: {}, fir
 // Passing tests only count. Failures keep their events; skipped tests keep a name.
 let emptyRun = Object.freeze({ count: 0, failures: [], skipped: [] });
 
+// Strip CSI sequences (including colon-separated SGR parameters like 38:2:r:g:bm)
+// before Node's VT stripper handles OSC hyperlinks and remaining control codes.
+let plain = text => stripVTControlCharacters(String(text).replace(/\u001b\[[0-9:;?]*[ -/]*[@-~]/g, ''));
+let out = lines => rawOut(lines.map(plain));
+let err = lines => rawErr(lines.map(plain));
+
 let fenced = (text, language = 'text') => {
-  let fence = text.includes('```') ? '````' : '```';
-  return [fence + language, text, fence];
+  let body = plain(text);
+  let longest = Math.max(2, ...(body.match(/`+/g) ?? []).map(run => run.length));
+  let fence = '`'.repeat(longest + 1);
+  return [fence + language, body, fence];
 };
 
 function failureBlock(test, number, { cwd, options = {} }) {
