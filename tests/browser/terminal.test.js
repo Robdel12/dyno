@@ -76,11 +76,12 @@ test('terminal output explains functional outcomes, saved screenshots, and indep
   assert.doesNotMatch(result.stdout, /Runner/);
   assert.match(result.stdout, /1 {2}Terminal workflow › explains a failure\n {3}The confirmation is missing\n/);
   assert.match(result.stdout, /\n {3}confirm@\/src\/contact.js:12:3\n/);
-  assert.doesNotMatch(result.stdout, /Slowest/);
   assert.match(result.stdout, /functions coverage is 50%, below the 100% threshold/);
   assert.equal(result.stderr.includes('The confirmation is missing'), false, result.stderr);
   let html = reportPath(result.stdout, fixture.directory);
   let report = JSON.parse(await readFile(join(dirname(html), 'run.json'), 'utf8'));
+  // Slowest only calls out tests of a second or more. A slow CI browser can take that long to screenshot.
+  assert.equal(/Slowest/.test(result.stdout), report.tests.some(test => test.duration >= 1000), result.stdout);
   assert.deepEqual(report.tests.map(test => test.status), ['passed', 'skipped', 'failed']);
   assert.equal(report.coverage.failed, true);
   assert.equal(report.tests[0].attachments[0].status, 'captured');
