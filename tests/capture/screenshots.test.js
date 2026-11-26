@@ -58,6 +58,53 @@ describe('Responsive captures', () => {
   }
 });
 
+test('a full-page Chromium screenshot includes every pixel of a decoded image', {
+  ...managedOptions,
+  skip: name !== 'chromium' || Boolean(process.env.DYNO_CAPTURE_PATH),
+}, async t => {
+  let viewport = { width: 1920, height: 1080 };
+  let left = 480;
+  let top = 126;
+  let picture = new PNG({ width: 1280, height: 720 });
+  picture.data.fill(255);
+  let src = 'data:image/png;base64,' + PNG.sync.write(picture, { colorType: 2 }).toString('base64');
+  let fixture = await project(t, {
+    config: {
+      browser: { name, args: ['--slow-down-raster-scale-factor=25', '--num-raster-threads=1'] },
+      viewport,
+    },
+    source: `
+describe('Image viewer', () => {
+  test('captures a decoded image against the dark viewer', async ({ app, I }) => {
+    await app.goto('/visual');
+    let document = app.document;
+    document.body.style.cssText = 'margin:0;background:#121417';
+    let image = document.createElement('img');
+    image.alt = 'Current image';
+    image.decoding = 'async';
+    image.style.cssText = 'position:absolute;left:${left}px;top:${top}px';
+    image.src = ${JSON.stringify(src)};
+    document.body.replaceChildren(image);
+    await I.find('$(img)').rendered();
+    await image.decode();
+    await app.screenshot('Current image', { fullPage: true, animations: 'disabled', caret: 'hide' });
+  });
+});`,
+  });
+  let result = await fixture.run().completion;
+  assert.equal(result.code, 0, result.stdout + result.stderr);
+  let attachment = result.events.find(event => event.type === 'attachment')?.attachment;
+  assert.ok(attachment, 'Dyno did not save the screenshot.');
+  let screenshot = PNG.sync.read(await readFile(attachment.path));
+  assert.deepEqual([screenshot.width, screenshot.height], [viewport.width, viewport.height]);
+  let whiteRow = Buffer.alloc(picture.width * 4, 255);
+  for (let y = top; y < top + picture.height; y++) {
+    let offset = (y * screenshot.width + left) * 4;
+    let row = screenshot.data.subarray(offset, offset + whiteRow.length);
+    assert.ok(row.equals(whiteRow), `The screenshot lost image pixels on row ${y}.`);
+  }
+});
+
 test('full-page images preserve content beyond 16384 device pixels without resizing', managedOptions, async t => {
   let colors = [[180, 40, 90], [20, 160, 80], [20, 60, 140], [210, 130, 20],
     [90, 30, 160], [30, 170, 180], [190, 70, 30], [60, 110, 50]];
