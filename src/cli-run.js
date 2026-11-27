@@ -20,6 +20,7 @@ import { readReplay } from './schedule.js';
 import { createRepeat, repeatSeed, acceptRepeatRound, finishRepeat, repeatCommand } from './repeat.js';
 import { createRepeatWriter } from './repeat-reports.js';
 import { publicCoverage } from './coverage-reports.js';
+import { openInBrowser } from './open-browser.js';
 
 // A gateway bound to every interface is reachable from other devices on the network.
 function deviceURLs(host, url) {
@@ -118,12 +119,23 @@ export async function runTests(options, { signal, output }) {
     return result;
   };
   let persistent = options.ui || options.manual || options.watch;
+  // Live sessions open the reporter in the person's own browser, once. It follows
+  // reruns by itself. Manual runs already happen in that browser.
+  let openReporter = options.open !== false && (options.ui || options.watch) && !options.manual && !process.env.CI;
+  let reporterOpened = false;
   // What the human and agent reporters need to know about this run.
   let view = { persistent, options, showCoverage: config.coverage.reporters.includes('text') };
   let report = (event) => {
     if (event.type === 'capture') {
       let gateway = instances.find(instance => instance.id === event.workerId)?.gateway;
       event = { ...event, reporterURL: `${gateway.origin}/__dyno__/reporter?run=${encodeURIComponent(event.runId)}` };
+      if (openReporter && !reporterOpened) {
+        reporterOpened = true;
+        event = { ...event, opened: true };
+        openInBrowser(event.reporterURL, {
+          onError: (error) => output.diagnostic(`Could not open the reporter in your browser (${error.message}). Open the Reporter URL instead.\n`),
+        });
+      }
     }
     if (coordinator?.isPrimary(event.runId)) watcher?.observe(event);
     output.event(event, view);

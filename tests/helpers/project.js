@@ -158,8 +158,11 @@ export async function project(t, { source = "describe('Workflow', () => { test('
   }
   return Object.freeze({
     directory, port,
-    run(args = [], options) {
-      let session = launch(process.execPath, [join(repository, 'bin/dyno.js'), '--json', ...args], directory, t.signal, options);
+    // Live sessions would open the reporter in the developer's browser; tests opt in.
+    run(args = [], { open = false, ...options } = {}) {
+      let live = args[0] !== 'doctor' && args.some(argument => ['--ui', '--watch'].includes(argument));
+      let launchArgs = live && !open ? [...args, '--no-open'] : args;
+      let session = launch(process.execPath, [join(repository, 'bin/dyno.js'), '--json', ...launchArgs], directory, t.signal, options);
       sessions = [...sessions, session];
       return session;
     }
