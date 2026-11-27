@@ -225,3 +225,24 @@ test('manual reporter resize failures can be retried and controller loss disable
   await reporter.getByRole('heading', { name: 'The run could not finish', exact: true }).waitFor();
   await reporter.getByText('Open a reporter URL from an active Dyno run.', { exact: true }).waitFor();
 });
+
+test('a session with autoRun off waits until a test is started from its reporter row', { timeout: 90000 }, async t => {
+  let fixture = await project(t, { config: { ...interactive, autoRun: false }, source: `describe('Waiting', () => {
+    test('first', async ({app, I}) => { await app.goto('/'); await I.find('Fixture app').visible(); });
+    test('second', () => {});
+  });` });
+  let session = fixture.run(['--ui']);
+  let ready = await session.waitForEvent('ready');
+  assert.equal(ready.idle, true);
+  let start = await session.waitForEvent('start');
+  assert.equal(start.tests.length, 2);
+  let page = await openURL(t, new URL('/__dyno__/reporter?run=' + encodeURIComponent(start.runId), ready.url).href);
+  await page.getByRole('heading', { name: 'Ready to run' }).waitFor();
+  await page.getByText('2 tests are ready.', { exact: false }).waitFor();
+  assert.equal(await page.getByRole('button', { name: 'Stop run' }).isVisible(), false);
+  assert.equal(session.events.some(event => event.type === 'test'), false);
+  await page.getByRole('button', { name: 'Run test second' }).click();
+  let complete = await session.waitForEvent('complete');
+  assert.deepEqual([complete.passed, complete.failed, complete.skipped], [1, 0, 0]);
+  assert.deepEqual(session.events.filter(event => event.type === 'test').map(event => event.name), ['second']);
+});

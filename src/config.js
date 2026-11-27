@@ -57,6 +57,7 @@
  * | `seed`, `random` | None, `false` | Repeatable randomized priority or a generated seed |
  * | `workers` | `1` | Managed worker count, from 1 to 32; concurrent runs need project worker setup |
  * | `forbidOnly` | Whether `CI` is set | Reject focused test/suite definitions |
+ * | `autoRun` | `true` | Start tests as soon as a live session's browser is ready. Set `false` to have the first run of a `--ui`, `--watch`, or `--manual` session wait until you start it from the reporter; saved changes in `--watch` still rerun |
  *
  * </details>
  *
@@ -124,6 +125,7 @@ export function normalizeConfig(input, file, overrides = {}) {
       'webServer',
       'setup',
       'forbidOnly',
+      'autoRun',
       'cleanupTimeout',
       'reportDir',
       'reportImages',
@@ -139,6 +141,8 @@ export function normalizeConfig(input, file, overrides = {}) {
     throw new Error('seed must be a non-empty string of at most 256 characters.');
   if (input.forbidOnly !== undefined && typeof input.forbidOnly !== 'boolean')
     throw new Error('forbidOnly must be a boolean.');
+  if (input.autoRun !== undefined && typeof input.autoRun !== 'boolean')
+    throw new Error('autoRun must be a boolean.');
   let root = dirname(file);
   let webServer = input.webServer;
   keys(
@@ -284,6 +288,7 @@ export function normalizeConfig(input, file, overrides = {}) {
     seed: overrides.random ? null : overrides.seed ?? input.seed ?? null,
     random: overrides.random ?? input.random ?? false,
     forbidOnly: input.forbidOnly ?? Boolean(process.env.CI),
+    autoRun: input.autoRun ?? true,
     testDir: resolve(root, input.testDir ?? 'tests/browser'),
     testMatch: input.testMatch ?? '**/*.test.{js,jsx,ts,tsx}',
     timeout: input.timeout ?? 10000,
