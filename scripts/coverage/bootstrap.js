@@ -73,10 +73,18 @@ function receive(serialized) {
 
 // Keep terminal beacons out of the app's own HTTP handler. Unlike browser bindings,
 // this real HTTP request survives destruction of the sending execution context.
+// Closing a browser while it still uploads a beacon cuts the upload off, so close
+// waits for beacons that have already started.
+let uploads = new Set();
+let uploaded = () => Promise.all(uploads);
 let dispatch = Server.prototype.emit;
 Server.prototype.emit = function (event, ...args) {
   if (event !== 'request' || args[0].url !== '/__dyno_self_coverage__') return dispatch.call(this, event, ...args);
   let [request, response] = args;
+  let upload = Promise.withResolvers();
+  uploads.add(upload.promise);
+  upload.promise.then(() => uploads.delete(upload.promise));
+  request.once('close', upload.resolve);
   let bytes = 0;
   let chunks = [];
   request.on('data', chunk => {
@@ -101,6 +109,7 @@ async function prepareContext(context) {
   await context.addInitScript(collectBrowserCoverage, { buildId });
   let close = context.close.bind(context);
   context.close = async (...args) => {
+    await uploaded();
     let result = await close(...args);
     save();
     return result;
@@ -125,6 +134,7 @@ function prepareBrowser(browser) {
   };
   let close = browser.close.bind(browser);
   browser.close = async (...args) => {
+    await uploaded();
     let result = await close(...args);
     save();
     return result;
