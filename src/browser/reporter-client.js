@@ -126,6 +126,13 @@ let render = createReporter({
   pauseOnFailure: (value) => command('pause-on-failure', { value }),
   viewport: (viewport) => command('viewport', { viewport }),
   showApp: (workerId) => command('show-app', workerId ? { workerId } : {}),
+  // A bay press inspects that worker and filters to it; pressing the filtered bay clears the filter.
+  focusWorker: (id) => {
+    if (state.route.worker === id) return navigate({ worker: '' });
+    if (state.selectedWorker !== id) selectWorker(id);
+    navigate({ worker: id });
+  },
+  clearWorker: () => navigate({ worker: '' }),
   pauseWorker: (workerId) => command('pause-worker', { workerId }),
   continueWorker: (workerId) => command('continue-worker', { workerId }),
   close: () => command('show-app'),
@@ -134,7 +141,7 @@ let render = createReporter({
 if (!embedded || !window.frameElement?.hidden) render(state);
 window.addEventListener('hashchange', () => {
   let route = reporterRoute(location.hash);
-  if (['page', 'id', 'tab', 'query', 'filter'].every((key) => route[key] === state.route[key])) return;
+  if (['page', 'id', 'tab', 'query', 'filter', 'worker'].every((key) => route[key] === state.route[key])) return;
   update({ route });
   document.getElementById('run-options').open = false;
   document.getElementById('main').focus();

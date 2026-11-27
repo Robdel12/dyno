@@ -13,7 +13,8 @@ export function reporterRoute(hash) {
   let params = new URLSearchParams(search);
   let view = {
     query: params.get('q') ?? '',
-    filter: filters.includes(params.get('status')) ? params.get('status') : 'all'
+    filter: filters.includes(params.get('status')) ? params.get('status') : 'all',
+    worker: params.get('worker') ?? ''
   };
   if (!path || path === '#/') return Object.freeze({ ...view, page: 'overview' });
   let match = /^#\/tests\/([^/]+)\/(output|app|timings)$/.exec(path);
@@ -30,6 +31,7 @@ export function reporterHref(route) {
   let params = new URLSearchParams();
   if (route.query) params.set('q', route.query);
   if (route.filter && route.filter !== 'all') params.set('status', route.filter);
+  if (route.worker) params.set('worker', route.worker);
   return path + (params.size ? '?' + params.toString() : '');
 }
 export function selectedTest(state) {
@@ -83,14 +85,15 @@ let element = (tag, className, text) => {
   if (text !== undefined) node.textContent = text;
   return node;
 };
-let symbols = { pending: '○', running: '◌', passed: '✓', failed: '×', stopped: '■', skipped: '−' };
+let symbols = { pending: '○', running: '◌', passed: '✓', failed: '×', stopped: '■', skipped: '−', outside: '·' };
 let names = {
   pending: 'Pending',
   running: 'Running',
   passed: 'Passed',
   failed: 'Failed',
   stopped: 'Stopped',
-  skipped: 'Skipped'
+  skipped: 'Skipped',
+  outside: 'Not in this run'
 };
 
 export function createReporter(actions) {
@@ -127,7 +130,7 @@ export function createReporter(actions) {
         let current = element('span', 'bay-test');
         let tally = element('span', 'bay-tally');
         select.append(name, phase, current, tally);
-        select.addEventListener('click', () => { if (lastState?.selectedWorker !== worker.id) actions.selectWorker(worker.id); });
+        select.addEventListener('click', () => actions.focusWorker(worker.id));
         let controls = element('span', 'bay-controls');
         let hold = element('button', 'text-button bay-hold');
         hold.addEventListener('click', () => (bays.get(worker.id).held ? actions.continueWorker : actions.pauseWorker)(worker.id));
@@ -165,7 +168,12 @@ export function createReporter(actions) {
     }
   };
 
-  let testsIn = (file, path = []) => (lastState?.tests ?? []).filter((test) =>
+  // The list shows the run's tests plus any the run left out, in suite order.
+  let listing = (state) => {
+    let outside = (state.outside ?? []).map((test) => ({ ...test, status: 'outside', output: [], attachments: [] }));
+    return outside.length ? [...state.tests, ...outside].sort((left, right) => left.index - right.index) : state.tests;
+  };
+  let testsIn = (file, path = []) => (lastState ? listing(lastState) : []).filter((test) =>
     test.file === file && path.every((name, index) => test.suites[index] === name)).map((test) => test.id);
   let syncPicks = () => {
     let total = picked.size;
@@ -230,6 +238,7 @@ export function createReporter(actions) {
   get('run-selected').addEventListener('click', () => actions.rerun([...picked]));
   get('run-workers').addEventListener('change', (event) => actions.setRunWorkers(Number(event.target.value)));
   get('clear-selection').addEventListener('click', () => pick([...picked], false));
+  get('clear-worker').addEventListener('click', () => actions.clearWorker());
   get('close-reporter').addEventListener('click', actions.close);
   get('copy-output').addEventListener('click', async () => {
     try {
@@ -481,7 +490,8 @@ export function createReporter(actions) {
     }
   };
   function renderSheet(state, curve, href) {
-    let key = curve.total ? pullKey(state) : undefined;
+    // One worker's pull isn't comparable to the whole run, so it keeps no ghost.
+    let key = curve.total && !state.route.worker ? pullKey(state) : undefined;
     if (key && storedPull?.key !== key) storedPull = { key, value: readPull(key) };
     let ghost = storedPull?.value?.runId !== state.runId ? storedPull?.value : undefined;
     if (key && state.phase === 'completed' && curve.done === curve.total && savedPull !== state.runId) {
@@ -521,6 +531,13 @@ export function createReporter(actions) {
     let failed = state.tests.filter((test) => test.status === 'failed').length;
     let total = state.tests.length;
     let workers = state.workers ?? [];
+    // Pressing a bay filters the list, sheet, and readouts to that worker.
+    let scope = workers.some((worker) => worker.id === state.route.worker) ? state.route.worker : '';
+    let scoped = scope ? state.tests.filter((test) => test.workerId === scope) : state.tests;
+    let listed = listing(state);
+    let shown = (test) =>
+      `${test.file} ${test.suites.join(' ')} ${test.name}`.toLowerCase().includes(state.route.query.toLowerCase()) &&
+      (state.route.filter === 'all' || test.status === state.route.filter) && (!scope || test.workerId === scope);
     lastState = state;
     renderBays(state);
     // Workers per run: from one up to every launched worker. The next run uses it.
@@ -611,7 +628,7 @@ export function createReporter(actions) {
           : 'Test results'
         : titles[state.phase]
     );
-    let curve = pullCurve(state.tests);
+    let curve = pullCurve(scoped);
     tach.dataset.phase = state.phase;
     tach.dataset.failed = String(failed > 0);
     tach.style.setProperty('--progress', curve.total ? (curve.done / curve.total).toFixed(3) : '0');
@@ -621,13 +638,17 @@ export function createReporter(actions) {
         ? `${total} ${total === 1 ? 'test is' : 'tests are'} ready. Run all of them, or a file, suite or single test from the list.`
         : `${state.files.length} test ${state.files.length === 1 ? 'file' : 'files'}${workerCount(workers.length, state.workerSlots ?? workers.length)}, app at ${state.appHost || location.host}`)
     );
-    write(get('passed-count'), String(passed));
-    write(get('failed-count'), String(failed));
-    write(get('pending-count'), String(total - passed - failed - skipped));
-    write(get('skipped-count'), String(skipped));
-    get('skipped-summary').hidden = skipped === 0;
-    get('failed-summary').dataset.failed = String(failed > 0);
-    write(get('test-count'), String(total));
+    // Readouts follow the worker filter; the title stays about the whole run.
+    let count = (status) => scoped.filter((test) => test.status === status).length;
+    write(get('passed-count'), String(count('passed')));
+    write(get('failed-count'), String(count('failed')));
+    write(get('pending-count'), String(scoped.length - count('passed') - count('failed') - count('skipped')));
+    write(get('skipped-count'), String(count('skipped')));
+    get('skipped-summary').hidden = count('skipped') === 0;
+    get('failed-summary').dataset.failed = String(count('failed') > 0);
+    get('worker-scope').hidden = !scope;
+    write(get('worker-scope-name'), scope ? `Worker ${scope}` : '');
+    write(get('test-count'), listed.length > total ? `${total} of ${listed.length}` : String(total));
     write(get('run-duration'), duration(state.duration) || '—');
     document.documentElement.dataset.phase = state.phase;
     renderSheet(state, curve, href);
@@ -692,7 +713,7 @@ export function createReporter(actions) {
       write(button.querySelector('.filter-count'), total ? String(count) : '');
       button.dataset.count = String(count);
     }
-    for (let group of reporterGroups(state.tests)) {
+    for (let group of reporterGroups(listed)) {
       let fileGroup = groups.get(group.file);
       if (!fileGroup) {
         let node = element('section', 'file-group');
@@ -710,9 +731,12 @@ export function createReporter(actions) {
         groups.set(group.file, fileGroup);
       }
       let failedCount = group.tests.filter((test) => test.status === 'failed').length;
+      let ran = group.tests.filter((test) => test.status !== 'outside').length;
       write(
         fileGroup.count,
-        `${group.tests.length} ${group.tests.length === 1 ? 'test' : 'tests'}${failedCount ? `, ${failedCount} failed` : ''}`
+        ran === group.tests.length
+          ? `${ran} ${ran === 1 ? 'test' : 'tests'}${failedCount ? `, ${failedCount} failed` : ''}`
+          : `${ran} of ${group.tests.length} tests in this run${failedCount ? `, ${failedCount} failed` : ''}`
       );
       fileGroup.run.disabled = active || state.phase === 'debugging' || unavailable;
       let fileVisible = false;
@@ -744,13 +768,7 @@ export function createReporter(actions) {
         }
         for (let run of suiteGroup.node.querySelectorAll(':scope > .group-heading button'))
           run.disabled = active || state.phase === 'debugging' || unavailable;
-        let matches = suite.tests.some(
-          (test) =>
-            `${test.file} ${test.suites.join(' ')} ${test.name}`
-              .toLowerCase()
-              .includes(state.route.query.toLowerCase()) &&
-            (state.route.filter === 'all' || test.status === state.route.filter)
-        );
+        let matches = suite.tests.some((test) => shown(test));
         suiteGroup.node.hidden = !matches;
         fileVisible ||= matches;
       }
@@ -758,7 +776,7 @@ export function createReporter(actions) {
     }
     let visible = 0;
     let slowest = Math.max(0, ...state.tests.filter((item) => item.status !== 'running').map((item) => item.duration ?? 0));
-    for (let item of state.tests) {
+    for (let item of listed) {
       let row = rows.get(item.id);
       if (!row) {
         let node = element('li');
@@ -783,7 +801,9 @@ export function createReporter(actions) {
         row = { node, select, symbol, error, time, load, run, pick: rowPick };
         rows.set(item.id, row);
       }
-      row.select.href = href({ page: 'test', id: item.id, tab: 'output' });
+      // A left-out test has no results to open yet; it can still be picked or run.
+      if (item.status === 'outside') row.select.removeAttribute('href');
+      else row.select.href = href({ page: 'test', id: item.id, tab: 'output' });
       row.run.disabled = active || state.phase === 'debugging' || unavailable;
       row.select.title = [item.file, ...item.suites, item.name].join(' › ');
       row.node.dataset.status = item.status;
@@ -791,16 +811,14 @@ export function createReporter(actions) {
       write(row.symbol, symbols[item.status]);
       write(
         row.time,
-        ['pending', 'skipped'].includes(item.status) ? '—' : item.status === 'running' ? 'Running' : duration(item.duration)
+        item.status === 'outside' ? 'Not in this run'
+          : ['pending', 'skipped'].includes(item.status) ? '—' : item.status === 'running' ? 'Running' : duration(item.duration)
       );
       let load = slowest ? Math.min((item.duration ?? 0) / slowest, 1).toFixed(3) : '0';
       if (row.load.style.getPropertyValue('--load') !== load) row.load.style.setProperty('--load', load);
       row.error.hidden = !item.error;
       write(row.error, item.error?.message ?? '');
-      row.node.hidden = !(
-        `${item.file} ${item.suites.join(' ')} ${item.name}`.toLowerCase().includes(state.route.query.toLowerCase()) &&
-        (state.route.filter === 'all' || item.status === state.route.filter)
-      );
+      row.node.hidden = !shown(item);
       if (!row.node.hidden) visible++;
     }
     let emptyHidden = visible > 0 || !total;

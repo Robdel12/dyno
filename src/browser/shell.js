@@ -747,8 +747,13 @@ try {
     resource = undefined;
   }
   if (!tests.length) throw new Error('No tests registered. Use test(name, async ({ app }) => …).');
+  let registered = tests;
   tests = selectTests(tests, settings.selection);
-  await post('events', { type: 'start', tests, userAgent: navigator.userAgent });
+  // A narrowed run also reports the full suite, so the reporter can still list
+  // and run the tests this run leaves out.
+  let catalog = tests.length < registered.length
+    ? registered.map(({ id, file, suites, name, index }) => ({ id, file, suites, name, index })) : undefined;
+  await post('events', { type: 'start', tests, ...(catalog ? { catalog } : {}), userAgent: navigator.userAgent });
   update({ type: 'started', tests });
   let started = performance.now();
   let position = 0;
