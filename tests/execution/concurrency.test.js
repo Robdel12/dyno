@@ -356,3 +356,28 @@ test('the reporter can run the next pull on fewer workers than were launched', {
   assert.deepEqual([...new Set(tests.map(event => event.workerId))], ['0']);
   await page.getByRole('heading', { name: 'All tests passed' }).waitFor();
 });
+
+test('pausing one worker lets it finish its test while the others keep running', { timeout: 90000 }, async t => {
+  let fixture = await project(t, {
+    config: { setup: './setup.js', workers: 2, browser: visible, webServer: { env: { GATE: 'false', OVERLAP: 'false' } } },
+    files: { 'setup.js': setup },
+    source: `describe('Held worker', () => {
+      for (let index = 1; index <= 6; index++) test('step ' + index, async ({app}) => {
+        await app.goto('/'); await app.request('/allow-close');
+      });
+    });`,
+  });
+  let session = fixture.run(['--ui']);
+  let ready = await session.waitForEvent('ready');
+  let capture = await session.waitForEvent('capture');
+  let page = await openURL(t, capture.reporterURL);
+  // Both workers wait on the gate inside their first test.
+  await page.getByRole('button', { name: 'Pause worker 1' }).click();
+  await page.getByRole('button', { name: 'Continue worker 1' }).waitFor();
+  await fetch(new URL('/release-close', ready.workers[0].url), { signal: t.signal });
+  let complete = await session.waitForEvent('complete');
+  assert.equal(complete.passed, 6);
+  let byWorker = Object.groupBy(session.events.filter(event => event.type === 'test'), event => event.workerId);
+  assert.equal(byWorker['1']?.length, 1, 'The held worker only finishes the test it had started.');
+  assert.equal(byWorker['0'].length, 5);
+});

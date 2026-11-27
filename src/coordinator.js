@@ -1,5 +1,5 @@
 import { randomUUID, createHash } from 'node:crypto';
-import { createRun, acceptEvent, claimTest, releaseTest, reportedExecution, joinWorker, finishWorker, retireWorkers, pauseRun } from './run.js';
+import { createRun, acceptEvent, claimTest, releaseTest, reportedExecution, joinWorker, finishWorker, retireWorkers, pauseRun, holdWorker } from './run.js';
 import { mapStack, sourceContext } from './stack.js';
 import { finishRunTimings, recordProjectCleanup, recordProjectPreparation } from './run-timings.js';
 import { projectOperation } from './project-operation.js';
@@ -428,6 +428,15 @@ export function createCoordinator(config, bundle, {
       if (automatic && run.managed && ['rerun', 'reload'].includes(input.command))
         throw problem(409, 'Repeated runs control their own selection. Stop the CLI command before rerunning tests.');
       if (input.command === 'stop') abortPreparations(run.runId, new Error('Test run stopped.'));
+      // One worker: pausing holds it after its current test, and its next request
+      // for work waits. Continuing lifts the hold, which wakes that request.
+      if (['pause-worker', 'continue-worker'].includes(input.command)) {
+        let id = input.workerId ?? selected;
+        if (!run.workers.some(worker => worker.id === id)) throw problem(400, 'Unknown reporter worker.');
+        if (terminal(run)) throw problem(409, 'This run has finished. Start a new run to use this worker.');
+        publish(holdWorker(run, id, input.command === 'pause-worker'));
+        return Promise.resolve({ requestId: input.requestId });
+      }
       if (input.command === 'rerun' && run.replay) {
         if (input.ids.length && (input.ids.length !== run.replay.selected.length || input.ids.some(id => !run.replay.selected.includes(id))))
           throw problem(400, 'Queue replay uses its recorded selection. Start a regular run to select different tests.');
@@ -442,6 +451,11 @@ export function createCoordinator(config, bundle, {
       let global = ['pause', 'stop', 'rerun', 'pause-on-failure', 'reload'].includes(input.command) ||
         (input.command === 'continue' && run.paused);
       let ids = global ? run.workers.map(worker => worker.id) : [input.workerId ?? selected];
+      // Continuing also releases any per-worker hold on the workers it reaches.
+      if (input.command === 'continue' && !terminal(run) && run.workers.some(worker => ids.includes(worker.id) && worker.held)) {
+        for (let id of ids) run = holdWorker(run, id, false);
+        publish(run);
+      }
       if (ids.some(id => !run.workers.some(worker => worker.id === id))) throw problem(400, 'Unknown reporter worker.');
       let targets = ids.map(id => workers.get(id).control);
       if (targets.some(control => !control.connected(input.runId)))
@@ -492,6 +506,7 @@ export function createCoordinator(config, bundle, {
           let previous = runs.get(input.runId);
           if (failedWorkers.has(workerId)) throw problem(409, 'Restart Dyno after execution preparation was interrupted or failed.');
           let claimed = claimTest(previous, { workerId, executionId: randomUUID(), requestedAt, now: performance.now() });
+          // A held worker waits like an idle one: until its hold lifts or the run is done.
           if (!claimed.assignment && !claimed.done && !claimed.run.paused) {
             pending = Promise.withResolvers();
             let listeners = waiters.get(input.runId) ?? new Set();

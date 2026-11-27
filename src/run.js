@@ -96,7 +96,7 @@ export function claimTest(run, { workerId = '0', executionId, now = 0, requested
   // real app stays reserved for inspection, but never overlap running work.
   if (!run.paused && (owned.some(assignment => assignment.status === 'running') || (!next?.skipReason && owned.length)))
     throw new Error('Release the previous execution before requesting another test.');
-  if (!next || run.paused || run.workers.some((worker) => worker.status !== 'ready'))
+  if (!next || run.paused || owner.held || run.workers.some((worker) => worker.status !== 'ready'))
     return freeze({ run, assignment: null, done: run.outcomes.length === run.tests.length });
   let assignment = freeze({ id: executionId, workerId, testId: next.id,
     index: run.tests.indexOf(next), status: 'running', requestedAt, assignedAt: now,
@@ -124,6 +124,13 @@ export function retainExecution(run, { workerId = '0', executionId }) {
   let assignment = reportedExecution(run, { workerId, executionId });
   return freeze({ ...run, assignments: list(run.assignments.map((item) => item === assignment
     ? freeze({ ...item, status: 'retained' }) : item)) });
+}
+
+// Holding one worker lets it finish its current test, then wait. The rest keep going.
+export function holdWorker(run, workerId, held) {
+  if (finished(run) || typeof held !== 'boolean') throw new Error('Cannot change worker admission.');
+  worker(run, workerId);
+  return freeze({ ...run, workers: list(run.workers.map((item) => item.id === workerId ? freeze({ ...item, held }) : item)) });
 }
 
 export function pauseRun(run, paused) {

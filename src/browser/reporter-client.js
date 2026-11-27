@@ -83,7 +83,9 @@ let selectWorker = (id) => {
   parameters.set('worker', id);
   connection?.close();
   connection = undefined;
-  update({ connection: 'connecting' });
+  // Switching workers isn't a lost connection: keep the current state, show the
+  // picked bay right away, and only speak up if the new stream fails.
+  update({ selectedWorker: id });
   connect();
 };
 // How many workers the next run uses. Unset means all of them.
@@ -124,6 +126,8 @@ let render = createReporter({
   pauseOnFailure: (value) => command('pause-on-failure', { value }),
   viewport: (viewport) => command('viewport', { viewport }),
   showApp: (workerId) => command('show-app', workerId ? { workerId } : {}),
+  pauseWorker: (workerId) => command('pause-worker', { workerId }),
+  continueWorker: (workerId) => command('continue-worker', { workerId }),
   close: () => command('show-app'),
   copy: () => state.route.tab === 'timings' ? timingText(selectedTest(state)?.timings) : testOutput(selectedTest(state))
 });
