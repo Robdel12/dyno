@@ -381,6 +381,7 @@ test('pausing one worker lets it finish its test while the others keep running',
   let capture = await session.waitForEvent('capture');
   let page = await openURL(t, capture.reporterURL);
   // Both workers wait on the gate inside their first test.
+  await fetch(new URL('/close-entered', ready.workers[0].url), { signal: t.signal });
   await page.getByRole('button', { name: 'Pause worker 1' }).click();
   await page.getByRole('button', { name: 'Continue worker 1' }).waitFor();
   await fetch(new URL('/release-close', ready.workers[0].url), { signal: t.signal });
