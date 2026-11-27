@@ -6,12 +6,13 @@ import { join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { browserEngine } from '../src/browsers.js';
 
+// One suite, or several joined by commas (`project,native`) to share one CI job.
 let [suite = 'all', browser = 'chromium', ...extra] = process.argv.slice(2);
 let directories = ['core', 'browser', 'execution', 'repeat', 'project', 'reporter', 'package', 'capture', 'native'];
-let suites = ['all', ...directories];
-let needsBrowser = suite === 'all' || (directories.includes(suite) && suite !== 'core');
-if (!suites.includes(suite) || extra.length || (!needsBrowser && process.argv[3]))
-  throw new Error('Usage: node scripts/test.js [all|core|browser|execution|repeat|project|reporter|package|capture|native] [chromium|firefox|webkit for browser suites]');
+let selected = suite === 'all' ? directories : suite.split(',');
+let needsBrowser = selected.some(name => name !== 'core');
+if (!selected.every(name => directories.includes(name)) || extra.length || (!needsBrowser && process.argv[3]))
+  throw new Error('Usage: node scripts/test.js [all|core|browser|execution|repeat|project|reporter|package|capture|native][,more suites] [chromium|firefox|webkit for browser suites]');
 
 let root = fileURLToPath(new URL('../', import.meta.url));
 let files = [];
@@ -19,7 +20,7 @@ for await (let file of glob('tests/**/*.test.js', { cwd: root })) {
   let directory = file.split(sep)[1];
   if (!directories.includes(directory))
     throw new Error(`Place ${file} under ${directories.map(directory => `tests/${directory}`).join(', ')} so CI runs it.`);
-  if (suite === 'all' || directory === suite) files.push(file);
+  if (selected.includes(directory)) files.push(file);
 }
 files.sort();
 if (!files.length) throw new Error(`No tests found for ${suite}.`);
@@ -39,7 +40,8 @@ if (needsBrowser) {
   environment.DYNO_CAPTURE_BROWSER = browser;
 }
 // Each browser file owns its app, gateway, profiles, and fixture directory.
-let args = ['--test', `--test-concurrency=${['browser', 'execution'].includes(suite) ? 3 : 1}`, '--test-reporter=spec'];
+let concurrent = selected.every(name => ['browser', 'execution'].includes(name));
+let args = ['--test', `--test-concurrency=${concurrent ? 3 : 1}`, '--test-reporter=spec'];
 if (process.env.DYNO_TEST_REPORT_DIR) {
   let directory = resolve(root, process.env.DYNO_TEST_REPORT_DIR);
   await mkdir(directory, { recursive: true });

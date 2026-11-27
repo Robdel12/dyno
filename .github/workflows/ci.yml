@@ -16,16 +16,13 @@ concurrency:
 
 jobs:
   checks:
-    name: Core / ${{ matrix.os }} / Node ${{ matrix.node }}
-    runs-on: ${{ matrix.os }}
+    name: Core / Node ${{ matrix.node }}
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - { os: ubuntu-latest, node: 24 }
-          - { os: ubuntu-latest, node: 26 }
-          - { os: macos-latest, node: 24 }
+        node: [24, 26]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -34,16 +31,15 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
       - name: Validate workflows
-        if: matrix.node == 24 && runner.os == 'Linux'
+        if: matrix.node == 24
         run: bash .github/scripts/check-workflows.sh
       - uses: ./.github/actions/test
         with:
           suite: core
-          artifact: core-${{ matrix.os }}-node-${{ matrix.node }}
+          artifact: core-node-${{ matrix.node }}
 
   package:
     name: Package install / Node 26
-    needs: checks
     runs-on: ubuntu-latest
     timeout-minutes: 5
     container:
@@ -63,10 +59,9 @@ jobs:
           artifact: package-node-26
 
   browser:
-    name: ${{ matrix.suite }} / Linux / ${{ matrix.engine }}
-    needs: checks
+    name: ${{ matrix.suite.name }} / ${{ matrix.engine }}
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     container:
       image: mcr.microsoft.com/playwright:v1.64.1-noble@sha256:47b510dd9230bf0b9bfc9b20102241e577ea7a99334ab4c3ca19f19770e9b8ea
       options: --user pwuser --init --ipc=host
@@ -74,7 +69,10 @@ jobs:
       fail-fast: false
       matrix:
         engine: [chromium, firefox, webkit]
-        suite: [browser, execution, repeat, project, reporter, capture, native]
+        # Two jobs per engine. On its own, each smaller suite is mostly setup time.
+        suite:
+          - { name: browser + execution, run: 'browser,execution', artifact: workflows }
+          - { name: reporter + project + native + repeat + capture, run: 'reporter,project,native,repeat,capture', artifact: features }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -82,36 +80,9 @@ jobs:
       - uses: ./.github/actions/setup
       - uses: ./.github/actions/test
         with:
-          suite: ${{ matrix.suite }}
+          suite: ${{ matrix.suite.run }}
           browser: ${{ matrix.engine }}
-          artifact: ${{ matrix.suite }}-linux-${{ matrix.engine }}
-
-  browser-macos:
-    name: ${{ matrix.suite }} / macOS / ${{ matrix.engine }}
-    needs: checks
-    runs-on: macos-latest
-    # macOS Firefox already runs the browser and execution suites in about 4.5 minutes.
-    timeout-minutes: 10
-    strategy:
-      fail-fast: false
-      matrix:
-        engine: [chromium, firefox, webkit]
-        suite: [browser, execution, repeat, project, reporter, capture, native]
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/setup
-      - name: Install Playwright engine
-        id: install-engine
-        env:
-          DYNO_ENGINE: ${{ matrix.engine }}
-        run: node bin/dyno.js install --browser "$DYNO_ENGINE"
-      - uses: ./.github/actions/test
-        with:
-          suite: ${{ matrix.suite }}
-          browser: ${{ matrix.engine }}
-          artifact: ${{ matrix.suite }}-macos-${{ matrix.engine }}
+          artifact: ${{ matrix.suite.artifact }}-${{ matrix.engine }}
 
   docs:
     name: Documentation
@@ -133,7 +104,7 @@ jobs:
   complete:
     name: CI complete
     if: ${{ always() }}
-    needs: [checks, package, browser, browser-macos, docs]
+    needs: [checks, package, browser, docs]
     runs-on: ubuntu-latest
     timeout-minutes: 1
     steps:
