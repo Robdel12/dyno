@@ -33,21 +33,22 @@ These are the brand's building blocks. Reuse them before you invent anything new
 | Element | What it is | Where |
 | --- | --- | --- |
 | Wordmark | `dyn` plus a roller drum standing in for the `o`, set wide, heavy, and skewed −9°. The roller spins only while tests run. | Desk, start page, saved report, favicon |
-| Roller | A drum with a knurled ring and hub, in hazard yellow. It's also a CSS mask (`--roller`). | Wordmark, pending and running test rows, the in-app "Show test results" button |
+| Roller | A drum with a knurled ring and hub, in hazard yellow. It's also a CSS mask (`--roller`). | Wordmark, pending and running test rows, worker bays, the in-app "Show test results" button |
 | Dyno sheet | Finished tests (y) over summed test time (x), in run order. | Overview, saved report |
 | Ghost | The previous matching pull, drawn as a dotted trace. | Dyno sheet |
 | Sheet note | Plain text with a skewed leader line pointing at the curve, like the peak note on a printed sheet: `13 tests @ 1.90 s`. | Dyno sheet |
 | Tachometer | A small analog gauge whose needle sweeps from 0 to all tests finished. | Beside the run title, saved report |
 | Readouts | A peak table beside the sheet: passed, failed, pending, skipped, run time, and time per test. | Overview, saved report |
 | Load trace | A thin bar on each row, scaled to the slowest test. | Result rows |
+| Bay | A worker's slot in the cell: its roller, state, current test, and results on two short lines. | Worker bays above the sheet |
 | Hazard stripes | Diagonal yellow and black tape. | The pause banner only |
 
 ### The dyno sheet
 
 The overview leads with the sheet. The chart is drawn by pure functions in [dyno-chart.js](../src/browser/dyno-chart.js), so the live reporter and saved reports always match.
 
-- Steep stretches are fast tests and flat stretches are slow ones. Copy under the chart says so: "Steep is fast. Flat stretches are slow tests."
-- Passed points use the trace color. Failures are larger red points. Skipped and stopped points are faint. Each point links to its test.
+- Steep stretches are fast tests and flat stretches are slow ones. Copy under the chart says so: "Steep is fast. Flat stretches are slow tests, so click one to open it."
+- Passed points use the trace color. Failures are larger red points. Skipped and stopped points are faint. Each point links to its test, and so does the stretch of curve leading up to it, so you can click a flat stretch to open the slow test behind it.
 - A dashed ceiling marks the full test count, and a faint area fill sits under the trace.
 - While a test runs, a yellow head rides the end of the curve, and a sheet note shows the test's name in accent text.
 - When the pull finishes, the note changes to `${total} tests @ ${duration}` in ink. Notes flip to the left side near the right edge so they never clip.
@@ -126,14 +127,22 @@ Use sentence case everywhere. Use tabular numerals for every count and duration.
 
 - The control desk is a sticky, 60px bar (54px on mobile) that holds the wordmark and run actions. Keep `scroll-padding-top` in sync with its height so scrolled-to targets stay clear.
 - The overview reads top to bottom: the run title with the tach, a plain meta line, the sheet with readouts, then search, filters, and results grouped by file and suite. Slowest tests and run info stay in collapsed sections at the end.
-- Keep one combined result list across workers. Label the selected worker, so inspection and app controls clearly target that worker's app.
+- Keep one combined result list across workers. With more than one worker, a row of bays shows each worker's state, current test, and results; pressing a bay inspects that worker, and its Show app raises that worker's app. Keep bays to two short lines so the first result rows stay above the fold.
+- A bay's **Pause** holds just that worker: it finishes its current test ("Pausing after this test"), then waits ("Paused") while the others keep running. **Continue** releases it. Pause all and the pause banner still act on the whole run.
+- Run options holds **Workers per run**. **Auto**, the default, uses only the workers a run can keep busy: never more than it has tests, and with timings, never more than its total work divided by its longest test. A chosen count is still capped at the number of tests. Unused workers stay parked, and the meta line says how many of the launched workers ran.
+- Unseeded reruns start their longest tests first, from the session's own timings, so workers finish close together. Seeded and replayed runs keep their order.
+- Pressing a bay also filters the list, sheet, and readouts to that worker's tests, with a note that offers every worker again. Only the filtered bay looks pressed, so showing every worker presses none. Tests go to workers when a run starts, so a bay without tests can't be pressed. The run title stays about the whole run, and a filtered sheet keeps no ghost.
+- A run of picked tests still lists the rest of the suite, muted and marked "Not in this run", so you can pick or run them next. Readouts and the sheet count only the tests that ran.
+- Checkboxes in a shared gutter pick tests, suites, and files. A selection bar at the bottom of the list says how many are picked and offers Run selected.
 - Each test gets its own Output, Timings, and Application routes. Put details on those routes, not in new panels on the overview.
 - On Output, the failure message comes first, then where it happened ("In the test body at file:line:col"), then the source excerpt, then the stack. Console output and screenshots stay together.
 - Timings shows where the time went as a phase split bar, then a waterfall of operations, then the full table.
 - Show app reveals the actual tested app. Don't replace it with a scaled preview, and don't move it while the reporter navigates.
 - Open inspection at a test boundary. Keep pause, continue, stop, and rerun clear about what happens next.
 - Routes use stable test IDs. Search and filters live in the URL and survive back and forward navigation.
-- Show connection state and screenshot availability. A command stays pending until the test browser replies; if it fails, show a retry action.
+- Keep the status row quiet when things are healthy. Say when the test browser is connecting or disconnected, and when it can't take screenshots, in terms of what that means for the tests. A command stays pending until the test browser replies; if it fails, show a retry action.
+- Every test row can run its own test. Run, Run suite, and Run file appear on hover and keyboard focus (always on touch screens), so the page doesn't repeat them down every row.
+- Enable Show app whenever the inspected worker's app window exists. Don't tie it to the current document, which changes between every test.
 - When a toggle or filter reveals content below the fold, scroll it into view with `block: 'nearest'`.
 - Saved reports are the printed sheet: the same chart, tach, readouts, and tokens, read top to bottom without live controls.
 
@@ -161,7 +170,7 @@ The docs are a [Starlight](https://starlight.astro.build) site in [site](../site
 
 - **Tokens:** Starlight's grays map to the reporter's ink, muted, faint, line, surface, and background. `--sl-color-accent` is hazard yellow and `--sl-color-text-accent` is the trace blue, so links stay blue and primary buttons are yellow plates. Dark is the dyno cell and light is the printed sheet. Only the few shades Starlight needs that the reporter doesn't (two extra grays, the page background, and accent tints) live in docs.css.
 - **Wordmark:** the site title is the shared wordmark from [markup.js](../src/browser/markup.js). Its roller turns as you scroll, like the drum under a car on the dyno, using a scroll-driven animation where the browser supports one.
-- **Homepage:** a splash hero with the title and two actions, next to an example pull drawn by the real `dyno-chart.js`. On load, the trace draws in left to right, the tach sweeps, and the sheet note prints. This is the site's main animation. **Run it again** replays the suite after its slow test got faster, with the first pull as a ghost, so the hero teaches the ghost feature by doing it. A faint sheet grid sits behind the hero.
+- **Homepage:** a splash hero with the title and two actions, next to an example pull drawn by the real `dyno-chart.js`. On load, the trace draws in left to right, the tach sweeps, and the sheet note prints. This is the site's main animation. **Run it again** replays the suite after its slow test got faster, with the first pull as a ghost, so the hero teaches the ghost feature by doing it. It uses the reporter's own title and readouts for a finished pull, and its stretches click like the reporter's: clicking one names that test, says how long it took, and says what the reporter would open. A faint sheet grid sits behind the hero.
 - **404:** "Not on the sheet," with a big tach whose needle never left zero. The tach is the hero image, passed as data, so the 404 uses Starlight's own hero.
 - **Sidebar:** the current page sits on a small roller, the same mark as a running test. Group labels are wide and heavy. There are no left border lines on nested lists.
 - **Callouts:** tinted plates with a border and no left rail. Caution and danger callouts get the hazard tape along the top, the cell's "stop and look" sign. This is the only other place hazard stripes appear.

@@ -83,28 +83,33 @@ let selectWorker = (id) => {
   parameters.set('worker', id);
   connection?.close();
   connection = undefined;
-  update({ connection: 'connecting' });
+  // Switching workers isn't a lost connection: keep the current state, show the
+  // picked bay right away, and only speak up if the new stream fails.
+  update({ selectedWorker: id });
   connect();
 };
+// How many workers the next run uses. Unset means all of them.
+let runWorkers;
+try { runWorkers = Number(localStorage.getItem('dyno:run-workers')) || undefined; } catch {}
+let rerun = (ids) => command('rerun', { ids, ...(runWorkers ? { workers: Math.min(runWorkers, state.workerSlots ?? runWorkers) } : {}) });
 let render = createReporter({
-  embedded, selectWorker,
-  rerun: (ids) => command('rerun', { ids }),
+  embedded,
+  rerun,
+  runWorkers: () => runWorkers,
+  setRunWorkers: (count) => {
+    runWorkers = count || undefined;
+    try {
+      if (runWorkers) localStorage.setItem('dyno:run-workers', String(runWorkers));
+      else localStorage.removeItem('dyno:run-workers');
+    } catch {}
+    render(state);
+  },
   runFailed: () =>
-    command('rerun', { ids: state.tests.filter((test) => test.status === 'failed').map((test) => test.id) }),
+    rerun(state.tests.filter((test) => test.status === 'failed').map((test) => test.id)),
   runSelected: () => {
     let test = selectedTest(state);
-    if (test) command('rerun', { ids: [test.id] });
+    if (test) rerun([test.id]);
   },
-  runScope: (scope) =>
-    command('rerun', {
-      ids: state.tests
-        .filter(
-          (test) =>
-            test.file === scope.file &&
-            (!scope.suites || scope.suites.every((name, index) => test.suites[index] === name))
-        )
-        .map((test) => test.id)
-    }),
   search: (query) => navigate({ query }, true),
   filter: (filter) => navigate({ filter }),
   retry: () => {
@@ -115,14 +120,23 @@ let render = createReporter({
   stop: () => command('stop'),
   pauseOnFailure: (value) => command('pause-on-failure', { value }),
   viewport: (viewport) => command('viewport', { viewport }),
-  showApp: () => command('show-app'),
+  showApp: (workerId) => command('show-app', workerId ? { workerId } : {}),
+  // A bay press inspects that worker and filters to it; pressing the filtered bay clears the filter.
+  focusWorker: (id) => {
+    if (state.route.worker === id) return navigate({ worker: '' });
+    if (state.selectedWorker !== id) selectWorker(id);
+    navigate({ worker: id });
+  },
+  clearWorker: () => navigate({ worker: '' }),
+  pauseWorker: (workerId) => command('pause-worker', { workerId }),
+  continueWorker: (workerId) => command('continue-worker', { workerId }),
   close: () => command('show-app'),
   copy: () => state.route.tab === 'timings' ? timingText(selectedTest(state)?.timings) : testOutput(selectedTest(state))
 });
 if (!embedded || !window.frameElement?.hidden) render(state);
 window.addEventListener('hashchange', () => {
   let route = reporterRoute(location.hash);
-  if (['page', 'id', 'tab', 'query', 'filter'].every((key) => route[key] === state.route[key])) return;
+  if (['page', 'id', 'tab', 'query', 'filter', 'worker'].every((key) => route[key] === state.route[key])) return;
   update({ route });
   document.getElementById('run-options').open = false;
   document.getElementById('main').focus();

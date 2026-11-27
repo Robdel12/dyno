@@ -20,6 +20,8 @@ import { readReplay } from './schedule.js';
 import { createRepeat, repeatSeed, acceptRepeatRound, finishRepeat, repeatCommand } from './repeat.js';
 import { createRepeatWriter } from './repeat-reports.js';
 import { publicCoverage } from './coverage-reports.js';
+import { openInBrowser } from './open-browser.js';
+import { recordSession, reclaimSessions } from './sessions.js';
 
 // A gateway bound to every interface is reachable from other devices on the network.
 function deviceURLs(host, url) {
@@ -83,6 +85,7 @@ export async function runTests(options, { signal, output }) {
     controller.abort(error);
   };
   let endingError;
+  let sessionRecord;
   let finalizationErrors = [];
   let batch, batchWriter, batchReason;
   let watcher, coordinator;
@@ -118,12 +121,24 @@ export async function runTests(options, { signal, output }) {
     return result;
   };
   let persistent = options.ui || options.manual || options.watch;
+  // Live sessions can wait for the reporter instead of running on launch.
+  let idle = Boolean(persistent) && !config.autoRun;
+  // Live sessions open the reporter in the person's own browser, once. It follows
+  // reruns by itself. Manual runs already happen in that browser.
+  let openReporter = options.open !== false && (options.ui || options.watch) && !options.manual && !process.env.CI;
   // What the human and agent reporters need to know about this run.
   let view = { persistent, options, showCoverage: config.coverage.reporters.includes('text') };
   let report = (event) => {
     if (event.type === 'capture') {
       let gateway = instances.find(instance => instance.id === event.workerId)?.gateway;
       event = { ...event, reporterURL: `${gateway.origin}/__dyno__/reporter?run=${encodeURIComponent(event.runId)}` };
+      if (openReporter) {
+        openReporter = false;
+        event = { ...event, opened: true };
+        openInBrowser(event.reporterURL, {
+          onError: (error) => output.diagnostic(`Could not open the reporter in your browser (${error.message}). Open the Reporter URL instead.\n`),
+        });
+      }
     }
     if (coordinator?.isPrimary(event.runId)) watcher?.observe(event);
     output.event(event, view);
@@ -140,9 +155,17 @@ export async function runTests(options, { signal, output }) {
     if (replay && JSON.stringify(bundle.fingerprint) !== JSON.stringify(replay.source))
       throw new Error('The replay source fingerprint changed. Record a new schedule for these tests.');
     runSignal.throwIfAborted();
+    // Clean up after sessions that died before their cleanup ran, then record
+    // this one, and every process it starts, until its own cleanup finishes.
+    let setupModule = config.setup ? await measure('Load setup', () => import(pathToFileURL(config.setup).href)) : {};
+    await measure('Reclaim interrupted sessions', () => reclaimSessions(config.root, setupModule.reclaim, {
+      config, report: message => output.diagnostic(message + '\n'),
+    }));
+    sessionRecord = await recordSession(config.root, { id: sessionId, startedAt: sessionStartedAt });
+    let track = pid => { void sessionRecord.track(pid); };
     let pool = browserPlan
       ? await measure('Prepare browser', () => createBrowserPool(browserPlan, {
-          size: config.workers, signal: runSignal,
+          size: config.workers, signal: runSignal, onStart: track,
           onExit: failed,
           onDiagnostic: (event) => { if (!runSignal.aborted) output.event({ type: 'browser-diagnostic', ...event }); }
         }))
@@ -157,9 +180,8 @@ export async function runTests(options, { signal, output }) {
       let scope = createCleanupScope();
       cleanup('Project teardown', () => closeScope(scope, 'Project teardown failed'));
       setup = await measure('Project setup', () => acquire(scope, () => duringStartup(runSignal, async (startupSignal) => {
-        let module = await import(pathToFileURL(config.setup).href);
-        if (typeof module.default !== 'function') throw new Error('setup must export a function.');
-        return module.default({ config, session, signal: startupSignal, onCleanup: scope.onCleanup });
+        if (typeof setupModule.default !== 'function') throw new Error('setup must export a function.');
+        return setupModule.default({ config, session, signal: startupSignal, onCleanup: scope.onCleanup });
       })));
       if (setup?.teardown !== undefined && typeof setup.teardown !== 'function')
         throw new Error('setup.teardown must be a function.');
@@ -186,6 +208,7 @@ export async function runTests(options, { signal, output }) {
     let workerIds = Array.from({ length: config.workers }, (_, index) => String(index));
     coordinator = createCoordinator(config, bundle, {
       automatic: options.repeat !== undefined,
+      idle,
       workerIds, onEvent: report, onRun: saveRun,
       onError: error => {
         output.event({ type: 'error', phase: error.phase ?? 'report', message: error.message });
@@ -230,7 +253,7 @@ export async function runTests(options, { signal, output }) {
         let appServer = await measure(`Worker ${id} app server ready`, () => duringStartup(startupSignal, startupSignal => startWebServer(
           { ...project.config.webServer, env: { ...project.config.webServer.env, DYNO_URL: gateway.origin,
             DYNO_COVERAGE: config.coverage.enabled ? '1' : '0' } },
-          { signal: startupSignal, onReady: headers => gateway.setDocumentPolicy(headers),
+          { signal: startupSignal, onStart: track, onReady: headers => gateway.setDocumentPolicy(headers),
             output: message => output.diagnostic(`[app] ${message}`) }
         )));
         appCleanups.add(appServer.stop);
@@ -279,7 +302,7 @@ export async function runTests(options, { signal, output }) {
         resources: batch.resources, command: batch.command, browser: browserInfo });
     }
     output.event({
-      type: 'ready', url: captureURL(first).href, appURL: first.config.webServer.url,
+      type: 'ready', url: captureURL(first).href, appURL: first.config.webServer.url, idle,
       workers: instances.map(instance => ({ id: instance.id, url: captureURL(instance).href, appURL: instance.config.webServer.url })),
       files: bundle.files, browser: browserInfo, seed: config.seed, devices: deviceURLs(config.host, gateway.url),
       ...(replay ? { replay: { selected: replay.selected.length, omitted: replay.omitted } } : {}),
@@ -324,6 +347,8 @@ export async function runTests(options, { signal, output }) {
       finalizationErrors.push(error.message);
       exitCode = 1;
     }
+    // A session whose cleanup failed stays recorded, so the next run reclaims it.
+    if (sessionRecord && !finalizationErrors.length) await sessionRecord.forget().catch(() => {});
     let session = sessionSnapshot(exitCode ? 'failed' : signal.aborted ? 'interrupted' : endingError ? 'failed' : 'completed', sessionTimings.end());
     try { await writer.finishSession(session); }
     catch (error) {

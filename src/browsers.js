@@ -10,6 +10,8 @@ export function browserEngine(name) {
   return engines[name] ?? (['chrome', 'edge'].includes(name) ? chromium : undefined);
 }
 
+export let chromiumFamily = (name) => browserEngine(name) === chromium;
+
 export function browserChannel(name) {
   return { chrome: 'chrome', edge: 'msedge' }[name];
 }

@@ -42,7 +42,7 @@
  * | `browser.deviceScaleFactor` | `1` | Playwright pixel ratio from 1 to 3 |
  * | `browser.isMobile`, `browser.hasTouch` | `false` | Emulate mobile viewport behavior and touch input |
  * | `browser.userAgent` | Browser default | Override the managed browser user agent |
- * | `viewport` | Browser size; managed: 1280 × 800 | Required app viewport dimensions |
+ * | `viewport` | Browser size; managed: 1280 × 800 | Required app viewport dimensions. A visible Chromium window scales a viewport larger than your screen down to fit; the app and its screenshots stay full size. |
  * | `reportDir` | `.dyno/reports` | Saved JSON, JUnit, and HTML per browser run |
  * | `reportImages` | `false` | Copy captured PNGs into [saved reports](guide.md#saved-reports) |
  * | `coverage` | Disabled | App coverage filters, build baseline, reporters, and thresholds; activate with `--coverage` or `coverage.enabled` |
@@ -57,6 +57,7 @@
  * | `seed`, `random` | None, `false` | Repeatable randomized priority or a generated seed |
  * | `workers` | `1` | Managed worker count, from 1 to 32; concurrent runs need project worker setup |
  * | `forbidOnly` | Whether `CI` is set | Reject focused test/suite definitions |
+ * | `autoRun` | `true` | Start tests as soon as a live session's browser is ready. Set `false` to have the first run of a `--ui`, `--watch`, or `--manual` session wait until you start it from the reporter; saved changes in `--watch` still rerun |
  *
  * </details>
  *
@@ -77,6 +78,26 @@
  * Use project factories to create committed records and real sessions. Return the IDs and paths a scenario needs, then exercise the behavior through the app. Share immutable fixture inputs rather than mutable records. For concurrent runs, [give each worker its own resources](guide.md#concurrent-runs).
  *
  * Use [named app fixtures](guide.md#named-app-fixtures) to call your real factories through `app.fixture`. Keep that test control outside production entrypoints. Operations receive explicit app dependencies; Dyno handles execution ownership and transport, while your app owns factories, auth, queues and visual comparison.
+ *
+ * ## Clean up after interrupted runs
+ *
+ * Teardown and `onCleanup` callbacks run when Dyno stops normally, on Ctrl-C, and when you close its terminal. Pressing Ctrl-C again a second or more later quits without waiting for them. That, a crash, `kill -9`, or a machine that loses power leaves the resources setup started (containers, databases) running.
+ *
+ * Dyno remembers each session that has project setup until its cleanup finishes. The next time it starts, it passes any session that ended early to an optional `reclaim` export from your setup module:
+ *
+ * ```js
+ * export default async function setup({ session }) {
+ *   // Name what you start after the session, so reclaim can find it later.
+ *   let project = `myapp-tests-${session.id}`;
+ *   …
+ * }
+ *
+ * export async function reclaim({ session }) {
+ *   await exec('docker', ['compose', '-p', `myapp-tests-${session.id}`, 'down', '--volumes']);
+ * }
+ * ```
+ *
+ * Reclaim runs before setup, once per interrupted session. If it fails, Dyno reports why and tries again on the next run. Without a `reclaim` export, Dyno tells you a session ended early so you can clean up by hand.
  *
  * ## Finish work before reusing resources
  *
@@ -124,6 +145,7 @@ export function normalizeConfig(input, file, overrides = {}) {
       'webServer',
       'setup',
       'forbidOnly',
+      'autoRun',
       'cleanupTimeout',
       'reportDir',
       'reportImages',
@@ -139,6 +161,8 @@ export function normalizeConfig(input, file, overrides = {}) {
     throw new Error('seed must be a non-empty string of at most 256 characters.');
   if (input.forbidOnly !== undefined && typeof input.forbidOnly !== 'boolean')
     throw new Error('forbidOnly must be a boolean.');
+  if (input.autoRun !== undefined && typeof input.autoRun !== 'boolean')
+    throw new Error('autoRun must be a boolean.');
   let root = dirname(file);
   let webServer = input.webServer;
   keys(
@@ -284,6 +308,7 @@ export function normalizeConfig(input, file, overrides = {}) {
     seed: overrides.random ? null : overrides.seed ?? input.seed ?? null,
     random: overrides.random ?? input.random ?? false,
     forbidOnly: input.forbidOnly ?? Boolean(process.env.CI),
+    autoRun: overrides.autoRun ?? input.autoRun ?? true,
     testDir: resolve(root, input.testDir ?? 'tests/browser'),
     testMatch: input.testMatch ?? '**/*.test.{js,jsx,ts,tsx}',
     timeout: input.timeout ?? 10000,

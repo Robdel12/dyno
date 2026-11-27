@@ -39,6 +39,7 @@ async function perform(request) {
   if (!session) throw new Error('Unknown browser worker.');
   if (method === 'open') await session.open(input.url);
   else if (method === 'activate') await session.activate();
+  else if (method === 'reveal') await session.reveal();
   else if (method === 'retire') await session.retire(input.url);
   else if (method === 'resize') await session.resize(input);
   else if (method === 'capture') return (await session.capture(input)).toString('base64');

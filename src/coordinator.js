@@ -1,5 +1,6 @@
 import { randomUUID, createHash } from 'node:crypto';
-import { createRun, acceptEvent, claimTest, releaseTest, reportedExecution, joinWorker, finishWorker, retireWorkers, pauseRun } from './run.js';
+import { measuredDurations, fittedWorkers } from './balance.js';
+import { createRun, acceptEvent, claimTest, releaseTest, reportedExecution, joinWorker, finishWorker, retireWorkers, pauseRun, holdWorker } from './run.js';
 import { mapStack, sourceContext } from './stack.js';
 import { finishRunTimings, recordProjectCleanup, recordProjectPreparation } from './run-timings.js';
 import { projectOperation } from './project-operation.js';
@@ -15,7 +16,10 @@ let problem = (status, message) => Object.assign(new Error(message), { status })
 // catalog, assignment, resource and outcome state.
 export function createCoordinator(config, bundle, {
   workerIds = ['0'], onEvent = () => {}, onRun = async () => {}, onError = () => {}, rebuild, automatic = false,
+  idle = false,
 } = {}) {
+  // With autoRun off, the session's first run waits for the reporter to start it.
+  let holdFirstRun = idle;
   let runs = new Map(), bundles = new Map(), workers = new Map();
   let queues = new Map(), receipts = new Map(), drains = new Map(), preparations = new Map();
   let failedWorkers = new Set();
@@ -259,7 +263,7 @@ export function createCoordinator(config, bundle, {
     });
     return Object.freeze(Object.fromEntries(entries));
   };
-  let create = (snapshot, ids, managed, selected, runId = randomUUID(), seed = config.seed) => {
+  let create = (snapshot, ids, managed, selected, { runId = randomUUID(), seed = config.seed, durations } = {}) => {
     if (config.replay && JSON.stringify(snapshot.fingerprint) !== JSON.stringify(config.replay.source))
       throw new Error('The replay source fingerprint changed. Record a new schedule for these tests.');
     while (runs.size >= 20) {
@@ -269,8 +273,11 @@ export function createCoordinator(config, bundle, {
       for (let map of [runs, bundles, receipts, drains, preparations, progress, views, versions, retirements, coverage]) map.delete(finished.runId);
     }
     if (config.replay) selected = selection({ ids: config.replay.selected });
-    let run = Object.freeze({ ...createRun(runId, { seed, workers: ids, replay: config.replay }),
-      managed, selection: selected, source: snapshot.fingerprint, startedAt: new Date().toISOString() });
+    let waiting = holdFirstRun;
+    holdFirstRun = false;
+    let run = Object.freeze({ ...createRun(runId, { seed, workers: ids, replay: config.replay, waiting }),
+      managed, selection: selected, source: snapshot.fingerprint, startedAt: new Date().toISOString(), launched: Object.freeze([...workerIds]),
+      ...(durations ? { durations: Object.freeze({ ...durations }) } : {}) });
     bundles.set(runId, snapshot);
     if (config.coverage?.enabled) coverage.set(runId, createCoverageState());
     if (managed) {
@@ -286,7 +293,8 @@ export function createCoordinator(config, bundle, {
     publish(run);
     return run;
   };
-  let restart = (runId, selected, seed = config.seed) => {
+  // `count` runs the next pull on the first workers only; the rest stay parked.
+  let restart = (runId, selected, { seed = config.seed, count = workerIds.length, durations } = {}) => {
     requireOpen();
     if (restarting) throw problem(409, 'This browser run is already restarting.');
     if (runId !== managedRun) throw problem(409, 'This browser run was replaced.');
@@ -301,7 +309,7 @@ export function createCoordinator(config, bundle, {
       requireOpen();
       let snapshot = rebuild ? await rebuild() : bundle;
       requireOpen();
-      let run = create(snapshot, workerIds, true, selected, randomUUID(), seed);
+      let run = create(snapshot, workerIds.slice(0, count), true, selected, { seed, durations });
       primaryRun = run.runId;
       await Promise.all(run.workers.map(worker => workers.get(worker.id).lifecycle.open()));
       return run.runId;
@@ -322,7 +330,7 @@ export function createCoordinator(config, bundle, {
       await serialize(runId, () => {
         if (runs.get(runId)?.status !== 'completed') throw problem(409, 'Only a completed run can advance.');
       });
-      return restart(runId, runs.get(runId).selection, seed);
+      return restart(runId, runs.get(runId).selection, { seed });
     },
     lifecycle(workerId, lifecycle) {
       workers.set(workerId, { ...workers.get(workerId), lifecycle });
@@ -401,7 +409,7 @@ export function createCoordinator(config, bundle, {
         onEvent({ type: 'joining', runId, workerId, previousRunId: previousRunId ?? null });
         let joined = await control.join(runId, input.launchKey, input.previous);
         requireOpen();
-        if (!reuse) current = create(snapshot, managed ? workerIds : [workerId], managed, selection(input.selection), runId);
+        if (!reuse) current = create(snapshot, managed ? workerIds : [workerId], managed, selection(input.selection), { runId });
         current = joinWorker(current, workerId);
         publish(current);
         let primary = runs.get(primaryRun);
@@ -422,18 +430,40 @@ export function createCoordinator(config, bundle, {
       if (automatic && run.managed && ['rerun', 'reload'].includes(input.command))
         throw problem(409, 'Repeated runs control their own selection. Stop the CLI command before rerunning tests.');
       if (input.command === 'stop') abortPreparations(run.runId, new Error('Test run stopped.'));
+      // One worker: pausing holds it after its current test, and its next request
+      // for work waits. Continuing lifts the hold, which wakes that request.
+      if (['pause-worker', 'continue-worker'].includes(input.command)) {
+        let id = input.workerId ?? selected;
+        if (!run.workers.some(worker => worker.id === id)) throw problem(400, 'Unknown reporter worker.');
+        if (terminal(run)) throw problem(409, 'This run has finished. Start a new run to use this worker.');
+        publish(holdWorker(run, id, input.command === 'pause-worker'));
+        return Promise.resolve({ requestId: input.requestId });
+      }
       if (input.command === 'rerun' && run.replay) {
         if (input.ids.length && (input.ids.length !== run.replay.selected.length || input.ids.some(id => !run.replay.selected.includes(id))))
           throw problem(400, 'Queue replay uses its recorded selection. Start a regular run to select different tests.');
         input = { ...input, ids: run.replay.selected };
       }
+      if (input.workers !== undefined && (!Number.isSafeInteger(input.workers) || input.workers < 1 || input.workers > workerIds.length))
+        throw problem(400, `A run can use between 1 and ${workerIds.length} workers.`);
       if (input.command === 'rerun' && run.managed) {
-        restart(run.runId, selection({ ids: input.ids }));
+        // Auto fits the workers to the run's tests and timings; a chosen count
+        // still never exceeds the number of tests.
+        let durations = measuredDurations(runs.values());
+        let ids = input.ids.length ? input.ids : (run.catalog ?? run.tests).map(test => test.id);
+        let count = input.workers === undefined ? fittedWorkers(ids, durations, workerIds.length)
+          : Math.min(input.workers, ids.length || input.workers);
+        restart(run.runId, selection({ ids: input.ids }), { count, durations });
         return Promise.resolve({ requestId: input.requestId });
       }
       let global = ['pause', 'stop', 'rerun', 'pause-on-failure', 'reload'].includes(input.command) ||
         (input.command === 'continue' && run.paused);
       let ids = global ? run.workers.map(worker => worker.id) : [input.workerId ?? selected];
+      // Continuing also releases any per-worker hold on the workers it reaches.
+      if (input.command === 'continue' && !terminal(run) && run.workers.some(worker => ids.includes(worker.id) && worker.held)) {
+        for (let id of ids) run = holdWorker(run, id, false);
+        publish(run);
+      }
       if (ids.some(id => !run.workers.some(worker => worker.id === id))) throw problem(400, 'Unknown reporter worker.');
       let targets = ids.map(id => workers.get(id).control);
       if (targets.some(control => !control.connected(input.runId)))
@@ -452,6 +482,10 @@ export function createCoordinator(config, bundle, {
       };
       commands.set(requestId, { runId: run.runId, ids, replies: new Map(), ...completion, detach: () => deadline.removeEventListener('abort', expired) });
       deadline.addEventListener('abort', expired, { once: true });
+      // Dyno's own browser brings the inspected worker's app forward. A person's
+      // own browser focuses the app tab from the controller instead.
+      if (input.command === 'show-app')
+        for (let id of ids) workers.get(id).lifecycle?.reveal().catch(() => {});
       for (let control of targets) control.sendCommand({ ...input, requestId });
       return completion.promise;
     },
@@ -480,6 +514,7 @@ export function createCoordinator(config, bundle, {
           let previous = runs.get(input.runId);
           if (failedWorkers.has(workerId)) throw problem(409, 'Restart Dyno after execution preparation was interrupted or failed.');
           let claimed = claimTest(previous, { workerId, executionId: randomUUID(), requestedAt, now: performance.now() });
+          // A held worker waits like an idle one: until its hold lifts or the run is done.
           if (!claimed.assignment && !claimed.done && !claimed.run.paused) {
             pending = Promise.withResolvers();
             let listeners = waiters.get(input.runId) ?? new Set();
@@ -622,7 +657,9 @@ export function createCoordinator(config, bundle, {
         else publish(run);
         let reply = remember(run.runId, key, digest, JSON.stringify({ error: event?.error, additionalErrors: event?.additionalErrors,
           attachments: event?.attachments, remaining: run.tests.length - run.outcomes.length,
-          workRemaining: run.tests.filter(test => !test.skipReason && !run.outcomes.some(outcome => outcome.testId === test.id)).length }));
+          // Tests no worker has started. Started tests never move to another worker, so with none
+          // left this worker keeps its app open on the test it just finished.
+          queued: run.tests.filter(test => !test.skipReason && !run.assignments.some(assignment => assignment.testId === test.id)).length }));
         if (event) onEvent(event);
         return reply;
       });

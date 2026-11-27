@@ -374,6 +374,7 @@ export async function createGateway(
           url.hash = new URLSearchParams({ launch: key }).toString();
           return browser.open(url.href);
         },
+        reveal: () => browser.reveal(),
       });
     },
     reload: control.reload,

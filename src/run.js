@@ -1,3 +1,4 @@
+import { balancedOrder } from './balance.js';
 import { createHash } from 'node:crypto';
 import { validFailure, snapshotFailure } from './failures.js';
 import { testId, testDescriptor } from './suite.js';
@@ -38,8 +39,13 @@ let worker = (run, id) => {
   return found;
 };
 let text = (value) => typeof value === 'string' && value.trim() && value.length <= 256;
+// A registered test: where it lives, its name, its stable ID, and its order.
+let describesTest = (test) => Boolean(test) && typeof test.file === 'string' && Array.isArray(test.suites) &&
+  test.suites.every((name) => typeof name === 'string') && typeof test.name === 'string' &&
+  test.id === testId(test.file, test.suites, test.name) && Number.isInteger(test.index) && test.index >= 0;
 
-export function createRun(runId, { workers = ['0'], seed = null, replay = null } = {}) {
+// A waiting run has registered its tests but holds them until someone starts it.
+export function createRun(runId, { workers = ['0'], seed = null, replay = null, waiting = false } = {}) {
   if (!Array.isArray(workers) || !workers.length || workers.length > 32 ||
     workers.some((id) => !text(id)) || new Set(workers).size !== workers.length)
     throw new Error('A run needs between 1 and 32 unique worker IDs.');
@@ -53,7 +59,7 @@ export function createRun(runId, { workers = ['0'], seed = null, replay = null }
   }
   return freeze({ runId, status: 'captured', tests: list([]), outcomes: list([]),
     workers: list(workers.map((id) => freeze({ id, status: 'pending' }))),
-    seed, replay, priority: list([]), assignments: list([]), paused: false });
+    seed, replay, priority: list([]), assignments: list([]), paused: waiting, waiting });
 }
 
 export function joinWorker(run, workerId) {
@@ -92,10 +98,11 @@ export function claimTest(run, { workerId = '0', executionId, now = 0, requested
     .find((test) => !attempted.has(test.id) && (test.skipReason || test.resources.every((name) => !reserved.has(name))));
   let owned = run.assignments.filter(assignment => assignment.workerId === owner.id && active(assignment));
   // Skips enter no browser document. Record trailing skips while the reported
-  // real app stays reserved for inspection, but never overlap running work.
-  if (!run.paused && (owned.some(assignment => assignment.status === 'running') || (!next?.skipReason && owned.length)))
+  // real app stays reserved for inspection, but never overlap running work. With
+  // nothing left to start, a worker keeps its reported app and waits for the run to end.
+  if (!run.paused && (owned.some(assignment => assignment.status === 'running') || (next && !next.skipReason && owned.length)))
     throw new Error('Release the previous execution before requesting another test.');
-  if (!next || run.paused || run.workers.some((worker) => worker.status !== 'ready'))
+  if (!next || run.paused || owner.held || run.workers.some((worker) => worker.status !== 'ready'))
     return freeze({ run, assignment: null, done: run.outcomes.length === run.tests.length });
   let assignment = freeze({ id: executionId, workerId, testId: next.id,
     index: run.tests.indexOf(next), status: 'running', requestedAt, assignedAt: now,
@@ -125,9 +132,16 @@ export function retainExecution(run, { workerId = '0', executionId }) {
     ? freeze({ ...item, status: 'retained' }) : item)) });
 }
 
+// Holding one worker lets it finish its current test, then wait. The rest keep going.
+export function holdWorker(run, workerId, held) {
+  if (finished(run) || typeof held !== 'boolean') throw new Error('Cannot change worker admission.');
+  worker(run, workerId);
+  return freeze({ ...run, workers: list(run.workers.map((item) => item.id === workerId ? freeze({ ...item, held }) : item)) });
+}
+
 export function pauseRun(run, paused) {
   if (finished(run) || typeof paused !== 'boolean') throw new Error('Cannot change run admission.');
-  return freeze({ ...run, paused });
+  return freeze({ ...run, paused, waiting: paused && run.waiting });
 }
 
 export function acceptEvent(run, input, { receivedAt } = {}) {
@@ -161,21 +175,18 @@ export function acceptEvent(run, input, { receivedAt } = {}) {
       !input.tests.length ||
       input.tests.some(
         (test) =>
-          !test ||
-          typeof test.file !== 'string' ||
-          !Array.isArray(test.suites) || !test.suites.length ||
-          test.suites.some((name) => typeof name !== 'string' || !name.trim()) ||
-          typeof test.name !== 'string' ||
+          !describesTest(test) ||
+          !test.suites.length ||
+          test.suites.some((name) => !name.trim()) ||
           !test.name.trim() ||
-          test.id !== testId(test.file, test.suites, test.name) ||
-          !Number.isInteger(test.index) ||
-          test.index < 0 ||
           (test.skipReason != null && (typeof test.skipReason !== 'string' || !test.skipReason.trim())) ||
           (test.resources !== undefined && (!Array.isArray(test.resources) || test.resources.length > 32 ||
             test.resources.some((name) => !text(name) || name.length > 128) || new Set(test.resources).size !== test.resources.length))
       ) ||
       new Set(input.tests.map((test) => test.id)).size !== input.tests.length ||
-      new Set(input.tests.map((test) => test.index)).size !== input.tests.length
+      new Set(input.tests.map((test) => test.index)).size !== input.tests.length ||
+      (input.catalog !== undefined && (!Array.isArray(input.catalog) || input.catalog.length > 10000 ||
+        input.catalog.some((test) => !describesTest(test))))
     )
       throw new Error('Invalid run start.');
     let event = snapshotEvent(input);
@@ -193,12 +204,16 @@ export function acceptEvent(run, input, { receivedAt } = {}) {
         return a < b ? -1 : a > b ? 1 : left < right ? -1 : left > right ? 1 : 0;
       });
       if (run.replay) priority = run.replay.priority;
+      // Unseeded reruns start their longest tests first, from this session's timings.
+      else if (run.seed === null && run.durations) priority = balancedOrder(priority, run.durations);
     }
     return {
       run: Object.freeze({
         ...run,
         status: 'running',
         tests: run.tests.length ? run.tests : event.tests,
+        ...(run.catalog || !input.catalog ? {} : { catalog: list(input.catalog.map((test) =>
+          freeze({ id: test.id, file: test.file, suites: list([...test.suites]), name: test.name, index: test.index }))) }),
         priority: list(priority),
         workers: list(run.workers.map((item) => item === owner ? freeze({ ...item, status: 'ready' }) : item)),
         ...(typeof input.userAgent === 'string' ? { userAgent: input.userAgent } : {})
