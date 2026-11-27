@@ -4,7 +4,7 @@ import { access } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { resolve } from 'node:path';
 import { startProcess } from './process.js';
-import { browserNames, browserEngine, browserChannel } from './browsers.js';
+import { browserNames, browserEngine, browserChannel, chromiumFamily } from './browsers.js';
 import { nativeCapabilities } from './native.js';
 
 export async function resolveSession(browser, { headless = true } = {}) {
@@ -57,7 +57,7 @@ export async function createBrowserPool(plan, { size = 1, signal, onExit = () =>
   let executable = plan.path ? { executablePath: plan.path } : { channel };
   let shell = plan.name === 'chromium' && plan.headless && !plan.path;
   let limitedCaptureHeight = process.platform === 'darwin' &&
-    ['chromium', 'chrome', 'edge'].includes(plan.name) && !shell;
+    chromiumFamily(plan.name) && !shell;
   try { server = await browserEngine(plan.name).launchServer({
     headless: plan.headless,
     args: plan.args,
@@ -199,6 +199,8 @@ export async function createBrowserPool(plan, { size = 1, signal, onExit = () =>
               screenshot: true,
               fullPage: true,
               hostViewport: true,
+              // Playwright treats its pages as focused, so the app never needs window.focus().
+              emulatedFocus: true,
               native: nativeCapabilities(plan.name),
             }),
             open: (url) => call('open', { url }),

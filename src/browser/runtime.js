@@ -147,9 +147,13 @@ export async function boot() {
       }
       if (message.kind === 'app-ready' && appWindow.__browserTestBridge?.id === message.id) {
         state = Object.freeze({ ...state, readyDocument: appWindow.document, readyId: message.id });
-        try {
-          appWindow.focus();
-        } catch {}
+        // Dyno's browsers emulate focus, and focusing a window there would take
+        // focus from whatever the person is doing. A person's own browser shows the app.
+        if (!parent.__dynoController?.capabilities?.emulatedFocus) {
+          try {
+            appWindow.focus();
+          } catch {}
+        }
         send('context', { documentId: message.id });
         send('location', {
           index,

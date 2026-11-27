@@ -3,6 +3,7 @@ import { normalizeViewport } from './viewport.js';
 import { selectTests } from './suite-model.js';
 import { liveChange } from './reporting.js';
 import { createBrowserCoverage } from './coverage.js';
+import { acceptAppConnections, channelFor } from './companion.js';
 
 let root = '/__dyno__/';
 let id = () => [...crypto.getRandomValues(new Uint32Array(4))].join('-');
@@ -19,6 +20,7 @@ let operationQueue = Promise.resolve();
 let appWindow = window.opener;
 if (!appWindow || appWindow.closed || appWindow.location.origin !== location.origin)
   throw new Error('Open the Dyno start URL to connect an application tab.');
+acceptAppConnections(window.name, appWindow);
 let overlay = (kind, extra = {}) => {
   if (!appWindow.closed)
     appWindow.postMessage({ channel: 'dyno-overlay', kind, runId, ...extra }, location.origin);
@@ -598,14 +600,15 @@ async function parkDocument(executionId, timeout) {
   let requestId = id();
   let pending = Promise.withResolvers();
   let deadline = AbortSignal.any([controller.signal, AbortSignal.timeout(timeout)]);
-  let receive = (event) => {
+  // The request ID is new for every park, so only this park page can answer it.
+  let channel = channelFor(window.name);
+  channel.onmessage = (event) => {
     let message = event.data;
-    if (event.origin === location.origin && event.source === appWindow && message?.channel === 'dyno-park' &&
-      message.runId === runId && message.executionId === executionId && message.requestId === requestId)
+    if (message?.kind === 'parked' && message.runId === runId && message.executionId === executionId &&
+      message.requestId === requestId)
       pending.resolve();
   };
   let abort = () => pending.reject(new Error('The app document did not stop before worker cleanup.', { cause: deadline.reason }));
-  window.addEventListener('message', receive);
   deadline.addEventListener('abort', abort, { once: true });
   try {
     deadline.throwIfAborted();
@@ -615,7 +618,7 @@ async function parkDocument(executionId, timeout) {
     appWindow.location.replace(root + 'park?request=' + encodeURIComponent(requestId));
     await pending.promise;
   } finally {
-    window.removeEventListener('message', receive);
+    channel.close();
     deadline.removeEventListener('abort', abort);
   }
 }

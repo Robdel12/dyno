@@ -1,46 +1,57 @@
 import { captureConsole } from './console.js';
-import { readAppBinding, appController, appRuntime } from './companion.js';
+import { readAppBinding, connectController, appRuntime } from './companion.js';
 import { createAppCoverage } from './coverage.js';
 
 // Diagnostics and the reporter live here; the test bundle stays in its own runtime.
 (() => {
   let binding = readAppBinding(window.name);
-  let controller = appController(window, binding);
-  if (!controller || !appRuntime(controller, binding)) return;
+  if (!binding) return;
   let id = [...crypto.getRandomValues(new Uint32Array(4))].join('-');
-  let send = (kind, extra = {}) =>
-    appRuntime(controller, binding)?.postMessage(
-      {
-        channel: 'dyno',
-        kind,
-        id,
-        name: binding.appName,
-        runId: binding.runId,
-        executionId: binding.executionId,
-        ...extra
-      },
-      location.origin
-    );
-  let relay = (message) => controller.postMessage(message, location.origin);
+  // Decided now, while this head script runs: the controller can answer once
+  // the document is interactive but before its module scripts have run.
+  let parsed = new Promise((resolve) => {
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', resolve, { once: true });
+    else resolve();
+  });
+  // App output and errors can happen before the controller answers; they wait
+  // here. A page left over from an earlier run never connects, so the wait is capped.
+  let controller;
+  let queued = [];
+  let queueLimit = 100;
+  let deliver = (message) => appRuntime(controller, binding)?.postMessage(message, location.origin);
+  let send = (kind, extra = {}) => {
+    let message = { channel: 'dyno', kind, id, name: binding.appName, runId: binding.runId,
+      executionId: binding.executionId, ...extra };
+    if (controller) deliver(message);
+    else if (queued.length < queueLimit) queued.push(message);
+  };
+  let relay = (message) => controller?.postMessage(message, location.origin);
   let inspect = () => {
     if (!disconnected)
       relay({ channel: 'dyno-reporter', kind: 'command', command: 'inspect', runId: binding.runId });
   };
   let stopOutput = captureConsole(console, (entries) => send('app-output', { entries }));
-  let coverage = controller.__dynoCoverage && !location.pathname.startsWith('/__dyno__/')
-    ? createAppCoverage(window, controller, binding, id) : undefined;
-  window.__browserTestBridge = Object.freeze({
-    id,
-    name: binding.appName,
-    runId: binding.runId,
-    executionId: binding.executionId,
-    stopOutput,
-    ...(coverage ? { snapshotCoverage: coverage.snapshot } : {})
-  });
-  if (coverage) {
-    coverage.register();
-    window.addEventListener('pagehide', coverage.snapshot);
-  }
+  let connect = (found) => {
+    if (!appRuntime(found, binding)) return;
+    controller = found;
+    let coverage = controller.__dynoCoverage && !location.pathname.startsWith('/__dyno__/')
+      ? createAppCoverage(window, controller, binding, id) : undefined;
+    window.__browserTestBridge = Object.freeze({
+      id,
+      name: binding.appName,
+      runId: binding.runId,
+      executionId: binding.executionId,
+      stopOutput,
+      ...(coverage ? { snapshotCoverage: coverage.snapshot } : {})
+    });
+    if (coverage) {
+      coverage.register();
+      window.addEventListener('pagehide', coverage.snapshot);
+    }
+    for (let message of queued) deliver(message);
+    queued = [];
+    parsed.then(ready);
+  };
   let serialize = (error) => ({ message: error?.message ?? String(error), stack: error?.stack });
   window.addEventListener(
     'error',
@@ -206,7 +217,6 @@ import { createAppCoverage } from './coverage.js';
     present();
     send('app-ready');
   };
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', ready, { once: true });
-  else ready();
   send('app-init');
+  connectController(window, binding).then(connect);
 })();
