@@ -5,7 +5,7 @@ export default async({config})=>{
   let arrivals=[], drains=[];
   let both=Promise.withResolvers();
   let entered=Promise.withResolvers(),release=Promise.withResolvers();
-  let closeAllowed=Promise.withResolvers();
+  let closeAllowed=Promise.withResolvers(),atClose=Promise.withResolvers(),closeArrivals=0;
   let drain=async({workerId,test})=>{
     drains.push({worker:workerId,name:test.name});
     if(test.name==='Reserved first'){entered.resolve();await release.promise;}
@@ -27,7 +27,10 @@ export default async({config})=>{
         }else if(request.url==='/release-drain'){
           release.resolve();response.end('released');
         }else if(request.url==='/allow-close'){
+          if(++closeArrivals===2)atClose.resolve();
           await closeAllowed.promise;response.end('close allowed');
+        }else if(request.url==='/close-entered'){
+          await atClose.promise;response.end('both waiting');
         }else if(request.url==='/release-close'){
           closeAllowed.resolve();response.end('released');
         }else if(request.url==='/save'){
