@@ -121,12 +121,12 @@ test('keeps the current app available for inspection', async ({ app, I }) => {
       await UI.find('$(#test-search)').visible();
       await UI.find('$(#test-search)').value('actual assertion');
       await UI.find('$(#test-search)').then.press('Delete', { replace: true });
-      await UI.click('"Failed"$(button[data-filter])');
+      await UI.click('$(button[data-filter=failed])');
       await UI.assert(
         () =>
           [...document.querySelectorAll('#results [data-test-id]')].filter((row) => !row.hidden).length === 1
       );
-      await UI.click('"All"$(button[data-filter])');
+      await UI.click('$(button[data-filter=all])');
       await UI.click('$(a[aria-label="Passed: keeps the current app available for inspection"])');
       await UI.click('Application');
       await UI.find('$(#viewport)').value(originalViewport.width + 'x' + originalViewport.height);
@@ -359,15 +359,17 @@ test('another workflow', async ({app,I})=>{
       let location=reporter.contentWindow.location;
       await UI.find('$(.group-heading h2)').text('tests/browser/workflow.test.js');
       await UI.find('$(.suite-heading h3)').text('Workflow › Contacts');
-      await UI.find('$(#connection-state)').text('Connected to test browser');
-      await UI.find('$(#capabilities)').text('Screenshots available');
-      await UI.click('"Skipped"$(button[data-filter])');
+      // A healthy, screenshot-capable session keeps the status row quiet.
+      await UI.assert(()=>document.querySelector('#connection-state').hidden && document.querySelector('#capabilities').hidden,
+        'Expected no status notes for a connected browser that can take screenshots');
+      await UI.find('$(button[data-filter=skipped] .filter-count)').text('1');
+      await UI.click('$(button[data-filter=skipped])');
       await UI.click('$(a[aria-label="Skipped: later"])');
       await UI.assert(()=>location.hash.includes('status=skipped') && location.hash.includes(encodeURIComponent(JSON.stringify(['tests/browser/workflow.test.js','Workflow','Contacts','later']))));
       await UI.find('Skipped: Skipped').visible();
       await UI.click('All tests');
       await UI.assert(()=>document.querySelector('button[data-filter=skipped]').getAttribute('aria-pressed')==='true');
-      await UI.click('"All"$(button[data-filter])');
+      await UI.click('$(button[data-filter=all])');
       await fetch('/api/inspection',{method:'POST',body:JSON.stringify({ok:true})});
       await UI.click('$(button[aria-label="Run suite Workflow › Contacts in tests/browser/workflow.test.js"])');
     }catch(error){await fetch('/api/inspection',{method:'POST',body:JSON.stringify({error:error.message})});}
