@@ -218,10 +218,60 @@ test('manual reporter resize failures can be retried and controller loss disable
   let controller = app.context().pages().find(page => new URL(page.url()).pathname === '/__dyno__/controller');
   assert.ok(controller);
   await controller.close();
-  await reporter.getByText('Test browser disconnected. Reopen its execution URL.', { exact: true }).waitFor();
+  await reporter.getByText('The test browser disconnected. Restart Dyno or reopen its URL to reconnect.', { exact: true }).waitFor();
   assert.equal(await reporter.getByRole('button', { name: 'Run test', exact: true }).isDisabled(), true);
   assert.equal(await reporter.getByRole('button', { name: 'Try again', exact: true }).isDisabled(), true);
   await reporter.goto(new URL('/__dyno__/reporter', url).href);
   await reporter.getByRole('heading', { name: 'The run could not finish', exact: true }).waitFor();
   await reporter.getByText('Open a reporter URL from an active Dyno run.', { exact: true }).waitFor();
+});
+
+test('a session with autoRun off waits until a test is started from its reporter row', { timeout: 90000 }, async t => {
+  let fixture = await project(t, { config: { ...interactive, autoRun: false }, source: `describe('Waiting', () => {
+    test('first', async ({app, I}) => { await app.goto('/'); await I.find('Fixture app').visible(); });
+    test('second', () => {});
+  });` });
+  let session = fixture.run(['--ui']);
+  let ready = await session.waitForEvent('ready');
+  assert.equal(ready.idle, true);
+  let start = await session.waitForEvent('start');
+  assert.equal(start.tests.length, 2);
+  let page = await openURL(t, new URL('/__dyno__/reporter?run=' + encodeURIComponent(start.runId), ready.url).href);
+  await page.getByRole('heading', { name: 'Ready to run' }).waitFor();
+  await page.getByText('2 tests are ready.', { exact: false }).waitFor();
+  assert.equal(await page.getByRole('button', { name: 'Stop run' }).isVisible(), false);
+  assert.equal(session.events.some(event => event.type === 'test'), false);
+  await page.getByRole('button', { name: 'Run test second' }).click();
+  let complete = await session.waitForEvent('complete');
+  assert.deepEqual([complete.passed, complete.failed, complete.skipped], [1, 0, 0]);
+  assert.deepEqual(session.events.filter(event => event.type === 'test').map(event => event.name), ['second']);
+});
+
+test('picking tests with checkboxes runs exactly that selection', { timeout: 90000 }, async t => {
+  let fixture = await project(t, { config: { ...interactive, autoRun: false }, source: `describe('Picking', () => {
+    test('alpha', () => {});
+    test('beta', () => {});
+    test('gamma', () => {});
+  });` });
+  let session = fixture.run(['--ui']);
+  let ready = await session.waitForEvent('ready');
+  let start = await session.waitForEvent('start');
+  let page = await openURL(t, new URL('/__dyno__/reporter?run=' + encodeURIComponent(start.runId), ready.url).href);
+  await page.getByRole('heading', { name: 'Ready to run' }).waitFor();
+  await page.getByRole('checkbox', { name: 'Select alpha' }).check();
+  await page.getByRole('checkbox', { name: 'Select gamma' }).check();
+  assert.equal(await page.getByRole('checkbox', { name: 'Select every test in Picking' }).evaluate(input => input.indeterminate), true);
+  await page.getByText('2 tests selected', { exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Run selected' }).click();
+  let complete = await session.waitForEvent('complete');
+  assert.equal(complete.passed, 2);
+  assert.deepEqual(session.events.filter(event => event.type === 'test').map(event => event.name).sort(), ['alpha', 'gamma']);
+  // The rest of the suite stays listed, quietly, and can still run.
+  let ran = page;
+  await ran.locator('a[aria-label="Not in this run: beta"]').waitFor();
+  await ran.getByText('2 of 3', { exact: true }).waitFor();
+  let before = session.events.length;
+  await ran.getByRole('button', { name: 'Run test beta' }).click();
+  await session.waitForEvent('complete', event => session.events.indexOf(event) >= before);
+  assert.equal(session.events.slice(before).filter(event => event.type === 'test').map(event => event.name).join(), 'beta');
 });

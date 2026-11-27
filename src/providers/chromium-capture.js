@@ -2,23 +2,10 @@ import { randomUUID } from 'node:crypto';
 
 // A real debugger pause preserves queued app callbacks. Disabling scripts drops
 // them; freezing the page instead emits application lifecycle events.
-export function createChromiumCapture({ context, page, plan, close }) {
+export function createChromiumCapture({ page, plan, close, emulation }) {
   let client;
-  let resize = async viewport => {
-    if (!client) return;
-    await client.send('Emulation.setDeviceMetricsOverride', {
-      ...viewport,
-      mobile: plan.isMobile ?? false,
-      deviceScaleFactor: plan.deviceScaleFactor ?? 1,
-      screenWidth: viewport.width,
-      screenHeight: viewport.height,
-      screenOrientation: plan.isMobile && viewport.width > viewport.height
-        ? { angle: 90, type: 'landscapePrimary' }
-        : { angle: 0, type: plan.isMobile ? 'portraitPrimary' : 'landscapePrimary' },
-    });
-  };
   let capture = async ({ clip } = {}) => {
-    client ??= await context.newCDPSession(page);
+    client ??= await emulation.session(page);
     let paused;
     let stopped = Promise.withResolvers();
     let observed = event => { paused = event; stopped.resolve(event); };
@@ -46,7 +33,7 @@ export function createChromiumCapture({ context, page, plan, close }) {
       let viewport = page.viewportSize();
       // Device emulation belongs to a CDP session. Match the SDK's current
       // viewport here so capture cannot reset its pixel ratio or screen size.
-      await resize(viewport);
+      await emulation.apply(page, viewport);
       let { cssContentSize } = await send('Page.getLayoutMetrics');
       let size = {
         width: Math.ceil(Math.max(viewport.width, cssContentSize.width)),
@@ -93,5 +80,5 @@ export function createChromiumCapture({ context, page, plan, close }) {
       if (interrupted) throw new Error('Application execution resumed or navigated during screenshot.');
     }
   };
-  return Object.freeze({ capture, resize });
+  return Object.freeze({ capture });
 }

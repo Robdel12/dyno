@@ -4,8 +4,9 @@ import {reporterRoute,reporterHref,selectedTest,reporterGroups} from '../../src/
 
 test('reporter links preserve stable identity and search across navigation and reject malformed paths',()=>{
   let id=JSON.stringify(['tests/a.test.js','Contacts / archived','saves café']);
-  let route={page:'test',id,tab:'app',query:'Rob & Co',filter:'failed'};
+  let route={page:'test',id,tab:'app',query:'Rob & Co',filter:'failed',worker:''};
   assert.deepEqual(reporterRoute(reporterHref(route)),route);
+  assert.equal(reporterRoute(reporterHref({...route,worker:'2'})).worker,'2');
   assert.equal(selectedTest({route,tests:[{id:'different',index:0},{id,index:99}]}).index,99);
   assert.equal(reporterRoute('#/tests/%ZZ/output').page,'missing');
   assert.equal(reporterRoute('#/tests/a/unknown').page,'missing');
