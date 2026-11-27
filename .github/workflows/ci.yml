@@ -43,7 +43,6 @@ jobs:
 
   package:
     name: Package install / Node 26
-    needs: checks
     runs-on: ubuntu-latest
     timeout-minutes: 5
     container:
@@ -63,10 +62,9 @@ jobs:
           artifact: package-node-26
 
   browser:
-    name: ${{ matrix.suite }} / Linux / ${{ matrix.engine }}
-    needs: checks
+    name: ${{ matrix.suite.name }} / Linux / ${{ matrix.engine }}
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     container:
       image: mcr.microsoft.com/playwright:v1.64.1-noble@sha256:47b510dd9230bf0b9bfc9b20102241e577ea7a99334ab4c3ca19f19770e9b8ea
       options: --user pwuser --init --ipc=host
@@ -74,7 +72,12 @@ jobs:
       fail-fast: false
       matrix:
         engine: [chromium, firefox, webkit]
-        suite: [browser, execution, repeat, project, reporter, capture, native]
+        # The small suites share a job, since each one alone is mostly setup time.
+        suite:
+          - { name: browser, run: browser }
+          - { name: execution, run: execution }
+          - { name: reporter, run: reporter }
+          - { name: project + native + repeat + capture, run: 'project,native,repeat,capture', artifact: other }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -82,21 +85,26 @@ jobs:
       - uses: ./.github/actions/setup
       - uses: ./.github/actions/test
         with:
-          suite: ${{ matrix.suite }}
+          suite: ${{ matrix.suite.run }}
           browser: ${{ matrix.engine }}
-          artifact: ${{ matrix.suite }}-linux-${{ matrix.engine }}
+          artifact: ${{ matrix.suite.artifact || matrix.suite.run }}-linux-${{ matrix.engine }}
 
   browser-macos:
-    name: ${{ matrix.suite }} / macOS / ${{ matrix.engine }}
-    needs: checks
+    name: ${{ matrix.suite.name }} / macOS / ${{ matrix.engine }}
     runs-on: macos-latest
-    # macOS Firefox already runs the browser and execution suites in about 4.5 minutes.
     timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
-        engine: [chromium, firefox, webkit]
-        suite: [browser, execution, repeat, project, reporter, capture, native]
+        # Firefox runs on Linux only. The free plan runs five macOS jobs at a time, and
+        # macOS Firefox took 42% of that time without covering macOS-specific code.
+        engine: [chromium, webkit]
+        # The small suites share a job, since each one alone is mostly setup time.
+        suite:
+          - { name: browser, run: browser }
+          - { name: execution, run: execution }
+          - { name: reporter, run: reporter }
+          - { name: project + native + repeat + capture, run: 'project,native,repeat,capture', artifact: other }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -109,9 +117,9 @@ jobs:
         run: node bin/dyno.js install --browser "$DYNO_ENGINE"
       - uses: ./.github/actions/test
         with:
-          suite: ${{ matrix.suite }}
+          suite: ${{ matrix.suite.run }}
           browser: ${{ matrix.engine }}
-          artifact: ${{ matrix.suite }}-macos-${{ matrix.engine }}
+          artifact: ${{ matrix.suite.artifact || matrix.suite.run }}-macos-${{ matrix.engine }}
 
   docs:
     name: Documentation

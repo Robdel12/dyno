@@ -2,7 +2,7 @@ name: Run Dyno tests
 description: Run one suite and retain its console and JUnit output.
 inputs:
   suite:
-    description: core, browser, execution, repeat, project, reporter, package, capture, or native.
+    description: core, browser, execution, repeat, project, reporter, package, capture, or native. Join several with commas.
     required: true
   browser:
     description: Playwright engine for browser suites.
@@ -33,6 +33,20 @@ runs:
           command=(dbus-run-session -- "${command[@]}")
         fi
         "${command[@]}" 2>&1 | tee test-results/output.log
+    # A red job names its failing tests on the run's summary page.
+    - name: Summarize failures
+      if: ${{ failure() }}
+      shell: bash
+      env:
+        DYNO_TEST_SUITE: ${{ inputs.suite }}
+        DYNO_TEST_BROWSER: ${{ inputs.browser }}
+      run: |
+        {
+          echo "### $DYNO_TEST_SUITE / $RUNNER_OS / $DYNO_TEST_BROWSER"
+          echo '```'
+          sed -n '/^✖ failing tests:/,$p' test-results/output.log | grep -E '^(test at |✖ )' | grep -v '^✖ failing tests:' | head -40 || true
+          echo '```'
+        } >> "$GITHUB_STEP_SUMMARY"
     - name: Upload test results
       if: ${{ always() && !cancelled() }}
       uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
