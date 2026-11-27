@@ -6,15 +6,15 @@
 
 | Suite | Command | CI coverage |
 | --- | --- | --- |
-| Core | `npm run test:core` | CLI errors, immutable state, cleanup, and proxy transforms on Linux Node 24/26 and macOS Node 24; no browser needed |
+| Core | `npm run test:core` | CLI errors, immutable state, cleanup, and proxy transforms on Node 24 and 26; no browser needed |
 | Package | `npm run test:package` | Fresh npm and pnpm 11 tarball installs, checkout installs, types, init, and a real Chromium test on Node 26 |
-| Browser | `npm run test:browser -- firefox` | Real app, gateway, viewport, and process workflows in Chromium, Firefox, and WebKit on Linux, and Chromium and WebKit on macOS, using Node 24 |
-| Execution | `npm run test:execution -- firefox` | Native concurrency, ownership, queue replay, seeded order, suite hooks, cleanup, pause, watch and replacement workflows in all three engines on Linux, and Chromium and WebKit on macOS |
-| Repeat | `npm run test:repeat -- firefox` | Repeated selections, seeded batches, resource reuse, cancellation and cleanup in all three engines on Linux, and Chromium and WebKit on macOS |
-| Project | `npm run test:project -- firefox` | Project setup, fixture calls, and per-test preparation in all three engines on Linux, and Chromium and WebKit on macOS |
-| Reporter | `npm run test:reporter -- firefox` | Inspection, output, timings, reruns, and portable saved reports in all three engines on Linux, and Chromium and WebKit on macOS |
-| Native | `npm run test:native -- firefox` | Native defaults, capabilities, state restoration, dialogs, diagnostics, and cancellation in all three engines on Linux, and Chromium and WebKit on macOS |
-| Capture | `npm run test:capture` | Actual pixels and capture lifecycle in Chromium, Firefox, and WebKit on Linux, and Chromium and WebKit on macOS, using Node 24 |
+| Browser | `npm run test:browser -- firefox` | Real app, gateway, viewport, and process workflows in Chromium, Firefox, and WebKit, using Node 24 |
+| Execution | `npm run test:execution -- firefox` | Native concurrency, ownership, queue replay, seeded order, suite hooks, cleanup, pause, watch and replacement workflows in all three engines |
+| Repeat | `npm run test:repeat -- firefox` | Repeated selections, seeded batches, resource reuse, cancellation and cleanup in all three engines |
+| Project | `npm run test:project -- firefox` | Project setup, fixture calls, and per-test preparation in all three engines |
+| Reporter | `npm run test:reporter -- firefox` | Inspection, output, timings, reruns, and portable saved reports in all three engines |
+| Native | `npm run test:native -- firefox` | Native defaults, capabilities, state restoration, dialogs, diagnostics, and cancellation in all three engines |
+| Capture | `npm run test:capture` | Actual pixels and capture lifecycle in Chromium, Firefox, and WebKit, using Node 24 |
 
 `npm test` runs every suite locally with Chromium. Install its browser build with `node bin/dyno.js install`. Pass an engine name to select another target:
 
@@ -25,7 +25,7 @@ npm run test:browser -- firefox
 
 Tests live under `tests/core`, `tests/package`, `tests/browser`, `tests/execution`, `tests/repeat`, `tests/project`, `tests/reporter`, `tests/capture`, and `tests/native`. The runner discovers every `.test.js` file in the selected directory and rejects test files outside these suites. Keep browser-free checks in core and browser workflows in the relevant feature suite. Tests use real CLI, server, and Playwright browser boundaries; these groups only decide where they run.
 
-Every job starts at once, including core checks, actionlint, and documentation. Browser, execution, and reporter suites each get their own job. Project, native, repeat, and capture share one job per OS and engine, since on its own each is mostly setup time. Browser jobs have a ten-minute limit, including setup; core, package, and documentation jobs have five. Firefox runs on Linux only: the free plan runs five macOS jobs at a time, and macOS Firefox took the largest share of that time without covering macOS-specific code. A failed job lists its failing tests on the run's summary page. Browser and execution suites run up to three files at once, each with its own app, gateway, browser profiles, and fixtures. Tests within a file and all other suites run sequentially. The macOS process-group check runs once in core. There are no retries or extra sleeps.
+CI runs on Linux only. Every job starts at once, including core checks, actionlint, and documentation. Each engine gets two jobs: browser and execution, then reporter, project, native, repeat, and capture together, since on its own each smaller suite is mostly setup time. Browser jobs have a ten-minute limit, including setup; core, package, and documentation jobs have five. A failed job lists its failing tests on the run's summary page. Browser and execution run up to three files at once, each with its own app, gateway, browser profiles, and fixtures. Tests within a file and all other suites run sequentially. There are no retries or extra sleeps.
 
 ## Results and setup
 
@@ -35,7 +35,7 @@ Each test job uploads `output.log` and `results.xml` under its own artifact name
 
 Shared actions in `.github/actions` install Node/dependencies and run/report a suite. Official actions are pinned to commit SHAs. The workflow has read-only repository access, doesn't persist checkout credentials, and uses ordinary pull-request events for contributions from forks.
 
-Linux browser and package jobs use the official Playwright Noble image, which includes browsers and system dependencies. Keep its version aligned with `playwright-core` in `package.json`; those jobs don't download browser builds. macOS jobs install the matching engine because Linux containers cannot verify macOS behavior. The image runs as `pwuser`, matching the hosted workspace owner so Firefox can start without a home-directory ownership conflict. Linux tests supply a D-Bus session and a virtual display for headed interactive workflows. WebKit CI coverage does not establish Safari behavior. See [browser setup](browsers.md) for known limits.
+Linux browser and package jobs use the official Playwright Noble image, which includes browsers and system dependencies. Keep its version aligned with `playwright-core` in `package.json`; those jobs don't download browser builds. The image runs as `pwuser`, matching the hosted workspace owner so Firefox can start without a home-directory ownership conflict. Linux tests supply a D-Bus session and a virtual display for headed interactive workflows. CI doesn't run on macOS, so macOS-only behavior (window fitting, focus, and the process-group check in core) is checked when you run the suites locally on a Mac. WebKit CI coverage does not establish Safari behavior. See [browser setup](browsers.md) for known limits.
 
 Product runs also write `.dyno/reports/<run-id>/`. Upload the whole folder for portable HTML, or give `junit.xml` to a test-results consumer. Set `reportImages: true` to include PNGs in the portable folder. `run.json` uses an explicit schema version and marks interrupted runs and tests without results. These are separate from the Node test runner's own CI output.
 

@@ -40,7 +40,8 @@ if (needsBrowser) {
   environment.DYNO_CAPTURE_BROWSER = browser;
 }
 // Each browser file owns its app, gateway, profiles, and fixture directory.
-let args = ['--test', `--test-concurrency=${['browser', 'execution'].includes(suite) ? 3 : 1}`, '--test-reporter=spec'];
+let concurrent = selected.every(name => ['browser', 'execution'].includes(name));
+let args = ['--test', `--test-concurrency=${concurrent ? 3 : 1}`, '--test-reporter=spec'];
 if (process.env.DYNO_TEST_REPORT_DIR) {
   let directory = resolve(root, process.env.DYNO_TEST_REPORT_DIR);
   await mkdir(directory, { recursive: true });
