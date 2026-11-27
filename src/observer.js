@@ -78,6 +78,7 @@ export function createObserver(response, reserve) {
     if (controller.signal.aborted) return;
     queuedBytes += Buffer.byteLength(message);
     if (commands.length >= 32 || queuedBytes > 1_000_000) {
+      close();
       response.destroy();
       return;
     }
