@@ -98,8 +98,9 @@ export function claimTest(run, { workerId = '0', executionId, now = 0, requested
     .find((test) => !attempted.has(test.id) && (test.skipReason || test.resources.every((name) => !reserved.has(name))));
   let owned = run.assignments.filter(assignment => assignment.workerId === owner.id && active(assignment));
   // Skips enter no browser document. Record trailing skips while the reported
-  // real app stays reserved for inspection, but never overlap running work.
-  if (!run.paused && (owned.some(assignment => assignment.status === 'running') || (!next?.skipReason && owned.length)))
+  // real app stays reserved for inspection, but never overlap running work. With
+  // nothing left to start, a worker keeps its reported app and waits for the run to end.
+  if (!run.paused && (owned.some(assignment => assignment.status === 'running') || (next && !next.skipReason && owned.length)))
     throw new Error('Release the previous execution before requesting another test.');
   if (!next || run.paused || owner.held || run.workers.some((worker) => worker.status !== 'ready'))
     return freeze({ run, assignment: null, done: run.outcomes.length === run.tests.length });

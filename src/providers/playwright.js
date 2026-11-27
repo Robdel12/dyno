@@ -141,13 +141,22 @@ export async function open(browser, plan, viewport, onExit, onDiagnostic = () =>
         // The companion window stays open on a blank page for the next run.
         if (url !== new URL('/__dyno__/blank', page.url()).href)
           throw new Error('Retire requires the owned app gateway blank URL.');
+        let blank = (candidate) => candidate.goto(url, { waitUntil: 'load', timeout: 15000 });
+        // Restart tests reloads the controller itself, and that reload can cancel ours. Closing the
+        // companion still ends its document; the next run opens a new one.
+        let companionBlank = async (candidate) => {
+          try { await blank(candidate); }
+          catch { await candidate.close(); }
+        };
         let others = context.pages().filter((candidate) => candidate !== page && candidate !== companion);
         let results = await Promise.allSettled([
           ...others.map((candidate) => candidate.close()),
-          ...[...liveCompanions(), page].map((candidate) => candidate.goto(url, { waitUntil: 'load', timeout: 15000 })),
+          ...liveCompanions().map(companionBlank),
+          blank(page),
         ]);
         let failures = results.filter((result) => result.status === 'rejected').map((result) => result.reason);
-        if (failures.length) throw new AggregateError(failures, 'Could not retire browser documents.');
+        if (failures.length)
+          throw new AggregateError(failures, `Could not retire browser documents: ${failures.map((failure) => failure.message).join('; ')}`);
       },
       resize: async (size) => {
         await raise();

@@ -47,7 +47,7 @@ The bundle loads test modules one at a time. Each file registers its own definit
 
 `run.js` keeps the test catalog, priority, workers, assignments, and accepted results in immutable state. Before starting a test, hosts request an execution ID. Results must match the worker, execution, and stable test ID. They can arrive out of order; reports keep catalog order. Workers must register matching catalogs before receiving work. One coordinator handles any worker count, with a private browser context, gateway, and project resources per worker.
 
-Tests declare the resources they need. Dyno reserves the whole set together and keeps it after accepting the result. Before taking another assignment, the host removes the test runtime, parks the app on a blank document, and waits for project cleanup. The controller and project storage survive. A failed or timed-out drain stops new assignments without changing accepted results. The final app can stay open for inspection; its assignment stays marked as retained, and its project work still drains before saving.
+Tests declare the resources they need. Dyno reserves the whole set together and keeps it after accepting the result. Before taking another assignment, the host removes the test runtime, parks the app on a blank document, and waits for project cleanup. The controller and project storage survive. A failed or timed-out drain stops new assignments without changing accepted results. A worker with no test left to start keeps its last app open for inspection instead, so after a run every worker's Show app still shows its final test. Those assignments stay marked as retained, and their project work still drains before saving. The next run parks them before it starts.
 
 ## State and windows
 
