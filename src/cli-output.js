@@ -1,4 +1,4 @@
-import { styleText } from 'node:util';
+import { styleText, stripVTControlCharacters } from 'node:util';
 import metadata from '../package.json' with { type: 'json' };
 import { initialTerminal, terminalStep } from './output/terminal.js';
 import { initialLLM, llmStep } from './output/llm.js';
@@ -33,7 +33,10 @@ function commandLines(event, paint) {
 export function createCLIOutput({ format = 'terminal', stdout = process.stdout, stderr = process.stderr, cwd = process.cwd() }) {
   let json = format === 'json';
   let closed = new Set();
-  let write = (stream, text) => { if (!closed.has(stream)) stream.write(text); };
+  // Agents read --llm output as text, so color codes and terminal hyperlinks
+  // from project output and errors never reach it.
+  let plain = format === 'llm' ? stripVTControlCharacters : text => text;
+  let write = (stream, text) => { if (!closed.has(stream)) stream.write(plain(text)); };
   let line = (text) => write(stdout, text + '\n');
   let log = (text) => write(stderr, text + '\n');
   let reporter = reporters[format];

@@ -6,7 +6,7 @@ import {
   plural, displayPath, tally, errorsOf, extraFrames, codeFrame, codeLanguage, browserName, coverageText, coverageScope,
   attachmentText,
 } from './format.js';
-import { out as rawOut, err as rawErr, withRun, withoutRun } from './state.js';
+import { out, err, withRun, withoutRun } from './state.js';
 
 // The agent reporter. Plain Markdown with no color, no progress, and no
 // passing-test noise. Each failure stands alone: what, where, the code, and the
@@ -17,27 +17,21 @@ export let initialLLM = Object.freeze({ ready: null, repeat: null, runs: {}, fir
 // Passing tests only count. Failures keep their events; skipped tests keep a name.
 let emptyRun = Object.freeze({ count: 0, failures: [], skipped: [] });
 
-// Agents read this output as text, so color codes and terminal hyperlinks from
-// test output and errors are stripped from every line.
-let plain = text => stripVTControlCharacters(String(text));
-let out = lines => rawOut(lines.map(plain));
-let err = lines => rawErr(lines.map(plain));
-
-// Markdown code needs a backtick run longer than any inside it.
-let ticks = text => '`'.repeat(Math.max(0, ...(text.match(/`+/g) ?? []).map(run => run.length)) + 1);
+// Markdown code needs a backtick run longer than any inside it. Runs are
+// counted without escapes, since the CLI strips those before writing.
+let ticks = text => '`'.repeat(stripVTControlCharacters(text).matchAll(/`+/g)
+  .reduce((longest, [run]) => Math.max(longest, run.length), 0) + 1);
 
 let fenced = (text, language = 'text') => {
-  let body = plain(text);
-  let fence = ticks(body).padEnd(3, '`');
-  return [fence + language, body, fence];
+  let fence = ticks(text).padEnd(3, '`');
+  return [fence + language, text, fence];
 };
 
 // Inline code pads with spaces when its text starts or ends with a backtick.
 let code = text => {
-  let body = plain(text);
-  let tick = ticks(body);
-  let pad = /^`|`$/.test(body) ? ' ' : '';
-  return `${tick}${pad}${body}${pad}${tick}`;
+  let tick = ticks(text);
+  let pad = /^`|`$/.test(stripVTControlCharacters(text)) ? ' ' : '';
+  return `${tick}${pad}${text}${pad}${tick}`;
 };
 
 function failureBlock(test, number, { cwd, options = {} }) {
