@@ -35,6 +35,8 @@ The start URL, `/__dyno__/`, opens a named companion before loading the app in t
 
 Visible browsers shouldn't take focus from whatever you're doing. Headed Chromium workers open their windows in the background over CDP, screenshots and viewport changes capture the app tab without raising it, and later runs reuse the companion window by navigating it instead of opening a new one. A page that calls `window.open` always activates the browser, so the companion's first opening is the one moment Chrome comes forward. Firefox and WebKit still raise the app window before screenshots and resizes.
 
+A visible Chromium window also fits the screen. When the viewport is larger than the display, Dyno scales the view down through Chromium's device emulation and sizes the window to match. The app still lays out at the configured viewport, and screenshots capture it at full size. Emulation belongs to a CDP session, so [chromium-emulation.js](../src/providers/chromium-emulation.js) keeps one session per page for screenshots, viewport changes, and the fit.
+
 The gateway forwards app requests and WebSocket upgrades to the app server. Its startup HTTP readiness check reads the app’s opener/embedder isolation headers; Dyno applies those headers to its own documents before a browser joins. App response headers stay intact. It inserts a small bridge for errors, document readiness, and the reporter overlay. Test code stays in the companion's execution iframe. See the [guide](guide.md#connect-your-app-server) for cookies, redirects, and CSP behavior.
 
 ## Test definitions
