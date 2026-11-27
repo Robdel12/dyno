@@ -141,7 +141,15 @@ export async function open(browser, plan, viewport, onExit, onDiagnostic = () =>
         // The companion window stays open on a blank page for the next run.
         if (url !== new URL('/__dyno__/blank', page.url()).href)
           throw new Error('Retire requires the owned app gateway blank URL.');
-        let blank = (candidate) => candidate.goto(url, { waitUntil: 'load', timeout: 15000 });
+        // A controller that restarts can park the app while this runs, and on WebKit the later
+        // navigation cancels the earlier one. Retire has to end on the blank page, so it navigates again.
+        let blank = async (candidate, attempts = 3) => {
+          try { await candidate.goto(url, { waitUntil: 'load', timeout: 15000 }); }
+          catch (error) {
+            if (attempts > 1 && /interrupted by another navigation/.test(error.message)) return blank(candidate, attempts - 1);
+            throw error;
+          }
+        };
         // Restart tests reloads the controller itself, and that reload can cancel ours. Closing the
         // companion still ends its document; the next run opens a new one.
         let companionBlank = async (candidate) => {
