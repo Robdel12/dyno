@@ -69,8 +69,6 @@ select { padding-right: 8px; }
 .reporter:focus { outline: none; }
 .link-bar { display: flex; justify-content: space-between; gap: 16px; margin-bottom: 16px; color: var(--muted); font-size: 12px; }
 #connection-state[data-connection=reconnecting], #connection-state[data-connection=closed] { color: var(--accent-text); }
-.worker-setting { display: flex; align-items: center; gap: 12px; margin: -8px 0 22px; color: var(--muted); font-size: 13px; }
-.worker-setting select { max-width: 100%; font-size: 13px; }
 .watch-status { margin-bottom: 22px; color: var(--accent-text); font-size: 13px; }
 .command-notice { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 14px; margin-bottom: 22px; color: var(--accent-text); background: color-mix(in srgb, var(--accent) 7%, transparent); border-radius: 6px; font-size: 13px; }
 
@@ -131,7 +129,46 @@ select { padding-right: 8px; }
 .group-heading h2 { font: 500 13px/1.6 var(--mono); overflow-wrap: anywhere; }
 .group-heading button { margin-left: auto; min-height: 30px; font-size: 12px; }
 /* Run actions appear where you're pointing, instead of repeating down the page. */
-.suite-tests > li { position: relative; }
+.suite-tests > li { position: relative; display: grid; grid-template-columns: 24px minmax(0, 1fr); align-items: center; }
+
+/* Checkboxes share one gutter. They show where you point, or once you've picked something. */
+.pick { width: 16px; height: 16px; margin: 0; accent-color: var(--accent); cursor: pointer; }
+.group-heading .pick { flex: none; }
+@media (hover: hover) {
+  .pick { opacity: 0; }
+  .suite-tests > li:hover .pick, .group-heading:hover .pick, .pick:focus-visible, .picking .pick, .pick:checked, .pick:indeterminate { opacity: 1; }
+}
+.selection-bar { position: sticky; bottom: 16px; z-index: 2; display: flex; align-items: center; gap: 10px; margin-top: 16px;
+  padding: 10px 12px 10px 16px; background: var(--raised); border: 1px solid var(--line); border-radius: 8px; }
+/* Nothing can start mid-run, so row and group run actions step out of the way. */
+.row-run:disabled, .group-heading button:disabled { visibility: hidden; }
+#selection-count { margin: 0 auto 0 0; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* Worker bays: one per worker, like bays in a dyno cell. Press one to inspect it.
+   Two short lines each, so the first result rows stay above the fold. */
+.bays { margin: 4px 0 18px; }
+#bay-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 6px; margin: 0; padding: 0; list-style: none; }
+.bay { position: relative; min-width: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
+.bay-select { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 8px; width: 100%; min-height: 0;
+  padding: 8px 84px 8px 12px; color: var(--ink); text-align: left; background: transparent; border: 0; border-radius: 8px; font: inherit; cursor: pointer; }
+.bay-select:hover { background: var(--hover); }
+.bay-select[aria-pressed=true] { background: var(--raised); box-shadow: inset 0 -2px 0 var(--accent); }
+.bay-name { display: flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 720; font-stretch: 112%; white-space: nowrap; }
+.bay-name::before { content: ''; width: 13px; height: 13px; background: var(--faint); -webkit-mask: var(--roller) center / 13px no-repeat; mask: var(--roller) center / 13px no-repeat; }
+.bay[data-phase=running] .bay-name::before, .bay[data-phase=pausing] .bay-name::before { background: var(--accent); animation: spin .7s linear infinite; }
+.bay[data-phase=paused] .bay-name::before, .bay[data-phase=debugging] .bay-name::before, .bay[data-phase=waiting] .bay-name::before { background: var(--accent); }
+.bay[data-phase=completed] .bay-name::before { background: var(--pass); }
+.bay[data-phase=completed][data-failed=true] .bay-name::before { background: var(--fail); }
+.bay-phase { align-self: center; overflow: hidden; color: var(--muted); font-size: 12px; white-space: nowrap; text-overflow: ellipsis; }
+.bay[data-phase=running] .bay-phase, .bay[data-phase=pausing] .bay-phase, .bay[data-phase=paused] .bay-phase { color: var(--accent-text); }
+/* The second line: the current test while one runs, otherwise the worker's results. */
+.bay-test, .bay-tally { grid-column: 1 / -1; overflow: hidden; font-size: 12px; white-space: nowrap; text-overflow: ellipsis; }
+.bay-test { color: var(--ink); }
+.bay-test:not(:empty) + .bay-tally, .bay-test:empty { display: none; }
+.bay-tally { color: var(--muted); font-variant-numeric: tabular-nums; }
+.bay[data-failed=true] .bay-tally { color: var(--fail); }
+.bay-app { position: absolute; top: 6px; right: 6px; min-height: 26px; font-size: 12px; }
+@media (prefers-reduced-motion: reduce) { .bay-name::before { animation: none !important; } }
 .row-run { position: absolute; top: 50%; right: 82px; translate: 0 -50%; min-height: 30px; font-size: 12px; }
 @media (hover: hover) {
   .group-heading button, .row-run { opacity: 0; }
@@ -140,7 +177,8 @@ select { padding-right: 8px; }
   .suite-tests > li:hover .test-load { opacity: 0; }
 }
 .group-count { color: var(--muted); font-size: 12px; white-space: nowrap; font-variant-numeric: tabular-nums; }
-.suite-heading { padding: 10px 0 2px 34px; }
+.suite-heading { padding: 10px 0 2px; }
+.suite-heading h3 { margin-left: 34px; }
 .suite-heading h3 { color: var(--muted); font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
 .suite-tests { list-style: none; padding: 0; margin: 0; }
 .test-select { display: grid; grid-template-columns: 22px minmax(0,1fr) 120px 64px; align-items: center; column-gap: 12px; min-height: 52px; padding: 9px 6px 9px 4px; border-radius: 6px; text-decoration: none; }

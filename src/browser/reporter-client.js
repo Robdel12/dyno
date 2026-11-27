@@ -115,7 +115,7 @@ let render = createReporter({
   stop: () => command('stop'),
   pauseOnFailure: (value) => command('pause-on-failure', { value }),
   viewport: (viewport) => command('viewport', { viewport }),
-  showApp: () => command('show-app'),
+  showApp: (workerId) => command('show-app', workerId ? { workerId } : {}),
   close: () => command('show-app'),
   copy: () => state.route.tab === 'timings' ? timingText(selectedTest(state)?.timings) : testOutput(selectedTest(state))
 });
