@@ -242,6 +242,25 @@ test('LLM output gives each failure its location, code, console output, and reru
   assert.doesNotMatch(result.stdout, /src\/browser\/runtime\.js/);
 });
 
+test('LLM output strips terminal escapes and keeps backticks inside its code blocks', { timeout: 90000 }, async t => {
+  let fixture = await project(t, {
+    source: `describe('Sanitized review', () => {
+      test('keeps \\x60fences\\x60 intact', () => {
+        console.log('\\u001b[31mred\\u001b[0m \\u001b[38:2:255:0:0mcolon\\u001b[0m \\u001b]8;;https://example.com\\u0007docs\\u001b]8;;\\u0007');
+        let fence = '\\x60'.repeat(4);
+        let split = '\\x60\\u001b[31m' + '\\x60'.repeat(3);
+        throw new Error([fence + 'md', split, fence].join('\\n'));
+      });
+    });`,
+  });
+  let result = await terminalRun(t, fixture, ['--llm']);
+  assert.equal(result.code, 1, result.stdout + result.stderr);
+  assert.doesNotMatch(result.stdout, /\u001b|\u0007/);
+  assert.ok(result.stdout.includes('[log] red colon docs'), result.stdout);
+  assert.ok(result.stdout.includes('`````text\n````md\n````\n````\n`````'), result.stdout);
+  assert.ok(result.stdout.includes("Rerun: ``dyno --test 'Sanitized review › keeps `fences` intact' --file 'tests/browser/workflow.test.js'``"), result.stdout);
+});
+
 test('a live session opens the reporter in the default browser once, and --no-open skips it', {
   timeout: 90000, skip: process.platform === 'win32',
 }, async t => {

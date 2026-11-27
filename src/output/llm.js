@@ -1,3 +1,4 @@
+import { stripVTControlCharacters } from 'node:util';
 import { testTitle } from '../suite.js';
 import { testCommand } from '../repeat.js';
 import { timingDuration, failurePhase, sourceLocation } from '../browser/timing-format.js';
@@ -16,9 +17,21 @@ export let initialLLM = Object.freeze({ ready: null, repeat: null, runs: {}, fir
 // Passing tests only count. Failures keep their events; skipped tests keep a name.
 let emptyRun = Object.freeze({ count: 0, failures: [], skipped: [] });
 
+// Markdown code needs a backtick run longer than any inside it. Runs are
+// counted without escapes, since the CLI strips those before writing.
+let ticks = text => '`'.repeat(stripVTControlCharacters(text).matchAll(/`+/g)
+  .reduce((longest, [run]) => Math.max(longest, run.length), 0) + 1);
+
 let fenced = (text, language = 'text') => {
-  let fence = text.includes('```') ? '````' : '```';
+  let fence = ticks(text).padEnd(3, '`');
   return [fence + language, text, fence];
+};
+
+// Inline code pads with spaces when its text starts or ends with a backtick.
+let code = text => {
+  let tick = ticks(text);
+  let pad = /^`|`$/.test(stripVTControlCharacters(text)) ? ' ' : '';
+  return `${tick}${pad}${text}${pad}${tick}`;
 };
 
 function failureBlock(test, number, { cwd, options = {} }) {
@@ -39,7 +52,7 @@ function failureBlock(test, number, { cwd, options = {} }) {
       ...fenced(output.map(entry => `[${entry.level}] ${entry.text}`).join('\n')));
   let screenshots = (test.attachments ?? []).map(attachment => attachmentText(attachment, cwd));
   if (screenshots.length) lines.push('', ...screenshots);
-  lines.push('', `Rerun: \`${testCommand(options, test)}\``);
+  lines.push('', `Rerun: ${code(testCommand(options, test))}`);
   return lines;
 }
 
@@ -71,8 +84,8 @@ function repeatBlock(event, failures, context) {
     lines.push('', `## First failure (round ${event.firstFailure.round})`);
     lines.push(...(failures?.length ? failures.flatMap((test, index) => failureBlock(test, index + 1, context))
       : ['', `Error: ${event.firstFailure.error?.message ?? 'Run interrupted'}`]), '');
-    if (event.firstFailureReplay) lines.push(`- Replay this round: \`${event.firstFailureReplay}\``);
-    lines.push(`- Rerun through the failure: \`${event.prefixCommand}\``);
+    if (event.firstFailureReplay) lines.push(`- Replay this round: ${code(event.firstFailureReplay)}`);
+    lines.push(`- Rerun through the failure: ${code(event.prefixCommand)}`);
   }
   if (event.reason) lines.push('', `Stopped early: ${event.reason}`);
   return [...lines, '', `Report: ${displayPath(event.html, context.cwd)}`];
