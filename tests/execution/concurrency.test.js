@@ -384,3 +384,25 @@ test('pausing one worker lets it finish its test while the others keep running',
   assert.equal(byWorker['1']?.length, 1, 'The held worker only finishes the test it had started.');
   assert.equal(byWorker['0'].length, 5);
 });
+
+test('auto workers run a single picked test on one worker', { timeout: 90000 }, async t => {
+  let fixture = await project(t, {
+    config: { setup: './setup.js', workers: 2, browser: visible, autoRun: false, webServer: { env: { GATE: 'false', OVERLAP: 'false' } } },
+    files: { 'setup.js': setup },
+    source: `describe('Auto workers', () => {
+      for (let name of ['Ada', 'Grace']) test(name, async ({app, I, fixtures}) => {
+        await app.goto('/'); await I.find('Worker ' + fixtures.worker).visible();
+      });
+    });`,
+  });
+  let session = fixture.run(['--ui']);
+  let ready = await session.waitForEvent('ready');
+  let start = await session.waitForEvent('start');
+  let page = await openURL(t, new URL('/__dyno__/reporter?run=' + encodeURIComponent(start.runId), ready.url).href);
+  await page.getByRole('heading', { name: 'Ready to run' }).waitFor();
+  await page.getByRole('button', { name: 'Run test Grace' }).click();
+  let complete = await session.waitForEvent('complete');
+  assert.equal(complete.passed, 1);
+  let joined = session.events.filter(event => event.type === 'capture' && event.runId === complete.runId);
+  assert.deepEqual(joined.map(event => event.workerId), ['0'], 'Only one worker joins a one-test run.');
+});

@@ -1,4 +1,5 @@
 import { randomUUID, createHash } from 'node:crypto';
+import { measuredDurations, fittedWorkers } from './balance.js';
 import { createRun, acceptEvent, claimTest, releaseTest, reportedExecution, joinWorker, finishWorker, retireWorkers, pauseRun, holdWorker } from './run.js';
 import { mapStack, sourceContext } from './stack.js';
 import { finishRunTimings, recordProjectCleanup, recordProjectPreparation } from './run-timings.js';
@@ -262,7 +263,7 @@ export function createCoordinator(config, bundle, {
     });
     return Object.freeze(Object.fromEntries(entries));
   };
-  let create = (snapshot, ids, managed, selected, runId = randomUUID(), seed = config.seed) => {
+  let create = (snapshot, ids, managed, selected, runId = randomUUID(), seed = config.seed, durations) => {
     if (config.replay && JSON.stringify(snapshot.fingerprint) !== JSON.stringify(config.replay.source))
       throw new Error('The replay source fingerprint changed. Record a new schedule for these tests.');
     while (runs.size >= 20) {
@@ -275,7 +276,8 @@ export function createCoordinator(config, bundle, {
     let waiting = holdFirstRun;
     holdFirstRun = false;
     let run = Object.freeze({ ...createRun(runId, { seed, workers: ids, replay: config.replay, waiting }),
-      managed, selection: selected, source: snapshot.fingerprint, startedAt: new Date().toISOString(), launched: Object.freeze([...workerIds]) });
+      managed, selection: selected, source: snapshot.fingerprint, startedAt: new Date().toISOString(), launched: Object.freeze([...workerIds]),
+      ...(durations ? { durations: Object.freeze({ ...durations }) } : {}) });
     bundles.set(runId, snapshot);
     if (config.coverage?.enabled) coverage.set(runId, createCoverageState());
     if (managed) {
@@ -292,7 +294,7 @@ export function createCoordinator(config, bundle, {
     return run;
   };
   // `count` runs the next pull on the first workers only; the rest stay parked.
-  let restart = (runId, selected, seed = config.seed, count = workerIds.length) => {
+  let restart = (runId, selected, seed = config.seed, count = workerIds.length, durations) => {
     requireOpen();
     if (restarting) throw problem(409, 'This browser run is already restarting.');
     if (runId !== managedRun) throw problem(409, 'This browser run was replaced.');
@@ -307,7 +309,7 @@ export function createCoordinator(config, bundle, {
       requireOpen();
       let snapshot = rebuild ? await rebuild() : bundle;
       requireOpen();
-      let run = create(snapshot, workerIds.slice(0, count), true, selected, randomUUID(), seed);
+      let run = create(snapshot, workerIds.slice(0, count), true, selected, randomUUID(), seed, durations);
       primaryRun = run.runId;
       await Promise.all(run.workers.map(worker => workers.get(worker.id).lifecycle.open()));
       return run.runId;
@@ -445,7 +447,13 @@ export function createCoordinator(config, bundle, {
       if (input.workers !== undefined && (!Number.isSafeInteger(input.workers) || input.workers < 1 || input.workers > workerIds.length))
         throw problem(400, `A run can use between 1 and ${workerIds.length} workers.`);
       if (input.command === 'rerun' && run.managed) {
-        restart(run.runId, selection({ ids: input.ids }), undefined, input.workers);
+        // Auto fits the workers to the run's tests and timings; a chosen count
+        // still never exceeds the number of tests.
+        let durations = measuredDurations(runs.values());
+        let ids = input.ids.length ? input.ids : (run.catalog ?? run.tests).map(test => test.id);
+        let count = input.workers === undefined ? fittedWorkers(ids, durations, workerIds.length)
+          : Math.max(1, Math.min(input.workers, ids.length || input.workers));
+        restart(run.runId, selection({ ids: input.ids }), undefined, count, durations);
         return Promise.resolve({ requestId: input.requestId });
       }
       let global = ['pause', 'stop', 'rerun', 'pause-on-failure', 'reload'].includes(input.command) ||
