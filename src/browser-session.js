@@ -58,9 +58,11 @@ export async function createBrowserPool(plan, { size = 1, signal, onExit = () =>
   let shell = plan.name === 'chromium' && plan.headless && !plan.path;
   let limitedCaptureHeight = process.platform === 'darwin' &&
     chromiumFamily(plan.name) && !shell;
+  // Checker imaging can leave images out of the frame Chromium copies for a screenshot.
+  let args = shell ? ['--disable-checker-imaging', ...(plan.args ?? [])] : plan.args;
   try { server = await browserEngine(plan.name).launchServer({
     headless: plan.headless,
-    args: plan.args,
+    args,
     timeout: 30000,
     handleSIGINT: false, handleSIGTERM: false, handleSIGHUP: false,
     ...(plan.name === 'firefox' ? {
