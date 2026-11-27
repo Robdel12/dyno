@@ -122,19 +122,18 @@ export async function runTests(options, { signal, output }) {
   };
   let persistent = options.ui || options.manual || options.watch;
   // Live sessions can wait for the reporter instead of running on launch.
-  let idle = Boolean(persistent) && (options.autoRun ?? config.autoRun) === false;
+  let idle = Boolean(persistent) && !config.autoRun;
   // Live sessions open the reporter in the person's own browser, once. It follows
   // reruns by itself. Manual runs already happen in that browser.
   let openReporter = options.open !== false && (options.ui || options.watch) && !options.manual && !process.env.CI;
-  let reporterOpened = false;
   // What the human and agent reporters need to know about this run.
   let view = { persistent, options, showCoverage: config.coverage.reporters.includes('text') };
   let report = (event) => {
     if (event.type === 'capture') {
       let gateway = instances.find(instance => instance.id === event.workerId)?.gateway;
       event = { ...event, reporterURL: `${gateway.origin}/__dyno__/reporter?run=${encodeURIComponent(event.runId)}` };
-      if (openReporter && !reporterOpened) {
-        reporterOpened = true;
+      if (openReporter) {
+        openReporter = false;
         event = { ...event, opened: true };
         openInBrowser(event.reporterURL, {
           onError: (error) => output.diagnostic(`Could not open the reporter in your browser (${error.message}). Open the Reporter URL instead.\n`),
@@ -181,9 +180,8 @@ export async function runTests(options, { signal, output }) {
       let scope = createCleanupScope();
       cleanup('Project teardown', () => closeScope(scope, 'Project teardown failed'));
       setup = await measure('Project setup', () => acquire(scope, () => duringStartup(runSignal, async (startupSignal) => {
-        let module = await import(pathToFileURL(config.setup).href);
-        if (typeof module.default !== 'function') throw new Error('setup must export a function.');
-        return module.default({ config, session, signal: startupSignal, onCleanup: scope.onCleanup });
+        if (typeof setupModule.default !== 'function') throw new Error('setup must export a function.');
+        return setupModule.default({ config, session, signal: startupSignal, onCleanup: scope.onCleanup });
       })));
       if (setup?.teardown !== undefined && typeof setup.teardown !== 'function')
         throw new Error('setup.teardown must be a function.');

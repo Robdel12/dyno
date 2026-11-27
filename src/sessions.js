@@ -12,8 +12,9 @@ let execute = promisify(execFile);
 // the session to the project's `reclaim` export.
 let folder = (root) => join(root, '.dyno', 'sessions');
 let file = (root, id) => join(folder(root), `${id}.json`);
+let removeRecord = (root, id) => rm(file(root, id), { force: true });
 
-export let running = (pid) => {
+let running = (pid) => {
   try {
     process.kill(pid, 0);
     return true;
@@ -49,13 +50,13 @@ export async function recordSession(root, session) {
     },
     async forget() {
       await writing;
-      await rm(file(root, session.id), { force: true });
+      await removeRecord(root, session.id);
     },
   });
 }
 
 // Sessions whose process is gone without removing its record.
-export async function interruptedSessions(root, alive = running) {
+async function interruptedSessions(root) {
   let names;
   try { names = await readdir(folder(root)); }
   catch (error) {
@@ -66,7 +67,7 @@ export async function interruptedSessions(root, alive = running) {
     try { return JSON.parse(await readFile(join(folder(root), name), 'utf8')); }
     catch { return null; }
   }));
-  return records.filter((record) => record?.id && Number.isSafeInteger(record.pid) && !alive(record.pid));
+  return records.filter((record) => record?.id && Number.isSafeInteger(record.pid) && !running(record.pid));
 }
 
 async function endProcesses(processes = []) {
@@ -81,14 +82,13 @@ async function endProcesses(processes = []) {
 export async function reclaimSessions(root, reclaim, { config, report }) {
   for (let session of await interruptedSessions(root)) {
     let started = new Date(session.startedAt).toLocaleString();
-    let forget = () => rm(file(root, session.id), { force: true });
     try {
       await endProcesses(session.processes);
       if (typeof reclaim === 'function')
         await reclaim({ session: Object.freeze({ id: session.id, startedAt: session.startedAt }), config });
       else if (config.setup)
         report(`A Dyno session started ${started} ended before its cleanup ran. Export reclaim({ session }) from your setup module so Dyno can clean up what it started.`);
-      await forget();
+      await removeRecord(root, session.id);
       report(`Cleaned up after an interrupted Dyno session started ${started}.`);
     } catch (error) {
       report(`Could not clean up the interrupted session started ${started}: ${error.message} Dyno tries again on the next run.`);

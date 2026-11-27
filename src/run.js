@@ -39,6 +39,10 @@ let worker = (run, id) => {
   return found;
 };
 let text = (value) => typeof value === 'string' && value.trim() && value.length <= 256;
+// A registered test: where it lives, its name, its stable ID, and its order.
+let describesTest = (test) => Boolean(test) && typeof test.file === 'string' && Array.isArray(test.suites) &&
+  test.suites.every((name) => typeof name === 'string') && typeof test.name === 'string' &&
+  test.id === testId(test.file, test.suites, test.name) && Number.isInteger(test.index) && test.index >= 0;
 
 // A waiting run has registered its tests but holds them until someone starts it.
 export function createRun(runId, { workers = ['0'], seed = null, replay = null, waiting = false } = {}) {
@@ -94,8 +98,9 @@ export function claimTest(run, { workerId = '0', executionId, now = 0, requested
     .find((test) => !attempted.has(test.id) && (test.skipReason || test.resources.every((name) => !reserved.has(name))));
   let owned = run.assignments.filter(assignment => assignment.workerId === owner.id && active(assignment));
   // Skips enter no browser document. Record trailing skips while the reported
-  // real app stays reserved for inspection, but never overlap running work.
-  if (!run.paused && (owned.some(assignment => assignment.status === 'running') || (!next?.skipReason && owned.length)))
+  // real app stays reserved for inspection, but never overlap running work. With
+  // nothing left to start, a worker keeps its reported app and waits for the run to end.
+  if (!run.paused && (owned.some(assignment => assignment.status === 'running') || (next && !next.skipReason && owned.length)))
     throw new Error('Release the previous execution before requesting another test.');
   if (!next || run.paused || owner.held || run.workers.some((worker) => worker.status !== 'ready'))
     return freeze({ run, assignment: null, done: run.outcomes.length === run.tests.length });
@@ -170,15 +175,10 @@ export function acceptEvent(run, input, { receivedAt } = {}) {
       !input.tests.length ||
       input.tests.some(
         (test) =>
-          !test ||
-          typeof test.file !== 'string' ||
-          !Array.isArray(test.suites) || !test.suites.length ||
-          test.suites.some((name) => typeof name !== 'string' || !name.trim()) ||
-          typeof test.name !== 'string' ||
+          !describesTest(test) ||
+          !test.suites.length ||
+          test.suites.some((name) => !name.trim()) ||
           !test.name.trim() ||
-          test.id !== testId(test.file, test.suites, test.name) ||
-          !Number.isInteger(test.index) ||
-          test.index < 0 ||
           (test.skipReason != null && (typeof test.skipReason !== 'string' || !test.skipReason.trim())) ||
           (test.resources !== undefined && (!Array.isArray(test.resources) || test.resources.length > 32 ||
             test.resources.some((name) => !text(name) || name.length > 128) || new Set(test.resources).size !== test.resources.length))
@@ -186,9 +186,7 @@ export function acceptEvent(run, input, { receivedAt } = {}) {
       new Set(input.tests.map((test) => test.id)).size !== input.tests.length ||
       new Set(input.tests.map((test) => test.index)).size !== input.tests.length ||
       (input.catalog !== undefined && (!Array.isArray(input.catalog) || input.catalog.length > 10000 ||
-        input.catalog.some((test) => !test || typeof test.file !== 'string' || !Array.isArray(test.suites) ||
-          test.suites.some((name) => typeof name !== 'string') || typeof test.name !== 'string' ||
-          test.id !== testId(test.file, test.suites, test.name) || !Number.isInteger(test.index) || test.index < 0)))
+        input.catalog.some((test) => !describesTest(test))))
     )
       throw new Error('Invalid run start.');
     let event = snapshotEvent(input);

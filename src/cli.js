@@ -191,6 +191,6 @@ export function configOverrides(options) {
   return {
     workers: options.workers, port: options.port, host: options.host, browser: options.browser,
     browserPath: options.browserPath, reportDir: options.reportDir, seed: options.seed, random: options.random,
-    reportImages: options.reportImages, coverage: options.coverage,
+    reportImages: options.reportImages, autoRun: options.autoRun, coverage: options.coverage,
   };
 }

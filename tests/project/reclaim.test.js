@@ -55,3 +55,22 @@ test('closing the terminal runs project cleanup and exits 129', { timeout: 90000
   assert.equal(await exists(join(fixture.directory, 'resources', id)), false, 'Teardown ran on SIGHUP.');
   assert.deepEqual(await sessionIds(fixture.directory), []);
 });
+
+test('a second Ctrl+C from npm run or npx does not cut cleanup short', { timeout: 90000 }, async t => {
+  // npm run and npx forward the terminal's SIGINT, so Dyno can get it again mid-cleanup.
+  let forwarded = setup.replace(`onCleanup(() => rm('resources/' + session.id, { force: true }));`,
+    `onCleanup(async () => {
+    process.kill(process.pid, 'SIGINT');
+    await writeFile('resources/cleaning', 'yes');
+    await rm('resources/' + session.id, { force: true });
+  });`);
+  let fixture = await project(t, { config: { ...interactive, setup: './setup.js' }, files: { 'setup.js': forwarded } });
+  let session = fixture.run(['--ui']);
+  await session.waitForEvent('complete');
+  let [id] = await sessionIds(fixture.directory);
+  session.child.kill('SIGINT');
+  let result = await session.completion;
+  assert.equal(result.code, 130, result.stdout + result.stderr);
+  assert.equal(await exists(join(fixture.directory, 'resources', id)), false, 'Teardown finished.');
+  assert.deepEqual(await sessionIds(fixture.directory), []);
+});
