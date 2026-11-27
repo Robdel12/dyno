@@ -138,6 +138,7 @@ select { padding-right: 8px; }
   .pick { opacity: 0; }
   .suite-tests > li:hover .pick, .group-heading:hover .pick, .pick:focus-visible, .picking .pick, .pick:checked, .pick:indeterminate { opacity: 1; }
 }
+.workers-setting { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
 .selection-bar { position: sticky; bottom: 16px; z-index: 2; display: flex; align-items: center; gap: 10px; margin-top: 16px;
   padding: 10px 12px 10px 16px; background: var(--raised); border: 1px solid var(--line); border-radius: 8px; }
 /* Nothing can start mid-run, so row and group run actions step out of the way. */
