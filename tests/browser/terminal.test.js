@@ -1,7 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile, writeFile } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
+import { readFile, writeFile, mkdtemp, chmod, rm } from 'node:fs/promises';
+import { dirname, join, resolve, delimiter } from 'node:path';
+import { tmpdir } from 'node:os';
+import { createServer } from 'node:http';
+import { once } from 'node:events';
 import { launch, project, repository } from '../helpers/project.js';
 import { openURL } from '../helpers/manual.js';
 
@@ -73,11 +76,12 @@ test('terminal output explains functional outcomes, saved screenshots, and indep
   assert.doesNotMatch(result.stdout, /Runner/);
   assert.match(result.stdout, /1 {2}Terminal workflow › explains a failure\n {3}The confirmation is missing\n/);
   assert.match(result.stdout, /\n {3}confirm@\/src\/contact.js:12:3\n/);
-  assert.doesNotMatch(result.stdout, /Slowest/);
   assert.match(result.stdout, /functions coverage is 50%, below the 100% threshold/);
   assert.equal(result.stderr.includes('The confirmation is missing'), false, result.stderr);
   let html = reportPath(result.stdout, fixture.directory);
   let report = JSON.parse(await readFile(join(dirname(html), 'run.json'), 'utf8'));
+  // Slowest only calls out tests of a second or more. A slow CI browser can take that long to screenshot.
+  assert.equal(/Slowest/.test(result.stdout), report.tests.some(test => test.duration >= 1000), result.stdout);
   assert.deepEqual(report.tests.map(test => test.status), ['passed', 'skipped', 'failed']);
   assert.equal(report.coverage.failed, true);
   assert.equal(report.tests[0].attachments[0].status, 'captured');
@@ -170,7 +174,7 @@ test('watch terminal output explains a broken edit and recovers after the test i
   let fixture = await project(t);
   let path = join(fixture.directory, 'tests/browser/workflow.test.js');
   let source = await readFile(path, 'utf8');
-  let session = launch(process.execPath, [join(repository, 'bin/dyno.js'), '--watch'], fixture.directory, t.signal);
+  let session = launch(process.execPath, [join(repository, 'bin/dyno.js'), '--watch', '--no-open'], fixture.directory, t.signal);
   t.after(() => session.stop());
   let text = terminalText(session);
   await text(/✓ 1 test passed/);
@@ -254,4 +258,41 @@ test('LLM output strips ANSI and OSC escapes and widens fences beyond nested bac
   assert.doesNotMatch(result.stdout, /\u001b|\u0007/);
   assert.ok(result.stdout.includes('[log] red colon docs'), result.stdout);
   assert.ok(result.stdout.includes('`````text\n````md\n````\n````\n`````'), result.stdout);
+});
+
+test('a live session opens the reporter in the default browser once, and --no-open skips it', {
+  timeout: 90000, skip: process.platform === 'win32',
+}, async t => {
+  // Stand-ins for `open` and `xdg-open` report the URL they were handed.
+  let opened = [];
+  let received = Promise.withResolvers();
+  let sink = createServer(async (request, response) => {
+    let body = '';
+    for await (let chunk of request) body += chunk;
+    opened.push(body);
+    received.resolve(body);
+    response.end();
+  });
+  sink.listen(0, '127.0.0.1');
+  await once(sink, 'listening');
+  t.after(() => sink.close());
+  let bin = await mkdtemp(join(tmpdir(), 'dyno-open-'));
+  t.after(() => rm(bin, { recursive: true, force: true }));
+  let stub = `#!${process.execPath}\nawait fetch(process.env.OPEN_SINK, { method: 'POST', body: process.argv.at(-1) });\n`;
+  for (let name of ['open', 'xdg-open']) {
+    await writeFile(join(bin, name), stub);
+    await chmod(join(bin, name), 0o755);
+  }
+  let env = { ...process.env, CI: '', PATH: `${bin}${delimiter}${process.env.PATH}`, OPEN_SINK: `http://127.0.0.1:${sink.address().port}` };
+  let fixture = await project(t);
+  let session = fixture.run(['--ui'], { open: true, env });
+  let capture = await session.waitForEvent('capture');
+  assert.equal(await received.promise, capture.reporterURL);
+  await session.waitForEvent('complete');
+  await session.stop();
+  assert.deepEqual(opened, [capture.reporterURL]);
+  let skipped = fixture.run(['--ui', '--no-open'], { open: true, env });
+  await skipped.waitForEvent('complete');
+  await skipped.stop();
+  assert.deepEqual(opened, [capture.reporterURL]);
 });

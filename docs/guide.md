@@ -266,7 +266,7 @@ Dyno gives each test 10 seconds, including hooks and document startup. Interacto
 | `browser.deviceScaleFactor` | `1` | Playwright pixel ratio from 1 to 3 |
 | `browser.isMobile`, `browser.hasTouch` | `false` | Emulate mobile viewport behavior and touch input |
 | `browser.userAgent` | Browser default | Override the managed browser user agent |
-| `viewport` | Browser size; managed: 1280 × 800 | Required app viewport dimensions |
+| `viewport` | Browser size; managed: 1280 × 800 | Required app viewport dimensions. A visible Chromium window scales a viewport larger than your screen down to fit; the app and its screenshots stay full size. |
 | `reportDir` | `.dyno/reports` | Saved JSON, JUnit, and HTML per browser run |
 | `reportImages` | `false` | Copy captured PNGs into [saved reports](guide.md#saved-reports) |
 | `coverage` | Disabled | App coverage filters, build baseline, reporters, and thresholds; activate with `--coverage` or `coverage.enabled` |
@@ -281,6 +281,7 @@ Dyno gives each test 10 seconds, including hooks and document startup. Interacto
 | `seed`, `random` | None, `false` | Repeatable randomized priority or a generated seed |
 | `workers` | `1` | Managed worker count, from 1 to 32; concurrent runs need project worker setup |
 | `forbidOnly` | Whether `CI` is set | Reject focused test/suite definitions |
+| `autoRun` | `true` | Start tests as soon as a live session's browser is ready. Set `false` to have the first run of a `--ui`, `--watch`, or `--manual` session wait until you start it from the reporter; saved changes in `--watch` still rerun |
 
 </details>
 
@@ -301,6 +302,26 @@ export default async function setup({ session, signal, onCleanup }) {
 Use project factories to create committed records and real sessions. Return the IDs and paths a scenario needs, then exercise the behavior through the app. Share immutable fixture inputs rather than mutable records. For concurrent runs, [give each worker its own resources](guide.md#concurrent-runs).
 
 Use [named app fixtures](guide.md#named-app-fixtures) to call your real factories through `app.fixture`. Keep that test control outside production entrypoints. Operations receive explicit app dependencies; Dyno handles execution ownership and transport, while your app owns factories, auth, queues and visual comparison.
+
+### Clean up after interrupted runs
+
+Teardown and `onCleanup` callbacks run when Dyno stops normally, on Ctrl-C, and when you close its terminal. Pressing Ctrl-C again a second or more later quits without waiting for them. That, a crash, `kill -9`, or a machine that loses power leaves the resources setup started (containers, databases) running.
+
+Dyno remembers each session that has project setup until its cleanup finishes. The next time it starts, it passes any session that ended early to an optional `reclaim` export from your setup module:
+
+```js
+export default async function setup({ session }) {
+  // Name what you start after the session, so reclaim can find it later.
+  let project = `myapp-tests-${session.id}`;
+  …
+}
+
+export async function reclaim({ session }) {
+  await exec('docker', ['compose', '-p', `myapp-tests-${session.id}`, 'down', '--volumes']);
+}
+```
+
+Reclaim runs before setup, once per interrupted session. If it fails, Dyno reports why and tries again on the next run. Without a `reclaim` export, Dyno tells you a session ended early so you can clean up by hand.
 
 ### Finish work before reusing resources
 
@@ -408,13 +429,17 @@ Dyno starts the app and stops the processes it owns when you finish. `--ui` keep
 
 ### Open the reporter
 
-Press **Ctrl+Shift+D** in the app. Dyno finishes the current test, then opens the reporter over it. The app keeps its full viewport underneath.
+`dyno --ui` and `dyno --watch` open the reporter in your default browser when the first run starts. To pick what runs first, set `autoRun: false` or pass `--no-auto-run`: the tests load and wait until you run all of them, a file, a suite or a single test from the reporter.
+
+The reporter follows reruns, so keep that tab open to watch results, run a test, suite or file, and stop the run. Pass `--no-open` to skip it; the CLI and Dyno's control room window both show its URL.
+
+You can also press **Ctrl+Shift+D** in the app. Dyno finishes the current test, then opens the reporter over it. The app keeps its full viewport underneath.
 
 Start with the file/suite overview, then open a test's **Output**, **Timings** or **Application** view. You can rerun a test, suite, file or failed selection. Search and filters stay in the URL.
 
 Turn on **Pause on failure** in Run options to inspect a failing app. Continue hides the reporter before the next test. Stop cancels the run and starts cleanup. Pausing leaves app timers and requests running.
 
-The CLI also prints a separate reporter URL. Open it in another tab if you'd rather keep the app uncovered. A completed interactive run keeps each worker's last app available; rerun an earlier test to inspect it again.
+A completed interactive run keeps each worker's last app available; rerun an earlier test to inspect it again.
 
 ### Repeat while developing
 
@@ -449,7 +474,7 @@ See [browser setup](browsers.md) for manual-mode limits. Use [editing and debugg
 
 ### Use the output in CI
 
-`dyno --json` writes one JSON event per stdout line. Config, setup, teardown and app logs go to stderr. Use the process exit code as the outcome: `0` passes, `1` fails, `130` means SIGINT, and `143` means SIGTERM. Cleanup failure exits `1`, including after interruption.
+`dyno --json` writes one JSON event per stdout line. Config, setup, teardown and app logs go to stderr. Use the process exit code as the outcome: `0` passes, `1` fails, `129` means SIGHUP (a closed terminal), `130` means SIGINT, and `143` means SIGTERM. Cleanup failure exits `1`, including after interruption.
 
 The default output groups results by file and suite, then lists each failure with its code, project stack frames, console output and a command that reruns just that test. Colors turn off when stdout isn't a terminal or `NO_COLOR` is set.
 

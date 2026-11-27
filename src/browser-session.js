@@ -4,7 +4,7 @@ import { access } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { resolve } from 'node:path';
 import { startProcess } from './process.js';
-import { browserNames, browserEngine, browserChannel } from './browsers.js';
+import { browserNames, browserEngine, browserChannel, chromiumFamily } from './browsers.js';
 import { nativeCapabilities } from './native.js';
 
 export async function resolveSession(browser, { headless = true } = {}) {
@@ -48,7 +48,7 @@ async function closeBrowser(server) {
   } finally { deadline.removeEventListener('abort', abort); }
 }
 
-export async function createBrowserPool(plan, { size = 1, signal, onExit = () => {}, onDiagnostic = () => {} } = {}) {
+export async function createBrowserPool(plan, { size = 1, signal, onExit = () => {}, onDiagnostic = () => {}, onStart = () => {} } = {}) {
   if (!Number.isSafeInteger(size) || size < 1 || size > 32)
     throw new Error('Browser pool size must be between 1 and 32.');
   signal?.throwIfAborted();
@@ -57,7 +57,7 @@ export async function createBrowserPool(plan, { size = 1, signal, onExit = () =>
   let executable = plan.path ? { executablePath: plan.path } : { channel };
   let shell = plan.name === 'chromium' && plan.headless && !plan.path;
   let limitedCaptureHeight = process.platform === 'darwin' &&
-    ['chromium', 'chrome', 'edge'].includes(plan.name) && !shell;
+    chromiumFamily(plan.name) && !shell;
   try { server = await browserEngine(plan.name).launchServer({
     headless: plan.headless,
     args: plan.args,
@@ -80,8 +80,10 @@ export async function createBrowserPool(plan, { size = 1, signal, onExit = () =>
     await closeBrowser(server);
     signal.throwIfAborted();
   }
+  let browserPid = server.process()?.pid;
+  if (browserPid) onStart(browserPid);
   let owned = startProcess(process.execPath, {
-    shell: false, ipc: true,
+    shell: false, ipc: true, onStart,
     args: [fileURLToPath(new URL('./providers/worker.js', import.meta.url))],
   });
   let requests = new Map();
@@ -199,10 +201,13 @@ export async function createBrowserPool(plan, { size = 1, signal, onExit = () =>
               screenshot: true,
               fullPage: true,
               hostViewport: true,
+              // Playwright treats its pages as focused, so the app never needs window.focus().
+              emulatedFocus: true,
               native: nativeCapabilities(plan.name),
             }),
             open: (url) => call('open', { url }),
             activate: () => call('activate'),
+            reveal: () => call('reveal'),
             retire: (url) => call('retire', { url }),
             resize: (size, operationSignal) => call('resize', size, operationSignal),
             capture: async (options, operationSignal) => {

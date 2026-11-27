@@ -93,6 +93,7 @@ export function llmStep(state, event, context) {
       let open = [
         ...(event.browser ? [] : [`Open ${event.url} in a browser to start the tests.`]),
         ...(event.devices ?? []).map(url => `Open on another device: ${url}`),
+        ...(event.idle ? ['Waiting: tests start from the reporter. Nothing runs until then.'] : []),
       ];
       return { state: { ...state, ready: event }, writes: out(open) };
     }

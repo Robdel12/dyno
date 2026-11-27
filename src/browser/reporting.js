@@ -63,6 +63,19 @@ export function liveChange(previous, next) {
   return Object.keys(set).length || tests.length ? { set, tests } : null;
 }
 
+// Tests the run left out, for the reporter to list and run. Not part of results.
+// A run's tests and catalog are fixed once it starts, so this is worked out
+// once per run rather than on every live change.
+let leftOut = new WeakMap();
+let outsideOf = (run) => {
+  if (!run.catalog) return freeze([]);
+  if (!leftOut.has(run.catalog)) {
+    let inRun = new Set(run.tests.map((test) => test.id));
+    leftOut.set(run.catalog, freeze(run.catalog.filter((test) => !inRun.has(test.id))));
+  }
+  return leftOut.get(run.catalog);
+};
+
 export function runView(view = createExecution({ width: 1280, height: 800 }), run) {
   let live = new Map(view.tests.map((test) => [test.id, test]));
   let outcomes = new Map(run.outcomes.map((event) => [event.testId, event]));
@@ -80,7 +93,7 @@ export function runView(view = createExecution({ width: 1280, height: 800 }), ru
   let terminal = run.status === 'completed'
     ? { phase: 'completed', duration: run.summary.duration }
     : run.status === 'failed' ? { phase: run.stopped ? 'stopped' : 'error', error: run.error.message } : {};
-  return freeze({ ...view, runId: run.runId, seed: run.seed ?? null, ...terminal,
+  return freeze({ ...view, runId: run.runId, seed: run.seed ?? null, waiting: Boolean(run.waiting), outside: outsideOf(run), ...terminal,
     ...(run.coordination ? { coordination: run.coordination } : {}),
     ...(['completed', 'failed'].includes(run.status) ? { presentation: view.interactive ? 'reporter' : 'app' } : {}), tests: freeze(tests) });
 }
@@ -108,13 +121,17 @@ export function workerView(run, progress, selected = run.workers[0].id, previous
   let workers = run.workers.map(worker => {
     let view = progress.find(item => item.id === worker.id)?.view;
     return freeze({ id: worker.id, phase: worker.status === 'retired' ? 'retired' : worker.status === 'finished' ? 'completed' : view?.phase ?? 'connecting',
-      current: view?.current ?? null, hasApp: worker.status !== 'retired' && ownsApp(worker.id) && (view?.hasApp ?? false) });
+      current: view?.current ?? null, held: Boolean(worker.held),
+      hasApp: worker.status !== 'retired' && ownsApp(worker.id) && (view?.hasApp ?? false) });
   });
   if (previous?.workers?.length === workers.length && workers.every((worker, index) =>
     Object.keys(worker).every(key => worker[key] === previous.workers[index][key]))) workers = previous.workers;
   let phase = base.phase;
   if (run.paused) phase = workers.some(worker => ['running', 'pausing', 'resuming'].includes(worker.phase)) ? 'pausing' : 'paused';
-  return runView(freeze({ ...base, phase, hasApp: !selectedRetired && ownsApp(selected) && Boolean(base.hasApp), identity: owner?.identity ?? null,
+  // The app window stays open between tests; only its document changes. Show app
+  // depends on the window, so it doesn't blink while each test starts fresh.
+  return runView(freeze({ ...base, phase, hasApp: !selectedRetired && ownsApp(selected) && Boolean(base.hasApp),
+    appOpen: !selectedRetired && Boolean(owner), workerSlots: run.launched.length, identity: owner?.identity ?? null,
     capabilities: owner?.capabilities, selectedWorker: selected, workers: freeze(workers), tests: freeze(tests) }), run);
 }
 

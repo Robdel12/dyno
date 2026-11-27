@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { PNG } from 'pngjs';
 import { project } from '../helpers/project.js';
 import { observeRun } from '../helpers/observer.js';
+import { openURL } from '../helpers/manual.js';
 
 let browser = process.env.DYNO_TEST_BROWSER ?? 'chromium';
 let visible = { name: browser, args: [['firefox', 'webkit'].includes(browser) ? '--headless' : '--headless=new'] };
@@ -25,24 +26,31 @@ test('native workers overlap real saves with private apps and one canonical repo
         if(test.name==='First contact'){
           let paused=app.pause('Inspect the worker');
           let reporter;
-          await I.assert(()=>!!(reporter=app.document.querySelector('#__dynoReporter'))?.contentDocument?.querySelector('#worker')&&!reporter.hidden);
+          await I.assert(()=>!!(reporter=app.document.querySelector('#__dynoReporter'))?.contentDocument?.querySelector('.bay-select[data-worker]')&&!reporter.hidden);
           await new Promise(resolve=>{
             if(reporter.contentDocument.readyState==='complete')resolve();
             else reporter.addEventListener('load',resolve,{once:true});
           });
           let UI=I.scope(()=>reporter.contentDocument.body);
           let reporterDocument=reporter.contentDocument;
-          await UI.find('$(#worker)').value(fixtures.worker);
+          // A pressed bay means the list is filtered to that worker. Showing every worker presses none.
+          let pressed=()=>[...reporterDocument.querySelectorAll('.bay-select[aria-pressed=true]')].map(bay=>bay.dataset.worker).join();
+          let filtered=id=>UI.assert(()=>pressed()===id,'Expected only worker '+id+' to be pressed');
+          await filtered('');
           await UI.find('$(a[aria-label="Passed: Second contact"])').visible();
           let other=fixtures.worker==='0'?'1':'0';
-          await UI.click('$(#worker option[value="'+other+'"])');
+          await UI.click('$(.bay-select[data-worker="'+other+'"])');
           await I.assert(()=>new URL(reporter.contentDocument?.querySelector('#standalone-reporter')?.href??reporter.src).searchParams.get('worker')===other);
-          await UI.find('$(#worker)').value(other);
+          // Pressing a bay inspects that worker and filters to it; show every worker's rows again.
+          await filtered(other);
+          await UI.find('$(#worker-scope)').visible();
+          await UI.click('Show every worker');
+          await filtered('');
           await UI.find('$(a[aria-label="Running: First contact"])').visible();
           await UI.find('$(a[aria-label="Passed: Second contact"])').visible();
-          await UI.click('$(#worker option[value="'+fixtures.worker+'"])');
+          await UI.click('$(.bay-select[data-worker="'+fixtures.worker+'"])');
           await I.assert(()=>new URL(reporter.contentDocument?.querySelector('#standalone-reporter')?.href??reporter.src).searchParams.get('worker')===fixtures.worker);
-          await UI.find('$(#worker)').value(fixtures.worker);
+          await filtered(fixtures.worker);
           await UI.assert(()=>reporter.contentDocument===reporterDocument,'Switching workers should preserve the reporter document');
           await UI.click('$(#continue)');
           await paused;
@@ -57,6 +65,9 @@ test('native workers overlap real saves with private apps and one canonical repo
   assert.deepEqual(discovering[0].assignments, [], 'Dispatch waits for every worker catalog.');
   await fetch(new URL('/release-registration', ready.workers[1].url), { signal: t.signal });
   await session.waitForEvent('complete');
+  // Each worker keeps its last test's app open for Show app, not just the worker that finished last.
+  let [finished] = await (await fetch(ready.url + 'results', { signal: t.signal })).json();
+  assert.deepEqual(finished.assignments.filter(item => item.status === 'retained').map(item => item.workerId).sort(), ['0', '1']);
   let saved = await session.waitForEvent('report-saved');
   let report = JSON.parse(await readFile(saved.json, 'utf8'));
   assert.equal(report.coordination.workers.length, 2);
@@ -328,4 +339,80 @@ test('large selections rerun and replay without placing their catalog in launch 
   for (let worker of original.workers)
     assert.deepEqual(restored.assignments.filter(item => item.workerId === worker).map(item => item.testId),
       original.assignments.filter(item => item.workerId === worker).map(item => item.testId));
+});
+
+test('the reporter can run the next pull on fewer workers than were launched', { timeout: 90000 }, async t => {
+  let fixture = await project(t, {
+    config: { setup: './setup.js', workers: 2, browser: visible, autoRun: false, webServer: { env: { GATE: 'false', OVERLAP: 'false' } } },
+    files: { 'setup.js': setup },
+    source: `describe('Fewer workers', () => {
+      for (let name of ['Ada', 'Grace', 'Margaret']) test(name, async ({app, I, fixtures}) => {
+        await app.goto('/'); await I.find('Worker ' + fixtures.worker).visible();
+      });
+    });`,
+  });
+  let session = fixture.run(['--ui']);
+  let ready = await session.waitForEvent('ready');
+  let start = await session.waitForEvent('start');
+  let page = await openURL(t, new URL('/__dyno__/reporter?run=' + encodeURIComponent(start.runId), ready.url).href);
+  await page.getByRole('heading', { name: 'Ready to run' }).waitFor();
+  await page.locator('#run-options summary').click();
+  await page.getByRole('combobox', { name: 'Workers per run' }).selectOption('1');
+  await page.getByRole('button', { name: 'Run all' }).click();
+  let complete = await session.waitForEvent('complete');
+  assert.equal(complete.passed, 3);
+  let tests = session.events.filter(event => event.type === 'test');
+  assert.deepEqual([...new Set(tests.map(event => event.workerId))], ['0']);
+  await page.getByRole('heading', { name: 'All tests passed' }).waitFor();
+});
+
+test('pausing one worker lets it finish its test while the others keep running', { timeout: 90000 }, async t => {
+  let fixture = await project(t, {
+    config: { setup: './setup.js', workers: 2, browser: visible, webServer: { env: { GATE: 'false', OVERLAP: 'false' } } },
+    files: { 'setup.js': setup },
+    source: `describe('Held worker', () => {
+      for (let index = 1; index <= 6; index++) test('step ' + index, async ({app}) => {
+        await app.goto('/'); await app.request('/allow-close');
+      });
+    });`,
+  });
+  let session = fixture.run(['--ui']);
+  let ready = await session.waitForEvent('ready');
+  let capture = await session.waitForEvent('capture');
+  let page = await openURL(t, capture.reporterURL);
+  // Both workers wait on the gate inside their first test.
+  await page.getByRole('button', { name: 'Pause worker 1' }).click();
+  await page.getByRole('button', { name: 'Continue worker 1' }).waitFor();
+  await fetch(new URL('/release-close', ready.workers[0].url), { signal: t.signal });
+  let complete = await session.waitForEvent('complete');
+  assert.equal(complete.passed, 6);
+  let byWorker = Object.groupBy(session.events.filter(event => event.type === 'test'), event => event.workerId);
+  assert.equal(byWorker['1']?.length, 1, 'The held worker only finishes the test it had started.');
+  assert.equal(byWorker['0'].length, 5);
+});
+
+test('auto workers run a single picked test on one worker', { timeout: 90000 }, async t => {
+  let fixture = await project(t, {
+    config: { setup: './setup.js', workers: 2, browser: visible, autoRun: false, webServer: { env: { GATE: 'false', OVERLAP: 'false' } } },
+    files: { 'setup.js': setup },
+    source: `describe('Auto workers', () => {
+      for (let name of ['Ada', 'Grace']) test(name, async ({app, I, fixtures}) => {
+        await app.goto('/'); await I.find('Worker ' + fixtures.worker).visible();
+      });
+    });`,
+  });
+  let session = fixture.run(['--ui']);
+  let ready = await session.waitForEvent('ready');
+  let start = await session.waitForEvent('start');
+  let page = await openURL(t, new URL('/__dyno__/reporter?run=' + encodeURIComponent(start.runId), ready.url).href);
+  await page.getByRole('heading', { name: 'Ready to run' }).waitFor();
+  // Tests go to workers when a run starts, so there's no worker to filter to yet.
+  let bay = id => page.locator(`.bay-select[data-worker="${id}"]`);
+  assert.equal(await bay('0').isDisabled(), true);
+  assert.equal(await bay('1').isDisabled(), true);
+  await page.getByRole('button', { name: 'Run test Grace' }).click();
+  let complete = await session.waitForEvent('complete');
+  assert.equal(complete.passed, 1);
+  let joined = session.events.filter(event => event.type === 'capture' && event.runId === complete.runId);
+  assert.deepEqual(joined.map(event => event.workerId), ['0'], 'Only one worker joins a one-test run.');
 });

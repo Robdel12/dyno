@@ -19,13 +19,17 @@
  *
  * ## Open the reporter
  *
- * Press **Ctrl+Shift+D** in the app. Dyno finishes the current test, then opens the reporter over it. The app keeps its full viewport underneath.
+ * `dyno --ui` and `dyno --watch` open the reporter in your default browser when the first run starts. To pick what runs first, set `autoRun: false` or pass `--no-auto-run`: the tests load and wait until you run all of them, a file, a suite or a single test from the reporter.
+ *
+ * The reporter follows reruns, so keep that tab open to watch results, run a test, suite or file, and stop the run. Pass `--no-open` to skip it; the CLI and Dyno's control room window both show its URL.
+ *
+ * You can also press **Ctrl+Shift+D** in the app. Dyno finishes the current test, then opens the reporter over it. The app keeps its full viewport underneath.
  *
  * Start with the file/suite overview, then open a test's **Output**, **Timings** or **Application** view. You can rerun a test, suite, file or failed selection. Search and filters stay in the URL.
  *
  * Turn on **Pause on failure** in Run options to inspect a failing app. Continue hides the reporter before the next test. Stop cancels the run and starts cleanup. Pausing leaves app timers and requests running.
  *
- * The CLI also prints a separate reporter URL. Open it in another tab if you'd rather keep the app uncovered. A completed interactive run keeps each worker's last app available; rerun an earlier test to inspect it again.
+ * A completed interactive run keeps each worker's last app available; rerun an earlier test to inspect it again.
  *
  * ## Repeat while developing
  *
@@ -60,7 +64,7 @@
  *
  * ## Use the output in CI
  *
- * `dyno --json` writes one JSON event per stdout line. Config, setup, teardown and app logs go to stderr. Use the process exit code as the outcome: `0` passes, `1` fails, `130` means SIGINT, and `143` means SIGTERM. Cleanup failure exits `1`, including after interruption.
+ * `dyno --json` writes one JSON event per stdout line. Config, setup, teardown and app logs go to stderr. Use the process exit code as the outcome: `0` passes, `1` fails, `129` means SIGHUP (a closed terminal), `130` means SIGINT, and `143` means SIGTERM. Cleanup failure exits `1`, including after interruption.
  *
  * The default output groups results by file and suite, then lists each failure with its code, project stack frames, console output and a command that reruns just that test. Colors turn off when stdout isn't a terminal or `NO_COLOR` is set.
  *
@@ -142,6 +146,9 @@ Tests, actions, and assertions execute in the browser. Use --manual for Safari a
     .addOption(valueOption('--seed <value>', 'Run in a repeatable randomized order'))
     .addOption(new Option('--random', 'Generate and print a seed for this run').conflicts('seed'))
     .option('--watch', 'Rerun when tests or imported helpers change')
+    .option('--no-open', "Don't open the reporter in your browser (--ui and --watch)")
+    .option('--auto-run', 'Start tests as soon as the browser is ready (the default)')
+    .option('--no-auto-run', 'Wait for you to start tests from the reporter (--ui, --watch, and --manual)')
     .option('--coverage', 'Collect Istanbul coverage from the instrumented app')
     .option('--no-coverage', 'Disable application coverage for this run')
     .addOption(valueOption('--test <name>', 'Exact test name or suite-qualified title'))
@@ -184,6 +191,6 @@ export function configOverrides(options) {
   return {
     workers: options.workers, port: options.port, host: options.host, browser: options.browser,
     browserPath: options.browserPath, reportDir: options.reportDir, seed: options.seed, random: options.random,
-    reportImages: options.reportImages, coverage: options.coverage,
+    reportImages: options.reportImages, autoRun: options.autoRun, coverage: options.coverage,
   };
 }

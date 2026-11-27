@@ -13,6 +13,8 @@ let sameContext = (left, right) =>
 let commands = [
   'pause',
   'continue',
+  'pause-worker',
+  'continue-worker',
   'inspect',
   'show-app',
   'stop',
@@ -344,9 +346,13 @@ export function createBrowserControl({ artifactsDir, workerId = '0', onReplaced 
       if (route === 'stream' && request.method === 'GET') {
         let runId = url.searchParams.get('run');
         if (!connections.has(runId)) throw problem(404, 'Unknown browser run.');
-        let selectedWorker = url.searchParams.get('worker') ?? workerId;
-        if (!getRun(runId).workers.some(worker => worker.id === selectedWorker))
-          throw problem(400, 'Unknown reporter worker.');
+        // A reporter follows reruns, and a rerun can use fewer workers. A launched
+        // worker that sits this run out falls back to the run's first worker.
+        let requestedWorker = url.searchParams.get('worker') ?? workerId;
+        let { workers: runWorkers, launched } = getRun(runId);
+        let selectedWorker = runWorkers.some(worker => worker.id === requestedWorker) ? requestedWorker
+          : launched.includes(requestedWorker) ? runWorkers[0].id : null;
+        if (!selectedWorker) throw problem(400, 'Unknown reporter worker.');
         if ((streams.get(runId)?.size ?? 0) >= 8 ||
           [...streams.values()].reduce((total, entries) => total + entries.size, 0) >= 64)
           throw problem(429, 'Too many reporter connections. Close a reporter and reconnect.');
